@@ -1,0 +1,208 @@
+#include "gth/ftp/CurlFtpClient.h"
+
+#include <cstdio>
+
+#include <curl/curl.h>
+
+namespace gth::ftp {
+
+namespace {
+
+struct CancelContext {
+    std::atomic<bool>* cancelFlag;
+    std::function<void(long long, long long)> onProgress;
+};
+
+int progressCallback(void* clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow) {
+    auto* ctx = reinterpret_cast<CancelContext*>(clientp);
+    if (ctx->onProgress) {
+        const long long total = ultotal > 0 ? static_cast<long long>(ultotal) : static_cast<long long>(dltotal);
+        const long long now = ulnow > 0 ? static_cast<long long>(ulnow) : static_cast<long long>(dlnow);
+        ctx->onProgress(now, total);
+    }
+    if (ctx->cancelFlag && ctx->cancelFlag->load()) return 1;  // non-zero aborts the transfer
+    return 0;
+}
+
+size_t writeToFile(char* ptr, size_t size, size_t nmemb, void* userdata) {
+    auto* file = reinterpret_cast<std::FILE*>(userdata);
+    return std::fwrite(ptr, size, nmemb, file);
+}
+
+size_t readFromFile(char* ptr, size_t size, size_t nmemb, void* userdata) {
+    auto* file = reinterpret_cast<std::FILE*>(userdata);
+    return std::fread(ptr, size, nmemb, file);
+}
+
+size_t appendToString(char* ptr, size_t size, size_t nmemb, void* userdata) {
+    auto* out = reinterpret_cast<std::string*>(userdata);
+    out->append(ptr, size * nmemb);
+    return size * nmemb;
+}
+
+// libcurl's FTP LIST response is server-formatted plain text (typically Unix
+// `ls -l` style). Parsed leniently: last whitespace-separated token is the
+// name, a leading 'd' marks a directory, everything else about size is
+// best-effort - good enough for a browse pane, not meant to be a strict
+// parser for every FTP server's format.
+std::vector<core::FtpDirectoryEntry> parseListing(const std::string& raw) {
+    std::vector<core::FtpDirectoryEntry> entries;
+    size_t pos = 0;
+    while (pos < raw.size()) {
+        size_t eol = raw.find('\n', pos);
+        if (eol == std::string::npos) eol = raw.size();
+        std::string line = raw.substr(pos, eol - pos);
+        pos = eol + 1;
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) continue;
+
+        core::FtpDirectoryEntry entry;
+        entry.isDirectory = !line.empty() && line[0] == 'd';
+
+        const size_t nameStart = line.find_last_of(' ');
+        entry.name = nameStart == std::string::npos ? line : line.substr(nameStart + 1);
+        if (entry.name == "." || entry.name == "..") continue;
+
+        entries.push_back(std::move(entry));
+    }
+    return entries;
+}
+
+}  // namespace
+
+CurlFtpClient::CurlFtpClient(bool useTls) : useTls_(useTls) {}
+
+CurlFtpClient::~CurlFtpClient() { disconnect(); }
+
+std::string CurlFtpClient::buildUrl(const std::string& path) const {
+    std::string url = useTls_ ? "ftps://" : "ftp://";
+    url += params_.host;
+    url += ":" + std::to_string(params_.port);
+    url += "/";
+    std::string cleanPath = path;
+    while (!cleanPath.empty() && cleanPath.front() == '/') cleanPath.erase(cleanPath.begin());
+    url += cleanPath;
+    return url;
+}
+
+core::FtpOperationResult CurlFtpClient::connect(const core::FtpConnectParams& params) {
+    params_ = params;
+
+    CURL* curl = curl_easy_init();
+    if (!curl) return {false, "Failed to initialize libcurl."};
+
+    const std::string url = buildUrl(params_.remoteBasePath);
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_USERNAME, params_.username.c_str());
+    curl_easy_setopt(curl, CURLOPT_PASSWORD, params_.password.c_str());
+    curl_easy_setopt(curl, CURLOPT_CONNECT_ONLY, 1L);
+    if (useTls_) {
+        curl_easy_setopt(curl, CURLOPT_USE_SSL, static_cast<long>(CURLUSESSL_ALL));
+    }
+
+    const CURLcode res = curl_easy_perform(curl);
+    curl_easy_cleanup(curl);
+
+    if (res != CURLE_OK) return {false, curl_easy_strerror(res)};
+
+    connected_ = true;
+    return {true, ""};
+}
+
+void CurlFtpClient::disconnect() { connected_ = false; }
+
+std::vector<core::FtpDirectoryEntry> CurlFtpClient::listDirectory(const std::string& path) {
+    if (!connected_) return {};
+
+    CURL* curl = curl_easy_init();
+    if (!curl) return {};
+
+    std::string url = buildUrl(path);
+    if (url.back() != '/') url += "/";
+
+    std::string response;
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_USERNAME, params_.username.c_str());
+    curl_easy_setopt(curl, CURLOPT_PASSWORD, params_.password.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, appendToString);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    if (useTls_) curl_easy_setopt(curl, CURLOPT_USE_SSL, static_cast<long>(CURLUSESSL_ALL));
+
+    curl_easy_perform(curl);
+    curl_easy_cleanup(curl);
+
+    return parseListing(response);
+}
+
+core::FtpOperationResult CurlFtpClient::upload(const std::string& localPath, const std::string& remotePath,
+                                                const std::function<void(long long, long long)>& onProgress,
+                                                std::atomic<bool>* cancelFlag) {
+    if (!connected_) return {false, "Not connected."};
+
+    std::FILE* file = nullptr;
+    if (fopen_s(&file, localPath.c_str(), "rb") != 0 || !file) return {false, "Could not open local file."};
+
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        std::fclose(file);
+        return {false, "Failed to initialize libcurl."};
+    }
+
+    CancelContext ctx{cancelFlag, onProgress};
+    const std::string url = buildUrl(remotePath);
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_USERNAME, params_.username.c_str());
+    curl_easy_setopt(curl, CURLOPT_PASSWORD, params_.password.c_str());
+    curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
+    curl_easy_setopt(curl, CURLOPT_READFUNCTION, readFromFile);
+    curl_easy_setopt(curl, CURLOPT_READDATA, file);
+    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progressCallback);
+    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &ctx);
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    if (useTls_) curl_easy_setopt(curl, CURLOPT_USE_SSL, static_cast<long>(CURLUSESSL_ALL));
+
+    const CURLcode res = curl_easy_perform(curl);
+    curl_easy_cleanup(curl);
+    std::fclose(file);
+
+    if (res != CURLE_OK) return {false, curl_easy_strerror(res)};
+    return {true, ""};
+}
+
+core::FtpOperationResult CurlFtpClient::download(const std::string& remotePath, const std::string& localPath,
+                                                  const std::function<void(long long, long long)>& onProgress,
+                                                  std::atomic<bool>* cancelFlag) {
+    if (!connected_) return {false, "Not connected."};
+
+    std::FILE* file = nullptr;
+    if (fopen_s(&file, localPath.c_str(), "wb") != 0 || !file) return {false, "Could not open local file."};
+
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        std::fclose(file);
+        return {false, "Failed to initialize libcurl."};
+    }
+
+    CancelContext ctx{cancelFlag, onProgress};
+    const std::string url = buildUrl(remotePath);
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_USERNAME, params_.username.c_str());
+    curl_easy_setopt(curl, CURLOPT_PASSWORD, params_.password.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeToFile);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, file);
+    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progressCallback);
+    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &ctx);
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    if (useTls_) curl_easy_setopt(curl, CURLOPT_USE_SSL, static_cast<long>(CURLUSESSL_ALL));
+
+    const CURLcode res = curl_easy_perform(curl);
+    curl_easy_cleanup(curl);
+    std::fclose(file);
+
+    if (res != CURLE_OK) return {false, curl_easy_strerror(res)};
+    return {true, ""};
+}
+
+}  // namespace gth::ftp

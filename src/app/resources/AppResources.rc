@@ -1,0 +1,52 @@
+// IDI_APP_ICON (see Resource.h) must be the *first* icon resource in the
+// .exe for Windows to pick it as the taskbar/Explorer/Alt-Tab icon
+// automatically.
+#include "../src/Resource.h"
+// Defines VS_VERSION_INFO as the numeric resource ID 1 - without this, the
+// bare identifier below isn't macro-expanded, and rc.exe compiles the whole
+// VERSIONINFO block under the literal *name* "VS_VERSION_INFO" instead of ID
+// 1. It still compiles with no error and the block's data is intact, but
+// GetFileVersionInfo (what Explorer's Properties > Details tab, and any
+// other version reader, looks up by) specifically asks for ID 1 and finds
+// nothing - so FileVersion/ProductVersion silently read as blank everywhere
+// outside this app's own title bar and splash text (which are separate
+// runtime strings, never affected by this).
+#include <winver.h>
+
+IDI_APP_ICON ICON "app_icon.ico"
+
+// File/Product version - shows up in Explorer's Properties > Details tab.
+// Bump both VERSION macros and the two VALUE "...Version" strings together
+// when the app's version number changes; there's no single source of truth
+// for it elsewhere in the build yet.
+#define GTH_VERSION_MAJOR 6
+#define GTH_VERSION_MINOR 9
+#define GTH_VERSION_PATCH 0
+#define GTH_VERSION_BUILD 0
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION GTH_VERSION_MAJOR,GTH_VERSION_MINOR,GTH_VERSION_PATCH,GTH_VERSION_BUILD
+PRODUCTVERSION GTH_VERSION_MAJOR,GTH_VERSION_MINOR,GTH_VERSION_PATCH,GTH_VERSION_BUILD
+FILEFLAGSMASK 0x3fL
+FILEFLAGS 0x0L
+FILEOS 0x40004L
+FILETYPE 0x1L
+FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "Dr Game"
+            VALUE "FileDescription", "Dr Game Transfer Hub"
+            VALUE "FileVersion", "6.9.0.0"
+            VALUE "ProductName", "Dr Game Transfer Hub"
+            VALUE "ProductVersion", "6.9.0.0"
+            VALUE "LegalCopyright", "Copyright (C) Dr Game. All rights reserved. Developed and designed by Alireza Amerian."
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

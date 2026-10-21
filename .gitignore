@@ -1,0 +1,43 @@
+# CMake build output
+/build/
+/out/
+/cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+_deps/
+
+# Visual Studio and IDE user state
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.sln.docstates
+
+# Compiled output
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+*.obj
+*.ilk
+*.pdb
+*.exe
+*.dll
+*.lib
+*.exp
+
+# Local runtime data
+*.db
+*.db-shm
+*.db-wal
+logs/
+*.log
+
+# OS metadata
+Thumbs.db
+.DS_Store
