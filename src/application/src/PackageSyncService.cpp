@@ -61,6 +61,11 @@ struct LocalPiece {
 
 std::string fileNameLower(const fs::path& path) { return lower(path.filename().string()); }
 
+bool isValidSha256(const std::string& value) {
+    return value.size() == 64 &&
+           std::all_of(value.begin(), value.end(), [](unsigned char c) { return std::isxdigit(c) != 0; });
+}
+
 }  // namespace
 
 struct PackageSyncService::Analysis {
@@ -76,6 +81,7 @@ struct PackageSyncService::Analysis {
 
     std::vector<core::ReleasePiece> pfsPieces;       // Sony's game pieces, in order
     std::optional<core::ReleasePiece> metadataPiece; // Sony's metadata piece
+    bool metadataMatchesLatest = false;              // checksum and package digest both match (used when version is unknown)
     bool pfsMatches = false;                          // the files on disk are exactly Sony's game pieces
 };
 
@@ -164,7 +170,12 @@ std::optional<PackageSyncService::Analysis> PackageSyncService::analyze(const st
     }
     for (const auto& piece : latest.release.pieces) {
         if (!isSonyUrl(piece.url) || !isSafePieceFileName(leafOfPath(piece.url)) || piece.sizeBytes <= 0) {
-            plan.detail = "Sony's answer contained a file address that isn't safe to use, so nothing was downloaded.";
+            plan.detail = "Sony's answer contained a file address or size that isn't safe to use, so nothing was downloaded.";
+            return std::nullopt;
+        }
+        if (!isValidSha256(piece.sha256)) {
+            plan.detail = "Sony's package is missing a valid SHA-256 checksum for " + leafOfPath(piece.url) +
+                          ", so it can't be safely updated.";
             return std::nullopt;
         }
     }
@@ -225,6 +236,16 @@ std::optional<PackageSyncService::Analysis> PackageSyncService::analyze(const st
         }
     }
 
+    // A missing version string can't distinguish same-sized package builds. In that case, use the
+    // small metadata piece's Sony checksum and its embedded image digest to establish which build
+    // the local package belongs to; otherwise a same-size old build could be mistaken for current.
+    if (a.version.version.empty() && a.metadata && a.metadataPiece) {
+        const auto verified = verifier_.verify(a.metadata->path.string(), a.metadataPiece->sizeBytes,
+                                               a.metadataPiece->sha256);
+        a.metadataMatchesLatest =
+            verified.passed && MetadataPieceBelongsToPackage(a.numbered.front().path, a.metadata->path);
+    }
+
     a.pfsMatches = a.numbered.size() == a.pfsPieces.size();
     for (size_t i = 0; a.pfsMatches && i < a.pfsPieces.size(); ++i) {
         a.pfsMatches = a.numbered[i].size == a.pfsPieces[i].sizeBytes &&
@@ -239,22 +260,37 @@ namespace {
 void classify(long long& bytes, SyncKind& kind, std::string& detail, bool pfsMatches,
               const std::optional<core::ReleasePiece>& sonyMetadata, const std::optional<LocalPiece>& localMetadata,
               const std::vector<core::ReleasePiece>& pfsPieces, const std::vector<LocalPiece>& numbered,
-              const std::string& latestVersion) {
+              bool metadataMatchesLatest, const std::string& installedVersion, const std::string& latestVersion) {
     bytes = 0;
+    const bool versionsKnown = !installedVersion.empty() && !latestVersion.empty();
+    const int versionOrder = versionsKnown ? core::compareVersions(installedVersion, latestVersion) : 0;
+    if (versionOrder > 0) {
+        kind = SyncKind::NothingToDo;
+        detail = "Installed version " + installedVersion + " is newer than Sony's linked package (" + latestVersion +
+                 "); it won't be replaced with an older release.";
+        return;
+    }
     if (pfsMatches) {
-        if (sonyMetadata && !localMetadata) {
-            kind = SyncKind::CompleteMetadata;
-            bytes = sonyMetadata->sizeBytes;
-            detail = "The game files are Sony's latest package (" + latestVersion + "); its metadata piece (" +
-                     formatSize(bytes) + ") is missing, and adding it lets the title and version be read from the files.";
-            return;
-        }
-        // A metadata piece is specific to one build of the game: one of a different size than Sony's latest
-        // means the files beside it are a different build too, whatever their sizes look like.
-        if (!sonyMetadata || (localMetadata && localMetadata->size == sonyMetadata->sizeBytes)) {
-            kind = SyncKind::NothingToDo;
-            detail = "Already Sony's latest package (" + latestVersion + ").";
-            return;
+        if (versionOrder < 0) {
+            kind = SyncKind::Update;
+            // Count pieces with different sizes below; same-sized pieces might already have Sony's exact content.
+        } else {
+            if (sonyMetadata && !localMetadata) {
+                kind = SyncKind::CompleteMetadata;
+                bytes = sonyMetadata->sizeBytes;
+                detail = "The game files are Sony's latest package (" + latestVersion + "); its metadata piece (" +
+                         formatSize(bytes) + ") is missing, and adding it lets the title and version be read from the files.";
+                return;
+            }
+            // A metadata piece is specific to one build of the game: one of a different size than Sony's latest
+            // means the files beside it are a different build too, whatever their sizes look like.
+            const bool identityConfirmed = versionsKnown ? versionOrder == 0 : metadataMatchesLatest;
+            if ((identityConfirmed && !sonyMetadata) ||
+                (identityConfirmed && sonyMetadata && localMetadata && localMetadata->size == sonyMetadata->sizeBytes)) {
+                kind = SyncKind::NothingToDo;
+                detail = "Already Sony's latest package (" + latestVersion + ").";
+                return;
+            }
         }
     }
 
@@ -272,9 +308,19 @@ void classify(long long& bytes, SyncKind& kind, std::string& detail, bool pfsMat
             bytes += piece.sizeBytes;
         }
     }
-    detail = "The files differ from Sony's latest package (" + latestVersion + "): " + std::to_string(missingOrDifferent) +
-             " of " + std::to_string(all.size()) + " pieces certainly need downloading (" + formatSize(bytes) +
-             "), and pieces of the right size are checked before being kept.";
+    if (versionOrder < 0 && pfsMatches) {
+        detail = "Installed version " + installedVersion + " is older than Sony's latest (" + latestVersion + "): " +
+                 std::to_string(missingOrDifferent) + " of " + std::to_string(all.size()) +
+                 " pieces certainly need downloading (" + formatSize(bytes) +
+                 "), and same-sized pieces are checked against Sony's SHA-256 checksums.";
+    } else if (pfsMatches && !versionsKnown) {
+        detail = "The installed version is unknown, so same-sized pieces are checked against Sony's SHA-256 checksums "
+                 "before the package can be treated as current.";
+    } else {
+        detail = "The files differ from Sony's latest package (" + latestVersion + "): " + std::to_string(missingOrDifferent) +
+                 " of " + std::to_string(all.size()) + " pieces certainly need downloading (" + formatSize(bytes) +
+                 "), and pieces of the right size are checked before being kept.";
+    }
 }
 
 }  // namespace
@@ -288,8 +334,9 @@ SyncPlan PackageSyncService::plan(const std::string& gameVariantId) {
         return result;
     }
     result.latestVersion = analysis->latest.version;
-    classify(result.bytesToDownload, result.kind, result.detail, analysis->pfsMatches,
-             analysis->metadataPiece, analysis->metadata, analysis->pfsPieces, analysis->numbered, analysis->latest.version);
+    classify(result.bytesToDownload, result.kind, result.detail, analysis->pfsMatches, analysis->metadataPiece,
+             analysis->metadata, analysis->pfsPieces, analysis->numbered, analysis->metadataMatchesLatest,
+             analysis->version.version, analysis->latest.version);
     return result;
 }
 
@@ -316,7 +363,7 @@ SyncResult PackageSyncService::runOnce(const std::string& gameVariantId, SyncMod
     long long certainBytes = 0;
     std::string detail;
     classify(certainBytes, result.kind, detail, a.pfsMatches, a.metadataPiece, a.metadata, a.pfsPieces,
-             a.numbered, a.latest.version);
+             a.numbered, a.metadataMatchesLatest, a.version.version, a.latest.version);
     // The files looked like Sony's package by size, but the metadata piece said otherwise: every piece
     // has to be checked by its checksum instead.
     if (escalated && result.kind == SyncKind::CompleteMetadata) result.kind = SyncKind::Update;
@@ -542,6 +589,16 @@ struct Ps4UpdateLayout {
     long long totalBytes = 0;
 };
 
+bool joinedPs4PackageMatchesPieces(core::IUpdateVerifier& verifier, const fs::path& path,
+                                   const std::vector<core::ReleasePiece>& pieces) {
+    long long offset = 0;
+    for (const auto& piece : pieces) {
+        if (!verifier.verifyRange(path.string(), offset, piece.sizeBytes, piece.sha256).passed) return false;
+        offset += piece.sizeBytes;
+    }
+    return true;
+}
+
 // "GAME-A0136-V0100_2.pkg" -> stem "GAME-A0136-V0100", index 2; a name with no "_<n>" has index -1.
 void splitPieceName(const std::string& leaf, std::string& stem, int& index) {
     stem = leaf.size() > 4 ? leaf.substr(0, leaf.size() - 4) : leaf;  // without ".pkg"
@@ -702,7 +759,7 @@ std::optional<PackageSyncService::Ps4Analysis> PackageSyncService::analyzePs4(co
     }
     for (const auto& piece : a.latest.pieces) {
         if (!isSonyUrl(piece.url) || !isSafePieceFileName(leafOfPath(piece.url)) || piece.sizeBytes <= 0 ||
-            piece.sha256.empty()) {
+            !isValidSha256(piece.sha256)) {
             plan.detail = "Sony's answer contained a file address or checksum that isn't safe to use, so nothing was downloaded.";
             return std::nullopt;
         }
@@ -752,9 +809,10 @@ SyncPlan PackageSyncService::planPs4(const std::string& gameVariantId) {
     result.kind = SyncKind::Update;
     std::error_code ec;
     const fs::path finalPath = a->updatesFolder / a->layout.finalName;
-    if (fs::is_regular_file(finalPath, ec) && static_cast<long long>(fs::file_size(finalPath, ec)) == a->layout.totalBytes) {
+    if (fs::is_regular_file(finalPath, ec) && static_cast<long long>(fs::file_size(finalPath, ec)) == a->layout.totalBytes &&
+        joinedPs4PackageMatchesPieces(verifier_, finalPath, a->latest.pieces)) {
         result.detail = "Update " + a->latest.version + " is already in the game's Updates folder (" + a->layout.finalName +
-                        "); it only needs a rescan to show up.";
+                        ") and matches Sony's piece checksums; it only needs a rescan to show up.";
         return result;
     }
     for (const auto& piece : a->latest.pieces) {
@@ -817,10 +875,11 @@ SyncResult PackageSyncService::runPs4(const std::string& gameVariantId, SyncMode
 
     // The whole update may already be there (an earlier run put it in place but the library hasn't been rescanned).
     const fs::path finalPath = a->updatesFolder / a->layout.finalName;
-    if (fs::is_regular_file(finalPath, ec) && static_cast<long long>(fs::file_size(finalPath, ec)) == totalBytes) {
+    if (fs::is_regular_file(finalPath, ec) && static_cast<long long>(fs::file_size(finalPath, ec)) == totalBytes &&
+        joinedPs4PackageMatchesPieces(verifier_, finalPath, pieces)) {
         result.success = true;
         result.message = "Update " + a->latest.version + " is already in " + a->updatesFolder.string() + " as " +
-                         a->layout.finalName + "; a rescan shows it.";
+                         a->layout.finalName + " and matches Sony's piece checksums; a rescan shows it.";
         return result;
     }
 

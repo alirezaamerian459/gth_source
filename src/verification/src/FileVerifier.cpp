@@ -69,4 +69,46 @@ VerificationResult FileVerifier::verify(const std::string& path, long long expec
     return result;
 }
 
+VerificationResult FileVerifier::verifyRange(const std::string& path, long long offsetBytes,
+                                               long long expectedSizeBytes,
+                                               const std::string& expectedSha256Hex) {
+    VerificationResult result;
+    if (offsetBytes < 0 || expectedSizeBytes <= 0 || expectedSha256Hex.empty()) {
+        result.errorMessage = "Invalid file range or expected SHA-256 checksum.";
+        return result;
+    }
+
+    std::error_code ec;
+    if (!fs::is_regular_file(path, ec) || ec) {
+        result.errorMessage = "Range verification requires a readable regular file: " + path;
+        return result;
+    }
+    const auto fileSize = static_cast<long long>(fs::file_size(path, ec));
+    if (ec || offsetBytes > fileSize || expectedSizeBytes > fileSize - offsetBytes) {
+        result.errorMessage = "The requested range is outside the file.";
+        return result;
+    }
+
+    const auto actualHash = computeSha256HexRange(path, offsetBytes, expectedSizeBytes);
+    if (!actualHash) {
+        result.errorMessage = "Failed to compute the range hash for: " + path;
+        return result;
+    }
+    if (!equalsIgnoreCase(*actualHash, expectedSha256Hex)) {
+        result.errorMessage = "Hash mismatch: expected " + expectedSha256Hex + ", computed " + *actualHash;
+        return result;
+    }
+
+    result.passed = true;
+    result.hashVerified = true;
+    return result;
+}
+
+std::optional<std::string> FileVerifier::sha256(const std::filesystem::path& path) { return computeSha256Hex(path); }
+
+std::optional<std::string> FileVerifier::sha256Range(const std::filesystem::path& path, long long offsetBytes,
+                                                      long long lengthBytes) {
+    return computeSha256HexRange(path, offsetBytes, lengthBytes);
+}
+
 }  // namespace gth::verification

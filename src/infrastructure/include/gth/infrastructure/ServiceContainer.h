@@ -8,6 +8,7 @@
 #include "gth/application/indexing/GameIndexerService.h"
 #include "gth/application/indexing/GameLibraryService.h"
 #include "gth/application/indexing/GamePosterService.h"
+#include "gth/application/backup/BackupService.h"
 #include "gth/application/indexing/IGameIndexer.h"
 #include "gth/application/indexing/IGameLibraryService.h"
 #include "gth/application/indexing/IGamePosterService.h"
@@ -88,6 +89,8 @@
 #include "gth/application/indexing/PackageSyncService.h"
 #include "gth/application/indexing/UpdateCheckService.h"
 #include "gth/network/OnlineTitleLookupService.h"
+#include "gth/network/TelegramBackupTransport.h"
+#include "gth/infrastructure/LocalGameBackupSource.h"
 #include "gth/network/SonyPieceDownloader.h"
 #include "gth/network/SonyUpdateService.h"
 #include "gth/network/TheGamesDbClient.h"
@@ -142,6 +145,9 @@ public:
     core::ITitleLookupService& titleLookupService() { return titleLookupService_; }
     application::IUpdateChecker& updateChecker() { return updateCheckService_; }
     application::IPackageSync& packageSync() { return packageSyncService_; }
+    application::BackupService& backupService() { return backupService_; }
+    network::TelegramBackupTransport& telegramBackupTransport() { return telegramBackupTransport_; }
+    core::ICredentialStore& credentialStore() { return credentialStore_; }
 
     // Where PS5 games' Sony version-file links are kept, one "<title ID> <tab>
     // <link>" per line. The one in the data folder wins over one beside the exe.
@@ -158,6 +164,8 @@ public:
     static std::filesystem::path defaultUpdateTempDirectory();
     static std::filesystem::path defaultLogDirectory();
     static std::filesystem::path defaultNodeIdPath();
+    static std::filesystem::path defaultBackupWorkingDirectory();
+    static std::filesystem::path defaultTelegramChatIdPath();
 
 private:
     // Runs pending migrations as soon as database_ exists, before any other
@@ -186,6 +194,7 @@ private:
     indexing::EnhancedStorageScanner storageScanner_;
     application::GameIndexerService gameIndexer_;
     application::GameLibraryService gameLibraryService_;
+    LocalGameBackupSource localGameBackupSource_;
     application::GamePosterService gamePosterService_;
     network::TheGamesDbClient coverArtClient_;
     network::SonyUpdateService sonyUpdateService_;
@@ -202,6 +211,8 @@ private:
     application::UpdateSchedulerService updateScheduler_;
     application::DownloadManager downloadManager_;
     verification::FileVerifier fileVerifier_;
+    network::TelegramBackupTransport telegramBackupTransport_;
+    application::BackupService backupService_;
     network::SonyPieceDownloader sonyPieceDownloader_;
     application::PackageSyncService packageSyncService_;
     application::ArchiveUpdater archiveUpdater_;

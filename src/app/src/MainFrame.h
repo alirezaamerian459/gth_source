@@ -21,6 +21,7 @@
 #include "ReportsView.h"
 #include "EnterpriseView.h"
 #include "SettingsView.h"
+#include "BackupsView.h"
 #include "ComingSoonView.h"
 #include "gth/application/devices/IConsoleManager.h"
 #include "gth/application/enterprise/IAgentService.h"
@@ -78,7 +79,10 @@ public:
               gth::core::IFirewallService& firewallService, gth::core::ITitleLookupService& titleLookupService,
               gth::application::IUpdateChecker& updateChecker, std::filesystem::path sonyLinksPath,
               gth::application::IPackageSync& packageSync, std::filesystem::path sonyAutomationPath,
-              gth::core::ICoverArtClient& coverArtClient);
+              gth::core::ICoverArtClient& coverArtClient, gth::application::BackupService& backupService,
+              gth::network::TelegramBackupTransport& telegramBackupTransport,
+              gth::core::ICredentialStore& credentialStore, std::filesystem::path telegramChatIdPath,
+              std::filesystem::path defaultRestoreRoot);
 
     BEGIN_MSG_MAP(MainFrame)
         MESSAGE_HANDLER(WM_CREATE, OnCreate)
@@ -170,6 +174,7 @@ private:
     ReportsView reportsView_;
     EnterpriseView enterpriseView_;
     SettingsView settingsView_;
+    BackupsView backupsView_;
     ComingSoonView comingSoonView_;
     HWND currentView_ = nullptr;
 };

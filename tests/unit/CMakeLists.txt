@@ -54,6 +54,7 @@ add_executable(gth_unit_tests
     test_winsock_caching_proxy_logic.cpp
     test_local_game_server.cpp
     test_local_file_index_service.cpp
+    test_backup_service.cpp
 )
 
 target_link_libraries(gth_unit_tests PRIVATE

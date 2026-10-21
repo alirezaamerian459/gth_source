@@ -40,6 +40,10 @@ std::filesystem::path ServiceContainer::defaultUpdateTempDirectory() { return de
 std::filesystem::path ServiceContainer::defaultLogDirectory() { return defaultDataDirectory() / "logs"; }
 
 std::filesystem::path ServiceContainer::defaultNodeIdPath() { return defaultDataDirectory() / "node-id.txt"; }
+std::filesystem::path ServiceContainer::defaultBackupWorkingDirectory() { return defaultDataDirectory() / ".backups"; }
+std::filesystem::path ServiceContainer::defaultTelegramChatIdPath() {
+    return defaultDataDirectory() / "telegram-backup-chat-id.txt";
+}
 
 std::filesystem::path ServiceContainer::defaultSonyLinksPath() { return defaultDataDirectory() / "sony-version-links.tsv"; }
 
@@ -114,6 +118,7 @@ ServiceContainer::ServiceContainer(const std::filesystem::path& databasePath)
       gameIndexer_(storageRepository_, storageScanner_, gameRepository_, gameVariantRepository_,
                    gameVersionRepository_, gameFileRepository_, scanJobRepository_),
       gameLibraryService_(gameRepository_, gameVariantRepository_, gameVersionRepository_),
+      localGameBackupSource_(gameVariantRepository_, storageRepository_),
       gamePosterService_(gameVariantRepository_, gameVersionRepository_, gameFileRepository_, storageRepository_),
       sonyUpdateService_(sonyLinkFiles()),
       updateCheckService_(gameVariantRepository_, gameVersionRepository_, gameFileRepository_, sonyUpdateService_),
@@ -128,6 +133,8 @@ ServiceContainer::ServiceContainer(const std::filesystem::path& databasePath)
       updateJobService_(updateJobRepository_),
       updateScheduler_(updateDetector_, updateJobService_),
       downloadManager_(updateJobRepository_),
+      telegramBackupTransport_(),
+      backupService_(localGameBackupSource_, telegramBackupTransport_, fileVerifier_, defaultBackupWorkingDirectory()),
       packageSyncService_(storageRepository_, gameVariantRepository_, gameVersionRepository_, gameFileRepository_,
                           sonyUpdateService_, sonyPieceDownloader_, fileVerifier_, storageScanner_),
       archiveUpdater_(updateJobRepository_, gameVariantRepository_, gameVersionRepository_, storageRepository_),

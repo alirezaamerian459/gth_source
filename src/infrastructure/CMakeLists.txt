@@ -1,5 +1,6 @@
 add_library(gth_infrastructure STATIC
     src/ServiceContainer.cpp
+    src/LocalGameBackupSource.cpp
 )
 
 target_include_directories(gth_infrastructure PUBLIC

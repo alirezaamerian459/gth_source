@@ -8,9 +8,9 @@ namespace {
 
 // Logical indices, per kSidebarTabs: 0 Dashboard, 1 Games, 2 Updates, 3 Downloads,
 // 4 Storage, 5 Consoles, 6 Transfers, 7 FTP, 8 Network, 9 Logs, 10 Reports,
-// 11 Enterprise, 12 Settings.
+// 11 Enterprise, 12 Backups, 13 Settings.
 constexpr int kDashboard = 0, kGames = 1, kUpdates = 2, kDownloads = 3, kStorage = 4, kConsoles = 5, kTransfers = 6,
-              kFtp = 7, kNetwork = 8, kEnterprise = 11, kSettings = 12;
+              kFtp = 7, kNetwork = 8, kEnterprise = 11, kBackups = 12, kSettings = 13;
 
 bool contains(const std::vector<int>& indices, int index) {
     return std::find(indices.begin(), indices.end(), index) != indices.end();
@@ -32,13 +32,18 @@ TEST(SidebarTabsTest, ASignedOutUserSeesTheUpdatesTab) {
     const auto visible = VisibleSidebarTabIndices({}, false);
 
     EXPECT_TRUE(contains(visible, kUpdates));
-    EXPECT_EQ(visible, (std::vector<int>{kDashboard, kGames, kUpdates, kDownloads, kStorage, kConsoles, kFtp, kSettings}));
+    EXPECT_EQ(visible, (std::vector<int>{kDashboard, kGames, kUpdates, kDownloads, kStorage, kConsoles, kFtp,
+                                         kBackups, kSettings}));
 }
 
 // Downloads shows the same per-game download stats a regular user's own Update All Games
 // presses produce - like Updates, there's no reason it should need an admin sign-in.
 TEST(SidebarTabsTest, ASignedOutUserSeesTheDownloadsTab) {
     EXPECT_TRUE(contains(VisibleSidebarTabIndices({}, /*adminSignedIn=*/false), kDownloads));
+}
+
+TEST(SidebarTabsTest, ASignedOutUserCanAccessTheirOwnBackups) {
+    EXPECT_TRUE(contains(VisibleSidebarTabIndices({}, /*adminSignedIn=*/false), kBackups));
 }
 
 TEST(SidebarTabsTest, APersonallyHiddenUpdatesTabStaysHidden) {

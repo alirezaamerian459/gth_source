@@ -178,8 +178,10 @@ struct SyncFixture {
     ~SyncFixture() { fs::remove_all(root); }
 
     // Puts the given pieces on disk as "<contentId>_<n>.pkg" (and the metadata piece, if given) and scans them in.
-    void installArchive(const std::vector<std::string>& pieces, const std::string& metadata = {}) {
+    void installArchive(const std::vector<std::string>& pieces, const std::string& metadata = {},
+                        const std::string& installedVersion = {}) {
         ScannedVersion version;
+        version.version = installedVersion;
         version.relativePath = kContentId;
         for (size_t i = 0; i < pieces.size(); ++i) {
             const std::string name = kContentId + "_" + std::to_string(i) + ".pkg";
@@ -313,6 +315,60 @@ TEST(PackageSyncServiceTest, ACompleteArchiveThatMatchesSonyHasNothingToDo) {
     EXPECT_TRUE(f.downloader.calls.empty());
 }
 
+TEST(PackageSyncServiceTest, OlderInstalledVersionIsUpdatedWhenPieceNamesAndSizesStillMatch) {
+    SyncFixture f;
+    const auto oldPieces = std::vector<std::string>{gamePiece(0, 600, std::string(32, 'O')), gamePiece(1, 400)};
+    const auto latestPieces = std::vector<std::string>{gamePiece(0, 600, std::string(32, 'N')), gamePiece(1, 400)};
+    f.installArchive(oldPieces, metadataPiece(2000, std::string(32, 'O')), "01.400.000");
+    f.sonyHas(latestPieces, metadataPiece(2000, std::string(32, 'N')), "01.500.000");
+
+    const auto plan = f.sync.plan(f.variantId);
+    ASSERT_EQ(plan.kind, SyncKind::Update) << plan.detail;
+
+    const auto result = f.sync.run(f.variantId, SyncMode::Full);
+
+    ASSERT_TRUE(result.success) << result.message;
+    EXPECT_EQ(result.kind, SyncKind::Update);
+    EXPECT_EQ(readFile(f.file("_0.pkg")), latestPieces[0]);
+    EXPECT_EQ(readFile(f.file("_1.pkg")), latestPieces[1]);
+    EXPECT_EQ(readFile(f.file("_sc.pkg")), metadataPiece(2000, std::string(32, 'N')));
+    EXPECT_EQ(result.filesDownloaded, 2) << "same-sized pieces are checked and only mismatches are fetched";
+}
+
+TEST(PackageSyncServiceTest, UnknownInstalledVersionDoesNotTrustSameSizeMetadataFromAnOlderBuild) {
+    SyncFixture f;
+    const auto oldPieces = std::vector<std::string>{gamePiece(0, 600, std::string(32, 'O')), gamePiece(1, 400)};
+    const auto latestPieces = std::vector<std::string>{gamePiece(0, 600, std::string(32, 'N')), gamePiece(1, 400)};
+    f.installArchive(oldPieces, metadataPiece(2000, std::string(32, 'O')));
+    f.sonyHas(latestPieces, metadataPiece(2000, std::string(32, 'N')));
+
+    const auto plan = f.sync.plan(f.variantId);
+    ASSERT_EQ(plan.kind, SyncKind::Update) << plan.detail;
+
+    const auto result = f.sync.run(f.variantId, SyncMode::Full);
+
+    ASSERT_TRUE(result.success) << result.message;
+    EXPECT_EQ(readFile(f.file("_0.pkg")), latestPieces[0]);
+    EXPECT_EQ(readFile(f.file("_sc.pkg")), metadataPiece(2000, std::string(32, 'N')));
+}
+
+TEST(PackageSyncServiceTest, NewerInstalledVersionIsNotDowngradedByAStaleSonyLink) {
+    SyncFixture f;
+    const auto installedPieces = std::vector<std::string>{gamePiece(0, 600, std::string(32, 'N')), gamePiece(1, 400)};
+    const auto stalePieces = std::vector<std::string>{gamePiece(0, 650, std::string(32, 'O')), gamePiece(1, 400)};
+    f.installArchive(installedPieces, metadataPiece(2000, std::string(32, 'N')), "01.600.000");
+    f.sonyHas(stalePieces, metadataPiece(2000, std::string(32, 'O')), "01.500.000");
+
+    const auto plan = f.sync.plan(f.variantId);
+    EXPECT_EQ(plan.kind, SyncKind::NothingToDo) << plan.detail;
+
+    const auto result = f.sync.run(f.variantId, SyncMode::Full);
+
+    EXPECT_TRUE(result.success) << result.message;
+    EXPECT_TRUE(f.downloader.calls.empty());
+    EXPECT_EQ(readFile(f.file("_0.pkg")), installedPieces[0]);
+}
+
 TEST(PackageSyncServiceTest, AnOutOfDateGameIsLeftAloneWhenOnlyMetadataMayBeFetched) {
     SyncFixture f;
     f.installArchive({gamePiece(0, 600), gamePiece(1, 400)});
@@ -418,6 +474,22 @@ TEST(PackageSyncServiceTest, RefusesToDownloadFromAnythingThatIsNotSonysServers)
 
     EXPECT_EQ(plan.kind, SyncKind::Unavailable);
     EXPECT_NE(plan.detail.find("isn't safe"), std::string::npos) << plan.detail;
+    EXPECT_TRUE(f.downloader.calls.empty());
+}
+
+TEST(PackageSyncServiceTest, RefusesToUpdateWhenSonyDoesNotProvideAValidChecksum) {
+    SyncFixture f;
+    const std::vector<std::string> pieces = {gamePiece(0, 600), gamePiece(1, 400)};
+    f.installArchive(pieces);
+    f.sonyHas(pieces, metadataPiece(2000));
+    f.sony.answer.release.pieces[0].sha256.clear();
+
+    const auto plan = f.sync.plan(f.variantId);
+    EXPECT_EQ(plan.kind, SyncKind::Unavailable);
+    EXPECT_NE(plan.detail.find("valid SHA-256 checksum"), std::string::npos) << plan.detail;
+
+    const auto result = f.sync.run(f.variantId, SyncMode::Full);
+    EXPECT_FALSE(result.success);
     EXPECT_TRUE(f.downloader.calls.empty());
 }
 
@@ -1011,6 +1083,24 @@ TEST(PackageSyncPs4Test, AnUpdateThatIsAlreadyJoinedInTheUpdatesFolderIsNotFetch
     EXPECT_EQ(result.filesDownloaded, 0);
     EXPECT_TRUE(f.downloader.calls.empty());
     EXPECT_EQ(result.storageId, f.storageId) << "so that the rescan happens";
+}
+
+TEST(PackageSyncPs4Test, AJoinedUpdateWithTheRightSizeButWrongBytesIsDownloadedAgain) {
+    Ps4Fixture f;
+    f.installGame("01.00");
+    const std::vector<std::string> parts = {std::string(700, 'a'), std::string(300, 'b')};
+    f.sonyHasUpdate(parts);
+    fs::create_directories(f.gameFolder / "Updates");
+    writeFile(f.joinedUpdate(), std::string(1000, 'x'));  // same size, but neither Sony piece matches
+
+    EXPECT_EQ(f.sync.plan(f.variantId).bytesToDownload, 1000);
+
+    const auto result = f.sync.run(f.variantId, SyncMode::Full);
+
+    ASSERT_TRUE(result.success) << result.message;
+    EXPECT_EQ(result.filesDownloaded, 2);
+    EXPECT_EQ(f.downloader.calls.size(), 2u);
+    EXPECT_EQ(readFile(f.joinedUpdate()), parts[0] + parts[1]);
 }
 
 TEST(PackageSyncPs4Test, PiecesThatAreNotConsecutivePartsOfOneFileAreRefused) {

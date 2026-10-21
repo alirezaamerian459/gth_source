@@ -27,6 +27,25 @@ std::optional<bool> parseSwitch(const std::string& value) {
     return std::nullopt;
 }
 
+bool hasCurrentSettingsVersion(const std::string& text) {
+    size_t lineStart = 0;
+    while (lineStart <= text.size()) {
+        size_t lineEnd = text.find('\n', lineStart);
+        if (lineEnd == std::string::npos) lineEnd = text.size();
+        const std::string line = text.substr(lineStart, lineEnd - lineStart);
+        lineStart = lineEnd + 1;
+
+        const auto equals = line.find('=');
+        if (equals == std::string::npos || trimmedLower(line.substr(0, equals)) != "settingsversion") continue;
+        try {
+            return std::stoi(trimmedLower(line.substr(equals + 1))) >= 2;
+        } catch (const std::exception&) {
+            return false;
+        }
+    }
+    return false;
+}
+
 std::string formatSize(long long bytes) {
     char buffer[32];
     if (bytes >= 1024LL * 1024 * 1024) {
@@ -98,8 +117,9 @@ std::string SerializeSonyAutomationSettings(const SonyAutomationSettings& settin
            "# checkForUpdates:    ask Sony whether each game is up to date\n" +
            "# addMissingMetadata: download the small metadata piece PS5 downloads lack, so titles and versions can be read\n" +
            "# downloadUpdates:    also download out-of-date packages automatically (many GB)\n" +
-           "# scanForNewGames:    before a run that updates games, look through the storages for games added since the last scan\n" +
+           "# scanForNewGames:    before each run, look through the storages for games added since the last scan\n" +
            "# intervalHours:      how often, while the app is open (1-168)\n" +
+           "settingsVersion=2\n" +
            "checkForUpdates=" + onOff(settings.checkForUpdates) + "\n" +
            "addMissingMetadata=" + onOff(settings.addMissingMetadata) + "\n" +
            "downloadUpdates=" + onOff(settings.downloadUpdates) + "\n" +
@@ -111,7 +131,15 @@ SonyAutomationSettings SonyAutomationSettingsStore::load() const {
     std::ifstream in(path_, std::ios::binary);
     if (!in) return {};
     const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    return ParseSonyAutomationSettings(text);
+    auto settings = ParseSonyAutomationSettings(text);
+    // Older releases saved the default downloadUpdates=off alongside all the other settings.
+    // The new default is automatic updating, so migrate old settings once; new files carry a
+    // version marker and preserve an explicit opt-out on future launches.
+    if (!hasCurrentSettingsVersion(text)) {
+        settings.downloadUpdates = true;
+        save(settings);  // best effort: write the new marker so an explicit opt-out can be saved afterward
+    }
+    return settings;
 }
 
 bool SonyAutomationSettingsStore::save(const SonyAutomationSettings& settings) const {

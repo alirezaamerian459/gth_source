@@ -11,6 +11,7 @@ add_library(gth_network STATIC
     src/SonyPieceDownloader.cpp
     src/TheGamesDbClient.cpp
     src/WindowsFirewallService.cpp
+    src/TelegramBackupTransport.cpp
     UserAgentProvider.cpp
     BehavioralEvader.cpp
     CookieManager.cpp

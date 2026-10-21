@@ -22,6 +22,7 @@ constexpr int kNetworkIndex = 8;
 constexpr int kLogsIndex = 9;
 constexpr int kReportsIndex = 10;
 constexpr int kEnterpriseIndex = 11;
+constexpr int kBackupsIndex = 12;
 constexpr int kSettingsIndex = kSidebarSettingsIndex;
 constexpr int kSidebarWidth = 216;
 constexpr int kSidebarItemHeight = 40;
@@ -60,7 +61,10 @@ MainFrame::MainFrame(gth::application::IStorageService& storageService, gth::app
                       gth::core::ITitleLookupService& titleLookupService,
                       gth::application::IUpdateChecker& updateChecker, std::filesystem::path sonyLinksPath,
                       gth::application::IPackageSync& packageSync, std::filesystem::path sonyAutomationPath,
-                      gth::core::ICoverArtClient& coverArtClient)
+                      gth::core::ICoverArtClient& coverArtClient, gth::application::BackupService& backupService,
+                      gth::network::TelegramBackupTransport& telegramBackupTransport,
+                      gth::core::ICredentialStore& credentialStore, std::filesystem::path telegramChatIdPath,
+                      std::filesystem::path defaultRestoreRoot)
     : storageService_(storageService),
       gameIndexer_(gameIndexer),
       gameLibrary_(gameLibrary),
@@ -88,7 +92,10 @@ MainFrame::MainFrame(gth::application::IStorageService& storageService, gth::app
       sonyLinksPath_(std::move(sonyLinksPath)),
       packageSync_(packageSync),
       sonyAutomationPath_(std::move(sonyAutomationPath)),
-      coverArtClient_(coverArtClient) {}
+      coverArtClient_(coverArtClient) {
+    backupsView_.init(backupService, gameLibrary_, telegramBackupTransport, credentialStore,
+                      std::move(telegramChatIdPath), std::move(defaultRestoreRoot));
+}
 
 LRESULT MainFrame::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     // The version tag exists because this project has accumulated several
@@ -160,6 +167,7 @@ LRESULT MainFrame::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     enterpriseView_.Create(m_hWnd, contentRect, nullptr, WS_CHILD);
     settingsView_.init(appSettingsService_, adminAuthService_, firewallService_, [this] { onSettingsChanged(); });
     settingsView_.Create(m_hWnd, contentRect, nullptr, WS_CHILD);
+    backupsView_.Create(m_hWnd, contentRect, nullptr, WS_CHILD);
     comingSoonView_.Create(m_hWnd, contentRect, nullptr, WS_CHILD);
 
     ::ShowWindow(dashboardView_.m_hWnd, SW_HIDE);
@@ -175,6 +183,7 @@ LRESULT MainFrame::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     ::ShowWindow(reportsView_.m_hWnd, SW_HIDE);
     ::ShowWindow(enterpriseView_.m_hWnd, SW_HIDE);
     ::ShowWindow(settingsView_.m_hWnd, SW_HIDE);
+    ::ShowWindow(backupsView_.m_hWnd, SW_HIDE);
     ::ShowWindow(comingSoonView_.m_hWnd, SW_HIDE);
 
     populateSidebar(kDashboardIndex);
@@ -368,6 +377,9 @@ void MainFrame::showView(int index) {
     } else if (index == kEnterpriseIndex) {
         enterpriseView_.refresh();
         newView = enterpriseView_.m_hWnd;
+    } else if (index == kBackupsIndex) {
+        backupsView_.refresh();
+        newView = backupsView_.m_hWnd;
     } else if (index == kSettingsIndex) {
         settingsView_.refresh();
         newView = settingsView_.m_hWnd;
@@ -404,5 +416,6 @@ void MainFrame::layout() {
     if (reportsView_.IsWindow()) reportsView_.MoveWindow(&contentRect);
     if (enterpriseView_.IsWindow()) enterpriseView_.MoveWindow(&contentRect);
     if (settingsView_.IsWindow()) settingsView_.MoveWindow(&contentRect);
+    if (backupsView_.IsWindow()) backupsView_.MoveWindow(&contentRect);
     if (comingSoonView_.IsWindow()) comingSoonView_.MoveWindow(&contentRect);
 }

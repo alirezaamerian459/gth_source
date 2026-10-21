@@ -19,8 +19,8 @@ namespace gth::application {
 struct SonyAutomationSettings {
     bool checkForUpdates = true;       // ask Sony about every game and show the verdicts
     bool addMissingMetadata = true;    // fetch the small (~85 MB) metadata piece PS5 downloads lack
-    bool downloadUpdates = false;      // also download out-of-date packages (gigabytes) - off unless asked for
-    bool scanForNewGames = true;       // before a run that updates games, look through the storages for games added since
+    bool downloadUpdates = true;       // also download out-of-date packages (gigabytes)
+    bool scanForNewGames = true;       // look through storages for games added since the last scan before each run
     int intervalHours = 12;            // how often, while the app is open
 
     bool anythingEnabled() const { return checkForUpdates || addMissingMetadata || downloadUpdates; }

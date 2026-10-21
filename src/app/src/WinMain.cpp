@@ -61,7 +61,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
                          container.titleLookupService(), container.updateChecker(),
                          gth::infrastructure::ServiceContainer::defaultSonyLinksPath(), container.packageSync(),
                          gth::infrastructure::ServiceContainer::defaultSonyAutomationPath(),
-                         container.coverArtClient());
+                         container.coverArtClient(), container.backupService(), container.telegramBackupTransport(),
+                         container.credentialStore(),
+                         gth::infrastructure::ServiceContainer::defaultTelegramChatIdPath(),
+                         gth::infrastructure::ServiceContainer::defaultDataDirectory() / "restored-games");
         if (frame.CreateEx() == nullptr) {
             GTH_LOG_ERROR("Main window creation failed");
             splash.DestroyWindow();

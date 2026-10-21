@@ -32,6 +32,7 @@ add_executable(GameTransferHubApp WIN32
     src/ReportsView.cpp
     src/EnterpriseView.cpp
     src/SettingsView.cpp
+    src/BackupsView.cpp
     src/ComingSoonView.cpp
     resources/AppResources.rc
 )

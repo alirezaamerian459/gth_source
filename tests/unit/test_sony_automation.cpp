@@ -11,11 +11,11 @@
 using namespace gth::application;
 using namespace std::chrono;
 
-TEST(SonyAutomationSettingsTest, DefaultsAreSafe) {
+TEST(SonyAutomationSettingsTest, DefaultsEnableAutomaticUpdatesAndScanning) {
     const SonyAutomationSettings defaults;
     EXPECT_TRUE(defaults.checkForUpdates);
     EXPECT_TRUE(defaults.addMissingMetadata) << "the ~85 MB metadata piece is small and additive";
-    EXPECT_FALSE(defaults.downloadUpdates) << "multi-gigabyte downloads only ever happen when asked for";
+    EXPECT_TRUE(defaults.downloadUpdates) << "the requested default keeps supported games current automatically";
     EXPECT_EQ(defaults.intervalHours, 12);
     EXPECT_TRUE(defaults.scanForNewGames) << "looking for new games only reads the storages";
 }
@@ -68,6 +68,35 @@ TEST(SonyAutomationSettingsTest, RoundTripsThroughTheFile) {
     changed.intervalHours = 3;
     ASSERT_TRUE(store.save(changed));
     EXPECT_EQ(store.load(), changed);
+
+    std::filesystem::remove_all(path.parent_path());
+}
+
+TEST(SonyAutomationSettingsTest, LegacySettingsEnableDownloadsAndNewSettingsKeepAnOptOut) {
+    const auto path = std::filesystem::temp_directory_path() / "gth_sony_automation_migration_test" / "sony-automation.txt";
+    std::filesystem::remove_all(path.parent_path());
+    std::filesystem::create_directories(path.parent_path());
+    {
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        out << "checkForUpdates=on\n"
+               "addMissingMetadata=on\n"
+               "downloadUpdates=off\n"
+               "scanForNewGames=on\n"
+               "intervalHours=12\n";
+    }
+
+    SonyAutomationSettingsStore store(path);
+    auto settings = store.load();
+    EXPECT_TRUE(settings.downloadUpdates) << "legacy files inherited the previous off-by-default setting";
+    {
+        std::ifstream in(path, std::ios::binary);
+        const std::string migrated((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        EXPECT_NE(migrated.find("settingsVersion=2"), std::string::npos);
+    }
+
+    settings.downloadUpdates = false;
+    ASSERT_TRUE(store.save(settings));
+    EXPECT_FALSE(store.load().downloadUpdates) << "an opt-out in the new versioned settings file persists";
 
     std::filesystem::remove_all(path.parent_path());
 }

@@ -27,6 +27,7 @@ add_library(gth_application STATIC
     src/GameSearchService.cpp
     src/LocalFileIndexService.cpp
     src/GamePosterService.cpp
+    src/BackupService.cpp
 )
 
 target_include_directories(gth_application PUBLIC

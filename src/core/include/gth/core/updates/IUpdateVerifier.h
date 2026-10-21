@@ -34,6 +34,14 @@ public:
     // single file - see VerificationResult::hashVerified.
     virtual VerificationResult verify(const std::string& path, long long expectedSizeBytes,
                                        const std::optional<std::string>& expectedSha256Hex) = 0;
+
+    // Verify a byte range inside a larger file. Implementations that cannot hash ranges fail closed,
+    // so callers never mistake a size-only check for checksum verification.
+    virtual VerificationResult verifyRange(const std::string&, long long, long long, const std::string&) {
+        VerificationResult result;
+        result.errorMessage = "Range verification is not supported.";
+        return result;
+    }
 };
 
 }  // namespace gth::core

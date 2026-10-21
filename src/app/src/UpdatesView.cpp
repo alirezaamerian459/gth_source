@@ -379,11 +379,12 @@ LRESULT UpdatesView::OnTimer(UINT, WPARAM wParam, LPARAM, BOOL&) {
 
     const auto now = std::chrono::steady_clock::now();
     if (gth::application::IsSonyAutomationDue(automationSettings_, appStarted_, lastAutomationRun_, now)) {
-        lastAutomationRun_ = now;
-        GTH_LOG_INFO("Sony automation starting");
-        startSync("", automationSettings_.downloadUpdates ? gth::application::SyncMode::Full
-                                                          : gth::application::SyncMode::MetadataOnly,
-                  /*automatic=*/true);
+        if (startSync("", automationSettings_.downloadUpdates ? gth::application::SyncMode::Full
+                                                               : gth::application::SyncMode::MetadataOnly,
+                      /*automatic=*/true)) {
+            lastAutomationRun_ = now;
+            GTH_LOG_INFO("Sony automation starting");
+        }
     }
     return 0;
 }
@@ -421,9 +422,9 @@ LRESULT UpdatesView::OnGuideClick(WORD, WORD, HWND, BOOL&) {
         L"(each piece checked against Sony's checksum), joined into the one .pkg it is made of and saved in an "
         L"\"Updates\" folder beside the game's own files - the base game is never touched - and the next scan shows "
         L"the game at the new version.\r\n\r\n"
-        L"6. The boxes are optional: the first three let the app do the same thing by itself every 12 hours while it is "
-        L"open (downloading updates stays off unless you turn it on); \"Find new games first\" is the scan that "
-        L"Update All Games starts with.\r\n\r\n"
+        L"6. The first three boxes let the app do the same thing by itself every 12 hours while it is open; automatic "
+        L"downloads are on by default and can use many GB. The first run starts about two minutes after launch. "
+        L"\"Find new games first\" scans reachable storages before each scheduled run.\r\n\r\n"
         L"7. Version: select a game, type its version and press Set (saved next to its files); Reset goes back to "
         L"automatic. Import List loads \"TITLEID, version\" lines.";
     ::MessageBoxW(m_hWnd, guide.c_str(), L"Updates - guide", MB_OK | MB_ICONINFORMATION);
@@ -610,9 +611,9 @@ LRESULT UpdatesView::OnCancelSyncClick(WORD, WORD, HWND, BOOL&) {
     return 0;
 }
 
-void UpdatesView::startSync(const std::string& gameVariantId, gth::application::SyncMode mode, bool automatic,
+bool UpdatesView::startSync(const std::string& gameVariantId, gth::application::SyncMode mode, bool automatic,
                             bool checkAfter) {
-    if (!packageSync_ || !indexer_ || !shared_->tryBeginJob()) return;
+    if (!packageSync_ || !indexer_ || !shared_->tryBeginJob()) return false;
     if (syncThread_.joinable()) syncThread_.join();
 
     syncCancel_.store(false);
@@ -626,10 +627,9 @@ void UpdatesView::startSync(const std::string& gameVariantId, gth::application::
     // Names for the progress line: the thread only has title IDs.
     std::map<std::string, std::string> titles;
     for (const auto& entry : entries_) titles[entry.titleId] = entry.title;
-    // Looking for new games is part of a press of "Update All Games"; an unattended run only does it when it is
-    // going to download updates anyway - a background scan of every drive every few hours is not what it is for.
-    const bool lookForNewGames = gameVariantId.empty() && automationSettings_.scanForNewGames &&
-                                 (!automatic || automationSettings_.downloadUpdates);
+    // Scanning is part of every all-games run, including automatic metadata-only/check runs, so newly added
+    // packages enter the library and the next update check can see them.
+    const bool lookForNewGames = gameVariantId.empty() && automationSettings_.scanForNewGames;
 
     syncThread_ = std::thread([this, hwnd = m_hWnd, gameVariantId, mode, automatic, checkAfter, settings = automationSettings_,
                                titles = std::move(titles), lookForNewGames] {
@@ -818,6 +818,7 @@ void UpdatesView::startSync(const std::string& gameVariantId, gth::application::
         outcome->took = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - began);
         ::PostMessageW(hwnd, kSyncDoneMessage, 0, reinterpret_cast<LPARAM>(outcome));
     });
+    return true;
 }
 
 LRESULT UpdatesView::OnSyncProgress(UINT, WPARAM, LPARAM lParam, BOOL&) {

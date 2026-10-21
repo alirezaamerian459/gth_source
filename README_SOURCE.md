@@ -19,12 +19,25 @@ step with Sony's own update servers:
   failed download retried automatically before it's given up on. PS5 downloads add the small
   metadata piece a package needs to be read back by title/version; PS4 updates are joined from
   Sony's pieces into the one file the console expects and saved beside the game without touching it.
+* **Can run updates automatically** while the app is open: by default it checks Sony, adds missing
+  metadata, scans reachable storages for newly added games, and downloads available updates every
+  12 hours (first run about two minutes after launch). Automatic package downloads can use many GB.
+* **Backs up local games to Telegram** from the Backups tab. The tab can back up one game or every
+  available game in the GTH library to a private Telegram channel, then restore a selected backup
+  into a new folder after verifying chunk and full-file SHA-256 hashes. The bot token is kept in
+  Windows Credential Manager; the channel ID and local restore catalog are stored under
+  `%LOCALAPPDATA%\GameTransferHub`. These backup actions are started from the tab; they are not
+  currently scheduled automatically. Copy a backup's restore ID if you want to restore it from a
+  different GTH installation.
 * **Finds new games and learns links from files already on disk** before a full run, so a growing
   archive needs less manual upkeep over time.
 * A PS5 game's link normally has to be found once, by hand, on the community tracker site
   (`prosperopatches.com`) - the app opens the page and picks up the address the moment it's copied,
   so that's the only step that isn't automatic. A game's own downloaded metadata piece carries the
   same link, so a game with one already needs no site visit at all.
+
+PS5 updates require a saved Sony version-file link; games without a usable link, published checksum,
+or reachable storage are reported for attention. The app cannot update a game while it is closed.
 
 See `release/UPDATES_GUIDE.md` for the full walkthrough.
 
@@ -63,7 +76,7 @@ In Git Bash, MSBuild switches take dashes instead of slashes: `-- -m -nologo -v:
     src/app                     the WTL user interface (tabs, views, theme, resources)
     src/ftp, src/ftpserver,     FTP client/server and transfer support
     src/transfer, ...
-    tests/unit                  googletest suite (431 tests)
+    tests/unit                  googletest suite (502 tests)
     release/                    end-user guides and the browser helper script
 
 `python make_source_zip.py` rebuilds this archive (source only, no binaries) from the folder it sits in.

@@ -216,7 +216,7 @@ private:
     // library-wide "ask Sony about every game" pass afterward - for the auto-download queue,
     // where doing that after every single newly-gathered link would mean re-checking the whole
     // library dozens of times in one guided session instead of once.
-    void startSync(const std::string& gameVariantId, gth::application::SyncMode mode, bool automatic,
+    bool startSync(const std::string& gameVariantId, gth::application::SyncMode mode, bool automatic,
                    bool checkAfter = true);
     void applyAutomationSettingsToControls();
     // Reads the Sony version link out of every "_sc.pkg" metadata piece already in the archive (no network) and
