@@ -14,7 +14,8 @@
 #include "gth/application/indexing/IGamePosterService.h"
 #include "gth/application/storage/IStorageService.h"
 
-// A local-only view for libraries stored below folders named "hacked". It
+// A local-only view for libraries stored below folders named "hacked" or
+// "p30day". It
 // discovers existing files on registered local drives and presents them with
 // the same poster grid used by GamesView. It never moves, modifies, or
 // downloads files.
@@ -48,6 +49,7 @@ private:
         std::string titleId;
         std::string platform;
         std::filesystem::path path;
+        std::wstring details;
     };
 
     LRESULT OnCreate(UINT, WPARAM, LPARAM, BOOL&);
@@ -80,8 +82,9 @@ private:
     std::atomic<bool> scanInProgress_{false};
     bool hasScanned_ = false;
     std::vector<Entry> entries_;
-    int hackedFolderCount_ = 0;
+    int libraryFolderCount_ = 0;
     int storageCount_ = 0;
+    int exfatStorageCount_ = 0;
     std::wstring scanError_;
 };
 

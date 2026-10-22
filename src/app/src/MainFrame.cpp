@@ -579,7 +579,7 @@ void MainFrame::showView(int index) {
     if (index == kDashboardIndex) {
         pageContextHint_.SetWindowText(L"A quick view of your library, storage, and connection status.");
     } else if (index == kJbIndex) {
-        pageContextHint_.SetWindowText(L"Browse games found under local folders named 'hacked'.");
+        pageContextHint_.SetWindowText(L"Browse JB games found under local 'hacked' or 'p30day' folders, with local package and DLC markers.");
     } else if (index == kTransfersIndex) {
         pageContextHint_.SetWindowText(L"Monitor downloads, updates, console sends, and backups in one queue.");
     } else if (index == kBackupsIndex) {

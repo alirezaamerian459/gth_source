@@ -23,6 +23,19 @@ bool equalsIgnoreCase(const std::wstring& left, const wchar_t* right) {
     return true;
 }
 
+std::wstring lowerCopy(std::wstring value) {
+    for (wchar_t& c : value) c = std::towlower(c);
+    return value;
+}
+
+bool containsIgnoreCase(const std::wstring& value, const wchar_t* needle) {
+    return lowerCopy(value).find(lowerCopy(needle)) != std::wstring::npos;
+}
+
+bool isJbLibraryFolder(const std::wstring& name) {
+    return equalsIgnoreCase(name, L"hacked") || equalsIgnoreCase(name, L"p30day");
+}
+
 bool isLocalDrive(gth::core::StorageType type) {
     return type == gth::core::StorageType::LocalHdd || type == gth::core::StorageType::LocalSsd ||
            type == gth::core::StorageType::ExternalHdd || type == gth::core::StorageType::Usb;
@@ -58,8 +71,79 @@ std::string platformFromTitleId(const std::string& titleId) {
 bool isGameArchive(const std::filesystem::path& path) {
     std::wstring extension = path.extension().wstring();
     for (wchar_t& c : extension) c = std::towlower(c);
-    return extension == L".pkg" || extension == L".zip" || extension == L".7z" || extension == L".rar" ||
-           extension == L".iso" || extension == L".bin" || extension == L".dec";
+    return extension == L".pkg" || extension == L".fpkg" || extension == L".zip" || extension == L".7z" ||
+           extension == L".rar" || extension == L".iso" || extension == L".bin" || extension == L".dec" ||
+           extension == L".dump";
+}
+
+struct ArtifactSummary {
+    int packages = 0;
+    int fpkg = 0;
+    int dumps = 0;
+    int patches = 0;
+    int dlc = 0;
+};
+
+void addArtifact(const std::filesystem::path& path, bool directory, ArtifactSummary& summary) {
+    const std::wstring name = lowerCopy(path.filename().wstring());
+    const std::wstring extension = lowerCopy(path.extension().wstring());
+
+    if (directory) {
+        if (name == L"dump" || containsIgnoreCase(name, L"dump")) {
+            ++summary.dumps;
+        } else if (containsIgnoreCase(name, L"dlc")) {
+            ++summary.dlc;
+        } else if (containsIgnoreCase(name, L"patch") || containsIgnoreCase(name, L"update")) {
+            ++summary.patches;
+        }
+        return;
+    }
+
+    if (containsIgnoreCase(name, L"dlc")) {
+        ++summary.dlc;
+    } else if (containsIgnoreCase(name, L"patch") || containsIgnoreCase(name, L"update")) {
+        ++summary.patches;
+    } else if (extension == L".fpkg") {
+        ++summary.fpkg;
+    } else if (extension == L".pkg") {
+        ++summary.packages;
+    } else if (extension == L".dump" || extension == L".iso" || extension == L".bin" ||
+               extension == L".dec") {
+        ++summary.dumps;
+    }
+}
+
+std::wstring artifactDetails(const ArtifactSummary& summary, bool exfat) {
+    std::vector<std::wstring> details;
+    if (exfat) details.push_back(L"exFAT");
+    if (summary.packages) details.push_back(L"PKG " + std::to_wstring(summary.packages));
+    if (summary.fpkg) details.push_back(L"FPKG " + std::to_wstring(summary.fpkg));
+    if (summary.dumps) details.push_back(L"Dump " + std::to_wstring(summary.dumps));
+    if (summary.patches) details.push_back(L"Patch " + std::to_wstring(summary.patches));
+    if (summary.dlc) details.push_back(L"DLC " + std::to_wstring(summary.dlc));
+    if (details.empty()) details.push_back(L"No package metadata detected");
+
+    std::wstring result;
+    for (const auto& detail : details) {
+        if (!result.empty()) result += L" • ";
+        result += detail;
+    }
+    return result;
+}
+
+std::wstring volumeRootForInfo(const std::wstring& rawRoot) {
+    std::wstring root = rawRoot;
+    if (root.rfind(L"\\\\?\\", 0) == 0) root.erase(0, 4);
+    if (root.size() >= 2 && root[1] == L':') return root.substr(0, 3);
+    return root;
+}
+
+bool isExfatVolume(const std::wstring& rawRoot) {
+    const std::wstring volumeRoot = volumeRootForInfo(rawRoot);
+    wchar_t fileSystemName[MAX_PATH] = {};
+    return GetVolumeInformationW(volumeRoot.c_str(), nullptr, 0, nullptr, nullptr, nullptr, fileSystemName,
+                                 MAX_PATH) != FALSE &&
+           equalsIgnoreCase(fileSystemName, L"exFAT");
 }
 
 std::filesystem::path extendedPath(const std::wstring& raw) {
@@ -142,7 +226,7 @@ void JbGamesView::renderEntries() {
 
     int row = 0;
     for (const auto& entry : entries_) {
-        const std::wstring label = entry.title + L"\r\n" + Utf8ToWide(entry.platform);
+        const std::wstring label = entry.title + L"\r\n" + Utf8ToWide(entry.platform) + L" • " + entry.details;
         const int imageIndex = posterCache_
             ? posterImageList_.Add(posterCache_->posterFor(entry.titleId, WideToUtf8(entry.title), entry.platform,
                                                           posterService_, ""))
@@ -152,13 +236,14 @@ void JbGamesView::renderEntries() {
 
     scanButton_.EnableWindow(scanInProgress_.load() ? FALSE : TRUE);
     if (scanInProgress_.load()) {
-        statusLabel_.SetWindowText(L"Scanning local drives for folders named 'hacked'...");
+        statusLabel_.SetWindowText(L"Scanning local drives for JB folders named 'hacked' or 'p30day'...");
     } else if (!hasScanned_) {
         statusLabel_.SetWindowText(L"No scan has run yet.");
     } else {
         std::wstring status = L"Found " + std::to_wstring(entries_.size()) + L" game(s) in " +
-                               std::to_wstring(hackedFolderCount_) + L" hacked folder(s) across " +
-                               std::to_wstring(storageCount_) + L" local drive(s).";
+                               std::to_wstring(libraryFolderCount_) + L" JB folder(s) across " +
+                               std::to_wstring(storageCount_) + L" local drive(s), including " +
+                               std::to_wstring(exfatStorageCount_) + L" exFAT drive(s).";
         if (!scanError_.empty()) status += L"\r\n" + scanError_;
         statusLabel_.SetWindowText(status.c_str());
     }
@@ -174,16 +259,18 @@ void JbGamesView::startScan() {
     if (scanThread_.joinable()) scanThread_.join();
 
     entries_.clear();
-    hackedFolderCount_ = 0;
+    libraryFolderCount_ = 0;
     storageCount_ = 0;
+    exfatStorageCount_ = 0;
     scanError_.clear();
     renderEntries();
 
     scanThread_ = std::thread([this] {
         std::vector<Entry> found;
         std::set<std::wstring> seenPaths;
-        int hackedFolders = 0;
+        int libraryFolders = 0;
         int drives = 0;
+        int exfatDrives = 0;
         std::wstring error;
 
         try {
@@ -194,8 +281,12 @@ void JbGamesView::startScan() {
                 if (!storage.isAvailable || !isLocalDrive(storage.type)) continue;
                 ++drives;
 
+                const std::wstring rawRoot = Utf8ToWide(storage.rootPath);
+                const bool exfat = isExfatVolume(rawRoot);
+                if (exfat) ++exfatDrives;
+
                 std::error_code ec;
-                const auto root = extendedPath(Utf8ToWide(storage.rootPath));
+                const auto root = extendedPath(rawRoot);
                 if (!std::filesystem::is_directory(root, ec)) continue;
 
                 const auto options = std::filesystem::directory_options::skip_permission_denied;
@@ -206,9 +297,9 @@ void JbGamesView::startScan() {
                         continue;
                     }
                     if (!it->is_directory(ec)) continue;
-                    if (!equalsIgnoreCase(it->path().filename().wstring(), L"hacked")) continue;
+                    if (!isJbLibraryFolder(it->path().filename().wstring())) continue;
 
-                    ++hackedFolders;
+                    ++libraryFolders;
                     for (std::filesystem::directory_iterator child(it->path(), options, ec), childEnd; child != childEnd;
                          child.increment(ec)) {
                         if (ec) {
@@ -228,11 +319,32 @@ void JbGamesView::startScan() {
                         entry.titleId = titleIdFromName(entry.title);
                         entry.platform = platformFromTitleId(entry.titleId);
                         entry.path = childPath;
+
+                        ArtifactSummary artifacts;
+                        addArtifact(childPath, gameDirectory, artifacts);
+                        if (gameDirectory) {
+                            for (std::filesystem::recursive_directory_iterator artifactIt(
+                                     childPath, options, ec), artifactEnd;
+                                 artifactIt != artifactEnd; artifactIt.increment(ec)) {
+                                if (ec) {
+                                    ec.clear();
+                                    continue;
+                                }
+                                const bool artifactDirectory = artifactIt->is_directory(ec);
+                                if (ec) {
+                                    ec.clear();
+                                    continue;
+                                }
+                                addArtifact(artifactIt->path(), artifactDirectory, artifacts);
+                            }
+                        }
+                        entry.details = artifactDetails(artifacts, exfat);
                         found.push_back(std::move(entry));
                     }
 
-                    // The child list above is all this view needs. Do not walk
-                    // every file inside each game directory.
+                    // The parent iterator only needs to find JB library roots;
+                    // each game directory is inspected separately for local
+                    // package, dump, patch, and DLC markers.
                     it.disable_recursion_pending();
                 }
             }
@@ -246,8 +358,9 @@ void JbGamesView::startScan() {
         });
 
         entries_ = std::move(found);
-        hackedFolderCount_ = hackedFolders;
+        libraryFolderCount_ = libraryFolders;
         storageCount_ = drives;
+        exfatStorageCount_ = exfatDrives;
         scanError_ = std::move(error);
         hasScanned_ = true;
         scanInProgress_.store(false);
