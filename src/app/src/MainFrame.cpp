@@ -2,6 +2,8 @@
 
 #include <dwmapi.h>
 
+#include <algorithm>
+#include <array>
 #include <set>
 
 #include "SidebarTabs.h"
@@ -25,10 +27,50 @@ constexpr int kEnterpriseIndex = 11;
 constexpr int kBackupsIndex = 12;
 constexpr int kSettingsIndex = kSidebarSettingsIndex;
 constexpr int kSidebarWidth = 216;
-constexpr int kSidebarItemHeight = 40;
+constexpr int kSidebarItemHeight = 36;
 constexpr int kSidebarPadding = 8;
+constexpr int kSidebarHeaderHeight = 74;
+constexpr int kShellHeaderHeight = 64;
 // Two lines of small text beneath the nav list - the credit/rights footer.
 constexpr int kFooterHeight = 34;
+
+enum class SidebarGroup : int { Workspace = 0, Devices = 1, LibraryData = 2, Administration = 3, Settings = 4 };
+
+SidebarGroup groupForLogicalIndex(int index) {
+    switch (index) {
+        case kDashboardIndex:
+        case kGamesIndex:
+        case kUpdatesIndex:
+        case kDownloadsIndex:
+        case kTransfersIndex:
+            return SidebarGroup::Workspace;
+        case kConsolesIndex:
+        case kFtpIndex:
+        case kNetworkIndex:
+            return SidebarGroup::Devices;
+        case kStorageIndex:
+        case kBackupsIndex:
+            return SidebarGroup::LibraryData;
+        case kLogsIndex:
+        case kReportsIndex:
+        case kEnterpriseIndex:
+            return SidebarGroup::Administration;
+        case kSettingsIndex:
+        default:
+            return SidebarGroup::Settings;
+    }
+}
+
+const wchar_t* groupLabel(SidebarGroup group) {
+    switch (group) {
+        case SidebarGroup::Workspace: return L"Workspace";
+        case SidebarGroup::Devices: return L"Devices";
+        case SidebarGroup::LibraryData: return L"Library data";
+        case SidebarGroup::Administration: return L"Administration";
+        case SidebarGroup::Settings: return L"Preferences";
+    }
+    return L"";
+}
 
 // DWMWA_USE_IMMERSIVE_DARK_MODE - present in the Windows 11 SDK's dwmapi.h,
 // but guard it anyway in case an older SDK header is ever picked up (the
@@ -119,7 +161,15 @@ LRESULT MainFrame::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     CRect clientRect;
     GetClientRect(&clientRect);
 
-    CRect sidebarRect(0, 0, kSidebarWidth, clientRect.Height() - kFooterHeight);
+    CRect productRect(20, 14, kSidebarWidth - 16, 42);
+    productLabel_.Create(m_hWnd, productRect, L"Game Transfer Hub", WS_CHILD | WS_VISIBLE);
+    productLabel_.SetFont(theme::BodyFontBold());
+
+    CRect productSubtitleRect(20, 42, kSidebarWidth - 16, 62);
+    productSubtitle_.Create(m_hWnd, productSubtitleRect, L"Your game library, in one place", WS_CHILD | WS_VISIBLE);
+    productSubtitle_.SetFont(theme::SmallFont());
+
+    CRect sidebarRect(0, kSidebarHeaderHeight, kSidebarWidth, clientRect.Height() - kFooterHeight);
     sidebar_.Create(m_hWnd, sidebarRect, L"",
                      WS_CHILD | WS_VISIBLE | LBS_NOTIFY | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | LBS_NOINTEGRALHEIGHT |
                          WS_VSCROLL,
@@ -131,9 +181,29 @@ LRESULT MainFrame::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
                    WS_CHILD | WS_VISIBLE | SS_CENTER);
     footer_.SetFont(theme::SmallFont());
 
+    CRect contextRect(kSidebarWidth + 28, 13, clientRect.right - 220, 36);
+    pageContextLabel_.Create(m_hWnd, contextRect, L"Game Transfer Hub", WS_CHILD | WS_VISIBLE);
+    pageContextLabel_.SetFont(theme::SectionFont());
+
+    CRect hintRect(kSidebarWidth + 28, 37, clientRect.right - 220, 56);
+    pageContextHint_.Create(m_hWnd, hintRect,
+                            L"Manage games, consoles, transfers, and backups from one workspace.",
+                            WS_CHILD | WS_VISIBLE);
+    pageContextHint_.SetFont(theme::SmallFont());
+
+    CRect statusRect(clientRect.right - 205, 15, clientRect.right - 120, 38);
+    shellStatusLabel_.Create(m_hWnd, statusRect, L"Ready", WS_CHILD | WS_VISIBLE | SS_RIGHT);
+    shellStatusLabel_.SetFont(theme::SmallFont());
+
+    CRect queueButtonRect(clientRect.right - 108, 13, clientRect.right - 28, 45);
+    globalQueueButton_.Create(m_hWnd, queueButtonRect, L"Queue", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+                              0, IDC_GLOBAL_QUEUE_BUTTON);
+    globalQueueButton_.SetFont(theme::BodyFont());
+    globalQueueButton_.setKind(ModernButton::Kind::Secondary);
+
     // Not const: _U_RECT (what Create() actually takes) binds to RECT&, which
     // cannot bind to a const lvalue either.
-    CRect contentRect(kSidebarWidth, 0, clientRect.right, clientRect.bottom);
+    CRect contentRect(kSidebarWidth, kShellHeaderHeight, clientRect.right, clientRect.bottom);
 
     dashboardView_.init(storageService_);
     dashboardView_.Create(m_hWnd, contentRect, nullptr, WS_CHILD);
@@ -213,6 +283,29 @@ LRESULT MainFrame::OnAutoAllowFirewall(UINT, WPARAM, LPARAM, BOOL&) {
     return 0;
 }
 
+LRESULT MainFrame::OnEraseBkgnd(UINT, WPARAM wParam, LPARAM, BOOL&) {
+    HDC hdc = reinterpret_cast<HDC>(wParam);
+    CRect clientRect;
+    GetClientRect(&clientRect);
+
+    HBRUSH contentBrush = theme::ContentBgBrush();
+    ::FillRect(hdc, &clientRect, contentBrush);
+
+    CRect sidebarRect(0, 0, kSidebarWidth, clientRect.bottom);
+    HBRUSH sidebarBrush = theme::SidebarBgBrush();
+    ::FillRect(hdc, &sidebarRect, sidebarBrush);
+
+    HPEN separator = ::CreatePen(PS_SOLID, 1, theme::Border());
+    HGDIOBJ oldPen = ::SelectObject(hdc, separator);
+    ::MoveToEx(hdc, kSidebarWidth, 0, nullptr);
+    ::LineTo(hdc, kSidebarWidth, clientRect.bottom);
+    ::MoveToEx(hdc, kSidebarWidth, kShellHeaderHeight, nullptr);
+    ::LineTo(hdc, clientRect.right, kShellHeaderHeight);
+    ::SelectObject(hdc, oldPen);
+    ::DeleteObject(separator);
+    return 1;
+}
+
 LRESULT MainFrame::OnSize(UINT, WPARAM, LPARAM, BOOL&) {
     layout();
     return 0;
@@ -252,10 +345,27 @@ LRESULT MainFrame::OnDrawItem(UINT, WPARAM, LPARAM lParam, BOOL&) {
     ::FillRect(dis->hDC, &itemRect, bg);
     ::DeleteObject(bg);
 
+    const int logicalIndex = dis->itemID < visibleLogicalIndices_.size()
+                                 ? visibleLogicalIndices_[static_cast<size_t>(dis->itemID)]
+                                 : -1;
+    if (logicalIndex < 0) {
+        wchar_t groupText[128]{};
+        sidebar_.GetText(static_cast<int>(dis->itemID), groupText);
+        CRect headingRect = itemRect;
+        headingRect.left += kSidebarPadding + 12;
+        headingRect.top += 6;
+        HGDIOBJ oldFont = ::SelectObject(dis->hDC, theme::SmallFont());
+        ::SetBkMode(dis->hDC, TRANSPARENT);
+        ::SetTextColor(dis->hDC, theme::TextSecondary());
+        ::DrawText(dis->hDC, groupText, -1, &headingRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+        ::SelectObject(dis->hDC, oldFont);
+        return 1;
+    }
+
     CRect textRect = itemRect;
     if (selected) {
         CRect pillRect = itemRect;
-        pillRect.DeflateRect(kSidebarPadding, 4);
+        pillRect.DeflateRect(kSidebarPadding, 3);
         theme::FillRoundRect(dis->hDC, pillRect, 8, theme::AccentSoft());
     }
     textRect.left += kSidebarPadding + 12;
@@ -275,11 +385,17 @@ LRESULT MainFrame::OnDrawItem(UINT, WPARAM, LPARAM lParam, BOOL&) {
 // Only the footer_ static is ever a direct child of the frame itself (every view's own statics are
 // parented to that view, which handles WM_CTLCOLORSTATIC on its own) - so this paints it to match
 // the sidebar it sits under rather than the frame's own (unthemed) default background.
-LRESULT MainFrame::OnCtlColorStatic(UINT, WPARAM wParam, LPARAM, BOOL&) {
+LRESULT MainFrame::OnCtlColorStatic(UINT, WPARAM wParam, LPARAM lParam, BOOL&) {
     HDC hdc = reinterpret_cast<HDC>(wParam);
     ::SetBkMode(hdc, TRANSPARENT);
-    ::SetTextColor(hdc, theme::TextSecondary());
-    return reinterpret_cast<LRESULT>(theme::SidebarBgBrush());
+    // The parent frame owns the brand/footer and the shell header controls.
+    // Their backgrounds are painted by OnEraseBkgnd, so return the matching
+    // brush to prevent white rectangles when text is refreshed.
+    HWND source = reinterpret_cast<HWND>(lParam);
+    const bool sidebarControl = source == productLabel_.m_hWnd || source == productSubtitle_.m_hWnd || source == footer_.m_hWnd;
+    const bool primaryText = source == productLabel_.m_hWnd || source == pageContextLabel_.m_hWnd;
+    ::SetTextColor(hdc, primaryText ? theme::TextPrimary() : theme::TextSecondary());
+    return reinterpret_cast<LRESULT>(sidebarControl ? theme::SidebarBgBrush() : theme::ContentBgBrush());
 }
 
 void MainFrame::applyRoundedCorners() {
@@ -291,7 +407,34 @@ void MainFrame::applyRoundedCorners() {
 
 LRESULT MainFrame::OnSidebarSelChange(WORD, WORD, HWND, BOOL&) {
     const int sel = sidebar_.GetCurSel();
-    if (sel >= 0 && sel < static_cast<int>(visibleLogicalIndices_.size())) showView(visibleLogicalIndices_[static_cast<size_t>(sel)]);
+    if (sel < 0 || sel >= static_cast<int>(visibleLogicalIndices_.size())) return 0;
+
+    const int logicalIndex = visibleLogicalIndices_[static_cast<size_t>(sel)];
+    if (logicalIndex < 0) {
+        // Section headings are deliberately not selectable. If keyboard
+        // navigation lands on one, move to the first real page below it.
+        for (int next = sel + 1; next < static_cast<int>(visibleLogicalIndices_.size()); ++next) {
+            if (visibleLogicalIndices_[static_cast<size_t>(next)] >= 0) {
+                sidebar_.SetCurSel(next);
+                break;
+            }
+        }
+        return 0;
+    }
+
+    showView(logicalIndex);
+    return 0;
+}
+
+LRESULT MainFrame::OnGlobalQueueClick(WORD, WORD, HWND, BOOL&) {
+    const auto settings = appSettingsService_.getSettings();
+    const auto visibleTabs = VisibleSidebarTabIndices(settings.hiddenTabs, adminAuthService_.isSignedIn());
+    if (std::find(visibleTabs.begin(), visibleTabs.end(), kTransfersIndex) == visibleTabs.end()) {
+        shellStatusLabel_.SetWindowText(L"Sign in to use the transfer queue.");
+        return 0;
+    }
+    selectSidebarLogical(kTransfersIndex);
+    showView(kTransfersIndex);
     return 0;
 }
 
@@ -308,15 +451,44 @@ void MainFrame::populateSidebar(int keepLogicalIndex) {
     // A signed-out (regular) user never sees an admin-only tab, on top of
     // whatever they've personally chosen to hide - see VisibleSidebarTabIndices.
     sidebar_.ResetContent();
-    visibleLogicalIndices_ = VisibleSidebarTabIndices(settings.hiddenTabs, adminAuthService_.isSignedIn());
+    const auto visibleTabs = VisibleSidebarTabIndices(settings.hiddenTabs, adminAuthService_.isSignedIn());
+    visibleLogicalIndices_.clear();
     int keepPosition = 0;
-    for (size_t position = 0; position < visibleLogicalIndices_.size(); ++position) {
-        const int logicalIndex = visibleLogicalIndices_[position];
-        if (logicalIndex == keepLogicalIndex) keepPosition = static_cast<int>(position);
-        sidebar_.AddString(kSidebarTabs[static_cast<size_t>(logicalIndex)]);
+    constexpr std::array<SidebarGroup, 5> groupOrder = {SidebarGroup::Workspace, SidebarGroup::Devices,
+                                                        SidebarGroup::LibraryData, SidebarGroup::Administration,
+                                                        SidebarGroup::Settings};
+    for (const SidebarGroup group : groupOrder) {
+        bool wroteGroup = false;
+        for (int logicalIndex : visibleTabs) {
+            if (groupForLogicalIndex(logicalIndex) != group) continue;
+
+            if (!wroteGroup) {
+                // Negative entries are section rows. Encode the group ordinal so
+                // future drawing and keyboard handling can identify them without
+                // changing the logical tab indices consumed by Settings/tests.
+                const int sectionRow = -1 - static_cast<int>(group);
+                visibleLogicalIndices_.push_back(sectionRow);
+                sidebar_.AddString(groupLabel(group));
+                wroteGroup = true;
+            }
+
+            const int row = static_cast<int>(visibleLogicalIndices_.size());
+            visibleLogicalIndices_.push_back(logicalIndex);
+            if (logicalIndex == keepLogicalIndex) keepPosition = row;
+            sidebar_.AddString(kSidebarTabs[static_cast<size_t>(logicalIndex)]);
+        }
     }
 
     sidebar_.SetCurSel(keepPosition);
+}
+
+void MainFrame::selectSidebarLogical(int logicalIndex) {
+    for (size_t row = 0; row < visibleLogicalIndices_.size(); ++row) {
+        if (visibleLogicalIndices_[row] == logicalIndex) {
+            sidebar_.SetCurSel(static_cast<int>(row));
+            return;
+        }
+    }
 }
 
 // Re-themes the frame itself (dark titlebar) - each child view's own
@@ -391,18 +563,40 @@ void MainFrame::showView(int index) {
     if (currentView_ && currentView_ != newView) ::ShowWindow(currentView_, SW_HIDE);
     currentView_ = newView;
     ::ShowWindow(currentView_, SW_SHOW);
+
+    // Keep the shell context consistent even when a view is opened from a
+    // global shortcut rather than by clicking the sidebar.
+    const wchar_t* title = kSidebarTabs[static_cast<size_t>(index)];
+    pageContextLabel_.SetWindowText(title);
+    if (index == kDashboardIndex) {
+        pageContextHint_.SetWindowText(L"A quick view of your library, storage, and connection status.");
+    } else if (index == kTransfersIndex) {
+        pageContextHint_.SetWindowText(L"Monitor downloads, updates, console sends, and backups in one queue.");
+    } else if (index == kBackupsIndex) {
+        pageContextHint_.SetWindowText(L"Protect your local game library and restore it when you need it.");
+    } else if (index == kSettingsIndex) {
+        pageContextHint_.SetWindowText(L"Adjust appearance, access, automation, and advanced tools.");
+    } else {
+        pageContextHint_.SetWindowText(L"Choose an item to get started, or use Queue to see active work.");
+    }
 }
 
 void MainFrame::layout() {
     CRect clientRect;
     GetClientRect(&clientRect);
 
-    if (sidebar_.IsWindow()) sidebar_.MoveWindow(0, 0, kSidebarWidth, clientRect.Height() - kFooterHeight);
+    if (sidebar_.IsWindow())
+        sidebar_.MoveWindow(0, kSidebarHeaderHeight, kSidebarWidth, clientRect.Height() - kFooterHeight - kSidebarHeaderHeight);
     if (footer_.IsWindow()) {
         footer_.MoveWindow(0, clientRect.Height() - kFooterHeight, kSidebarWidth, kFooterHeight);
     }
 
-    CRect contentRect(kSidebarWidth, 0, clientRect.right, clientRect.bottom);
+    if (pageContextLabel_.IsWindow()) pageContextLabel_.MoveWindow(kSidebarWidth + 28, 13, clientRect.right - kSidebarWidth - 248, 24);
+    if (pageContextHint_.IsWindow()) pageContextHint_.MoveWindow(kSidebarWidth + 28, 37, clientRect.right - kSidebarWidth - 248, 20);
+    if (shellStatusLabel_.IsWindow()) shellStatusLabel_.MoveWindow(clientRect.right - 205, 15, 85, 23);
+    if (globalQueueButton_.IsWindow()) globalQueueButton_.MoveWindow(clientRect.right - 108, 13, 80, 32);
+
+    CRect contentRect(kSidebarWidth, kShellHeaderHeight, clientRect.right, clientRect.bottom);
     if (dashboardView_.IsWindow()) dashboardView_.MoveWindow(&contentRect);
     if (gamesView_.IsWindow()) gamesView_.MoveWindow(&contentRect);
     if (updatesView_.IsWindow()) updatesView_.MoveWindow(&contentRect);

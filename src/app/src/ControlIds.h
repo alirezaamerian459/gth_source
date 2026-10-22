@@ -138,4 +138,6 @@ enum ControlId : int {
     IDC_BACKUPS_BROWSE_BUTTON = 1326,
     IDC_BACKUPS_RESTORE_BUTTON = 1327,
     IDC_BACKUPS_COPY_ID_BUTTON = 1328,
+    // The shell-level activity shortcut stays available from every page.
+    IDC_GLOBAL_QUEUE_BUTTON = 1329,
 };

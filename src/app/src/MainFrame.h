@@ -23,6 +23,7 @@
 #include "SettingsView.h"
 #include "BackupsView.h"
 #include "ComingSoonView.h"
+#include "ModernButton.h"
 #include "gth/application/devices/IConsoleManager.h"
 #include "gth/application/enterprise/IAgentService.h"
 #include "gth/application/enterprise/ICentralServerService.h"
@@ -86,6 +87,7 @@ public:
 
     BEGIN_MSG_MAP(MainFrame)
         MESSAGE_HANDLER(WM_CREATE, OnCreate)
+        MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBkgnd)
         MESSAGE_HANDLER(WM_SIZE, OnSize)
         MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
         MESSAGE_HANDLER(kAutoAllowFirewallMessage, OnAutoAllowFirewall)
@@ -94,11 +96,13 @@ public:
         MESSAGE_HANDLER(WM_DRAWITEM, OnDrawItem)
         MESSAGE_HANDLER(WM_CTLCOLORSTATIC, OnCtlColorStatic)
         COMMAND_HANDLER(IDC_SIDEBAR_LIST, LBN_SELCHANGE, OnSidebarSelChange)
+        COMMAND_HANDLER(IDC_GLOBAL_QUEUE_BUTTON, BN_CLICKED, OnGlobalQueueClick)
         CHAIN_MSG_MAP(CFrameWindowImpl<MainFrame>)
     END_MSG_MAP()
 
 private:
     LRESULT OnCreate(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
+    LRESULT OnEraseBkgnd(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
     LRESULT OnSize(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
     LRESULT OnDestroy(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
     LRESULT OnAutoAllowFirewall(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
@@ -107,6 +111,7 @@ private:
     LRESULT OnDrawItem(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
     LRESULT OnCtlColorStatic(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
     LRESULT OnSidebarSelChange(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnGlobalQueueClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
 
     void showView(int index);
     void layout();
@@ -114,6 +119,7 @@ private:
     void populateSidebar(int keepLogicalIndex);
     void applyThemeToWindow();
     void onSettingsChanged();
+    void selectSidebarLogical(int logicalIndex);
 
     gth::application::IStorageService& storageService_;
     gth::application::IGameIndexer& gameIndexer_;
@@ -151,10 +157,19 @@ private:
     PosterCache posterCache_;
 
     CListBox sidebar_;
+    // Brand and section labels keep the navigation legible when the list is
+    // grouped into task-oriented areas.
+    CStatic productLabel_;
+    CStatic productSubtitle_;
     // Rights/credit footer beneath the sidebar's nav list - always visible, unlike the splash
     // screen's own copy of the same wording, which is only up for a couple of seconds at launch.
     CStatic footer_;
-    // Position in sidebar_ -> logical kXIndex, rebuilt by populateSidebar()
+    CStatic pageContextLabel_;
+    CStatic pageContextHint_;
+    CStatic shellStatusLabel_;
+    ModernButton globalQueueButton_;
+    // Position in sidebar_ -> logical kXIndex, rebuilt by populateSidebar().
+    // Negative values are non-selectable section headings.
     // whenever the visible-tab set changes (Settings' hidden-tabs
     // checkboxes) - the sidebar only ever contains a filtered subset of
     // kSidebarItems, so a listbox row position is no longer the same thing

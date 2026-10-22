@@ -86,7 +86,15 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
             }
             splash.DestroyWindow();
 
-            frame.ShowWindow(nCmdShow);
+            // Some launchers (including PowerShell's Start-Process) pass
+            // SW_HIDE even when the user explicitly launched the desktop
+            // application. The splash is shown explicitly above, but using
+            // that hidden flag here would leave the real window running with
+            // no visible UI. Preserve normal/minimized launch states while
+            // treating a hidden startup request as an accidental launcher
+            // default rather than hiding the product from the user.
+            const int showCommand = nCmdShow == SW_HIDE ? SW_SHOWNORMAL : nCmdShow;
+            frame.ShowWindow(showCommand);
             frame.UpdateWindow();
 
             MSG msg;
