@@ -14,17 +14,18 @@
 namespace {
 constexpr int kDashboardIndex = kSidebarDashboardIndex;
 constexpr int kGamesIndex = 1;
-constexpr int kUpdatesIndex = 2;
-constexpr int kDownloadsIndex = 3;
-constexpr int kStorageIndex = 4;
-constexpr int kConsolesIndex = 5;
-constexpr int kTransfersIndex = 6;
-constexpr int kFtpIndex = 7;
-constexpr int kNetworkIndex = 8;
-constexpr int kLogsIndex = 9;
-constexpr int kReportsIndex = 10;
-constexpr int kEnterpriseIndex = 11;
-constexpr int kBackupsIndex = 12;
+constexpr int kJbIndex = 2;
+constexpr int kUpdatesIndex = 3;
+constexpr int kDownloadsIndex = 4;
+constexpr int kStorageIndex = 5;
+constexpr int kConsolesIndex = 6;
+constexpr int kTransfersIndex = 7;
+constexpr int kFtpIndex = 8;
+constexpr int kNetworkIndex = 9;
+constexpr int kLogsIndex = 10;
+constexpr int kReportsIndex = 11;
+constexpr int kEnterpriseIndex = 12;
+constexpr int kBackupsIndex = 13;
 constexpr int kSettingsIndex = kSidebarSettingsIndex;
 constexpr int kSidebarWidth = 216;
 constexpr int kSidebarItemHeight = 36;
@@ -40,6 +41,7 @@ SidebarGroup groupForLogicalIndex(int index) {
     switch (index) {
         case kDashboardIndex:
         case kGamesIndex:
+        case kJbIndex:
         case kUpdatesIndex:
         case kDownloadsIndex:
         case kTransfersIndex:
@@ -210,6 +212,8 @@ LRESULT MainFrame::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     gamesView_.init(storageService_, gameIndexer_, gameLibrary_, titleLookupService_, sharedState_, posterCache_,
                      gamePosterService_);
     gamesView_.Create(m_hWnd, contentRect, nullptr, WS_CHILD);
+    jbGamesView_.init(storageService_, posterCache_, gamePosterService_);
+    jbGamesView_.Create(m_hWnd, contentRect, nullptr, WS_CHILD);
     updatesView_.init(gameLibrary_, gameIndexer_, updateChecker_, packageSync_, storageService_, sonyLinksPath_,
                       sonyAutomationPath_, sharedState_, posterCache_, gamePosterService_);
     updatesView_.Create(m_hWnd, contentRect, nullptr, WS_CHILD);
@@ -242,6 +246,7 @@ LRESULT MainFrame::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 
     ::ShowWindow(dashboardView_.m_hWnd, SW_HIDE);
     ::ShowWindow(gamesView_.m_hWnd, SW_HIDE);
+    ::ShowWindow(jbGamesView_.m_hWnd, SW_HIDE);
     ::ShowWindow(updatesView_.m_hWnd, SW_HIDE);
     ::ShowWindow(downloadsView_.m_hWnd, SW_HIDE);
     ::ShowWindow(storageView_.m_hWnd, SW_HIDE);
@@ -519,6 +524,9 @@ void MainFrame::showView(int index) {
     } else if (index == kGamesIndex) {
         gamesView_.refresh();
         newView = gamesView_.m_hWnd;
+    } else if (index == kJbIndex) {
+        jbGamesView_.refresh();
+        newView = jbGamesView_.m_hWnd;
     } else if (index == kUpdatesIndex) {
         updatesView_.refresh();
         newView = updatesView_.m_hWnd;
@@ -570,6 +578,8 @@ void MainFrame::showView(int index) {
     pageContextLabel_.SetWindowText(title);
     if (index == kDashboardIndex) {
         pageContextHint_.SetWindowText(L"A quick view of your library, storage, and connection status.");
+    } else if (index == kJbIndex) {
+        pageContextHint_.SetWindowText(L"Browse games found under local folders named 'hacked'.");
     } else if (index == kTransfersIndex) {
         pageContextHint_.SetWindowText(L"Monitor downloads, updates, console sends, and backups in one queue.");
     } else if (index == kBackupsIndex) {
@@ -599,6 +609,7 @@ void MainFrame::layout() {
     CRect contentRect(kSidebarWidth, kShellHeaderHeight, clientRect.right, clientRect.bottom);
     if (dashboardView_.IsWindow()) dashboardView_.MoveWindow(&contentRect);
     if (gamesView_.IsWindow()) gamesView_.MoveWindow(&contentRect);
+    if (jbGamesView_.IsWindow()) jbGamesView_.MoveWindow(&contentRect);
     if (updatesView_.IsWindow()) updatesView_.MoveWindow(&contentRect);
     if (downloadsView_.IsWindow()) downloadsView_.MoveWindow(&contentRect);
     if (storageView_.IsWindow()) storageView_.MoveWindow(&contentRect);

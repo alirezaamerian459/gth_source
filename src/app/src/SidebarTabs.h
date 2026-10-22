@@ -11,9 +11,9 @@
 // last index (Settings) are pinned: never offered as a checkbox, never
 // filtered out of the sidebar, so there's always a way back into Settings
 // and a home screen.
-inline constexpr std::array<const wchar_t*, 14> kSidebarTabs = {
-    L"Dashboard", L"Games",    L"Updates", L"Downloads", L"Storage",    L"Consoles",  L"Transfers",
-    L"FTP",       L"Network",  L"Logs",    L"Reports",   L"Enterprise", L"Backups", L"Settings"};
+inline constexpr std::array<const wchar_t*, 15> kSidebarTabs = {
+    L"Dashboard", L"Games", L"JB", L"Updates", L"Downloads", L"Storage", L"Consoles", L"Transfers",
+    L"FTP", L"Network", L"Logs", L"Reports", L"Enterprise", L"Backups", L"Settings"};
 
 inline constexpr int kSidebarTabCount = static_cast<int>(kSidebarTabs.size());
 inline constexpr int kSidebarDashboardIndex = 0;

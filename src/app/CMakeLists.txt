@@ -20,6 +20,7 @@ add_executable(GameTransferHubApp WIN32
     src/MainFrame.cpp
     src/DashboardView.cpp
     src/GamesView.cpp
+    src/JbGamesView.cpp
     src/UpdatesView.cpp
     src/PosterCache.cpp
     src/DownloadsView.cpp

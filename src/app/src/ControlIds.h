@@ -80,7 +80,7 @@ enum ControlId : int {
     // see SettingsView's class comment). Contiguous block so the click
     // handler can map wID back to a tab via IDC_SETTINGS_TAB_CHECKBOX_FIRST.
     IDC_SETTINGS_TAB_CHECKBOX_FIRST = 1300,
-    IDC_SETTINGS_TAB_CHECKBOX_LAST = 1311,
+    IDC_SETTINGS_TAB_CHECKBOX_LAST = 1312,
 
     IDC_COPY_IP_BUTTON = 1070,
     IDC_FTP_HOST_COPY_ADDRESS_BUTTON = 1071,
@@ -140,4 +140,6 @@ enum ControlId : int {
     IDC_BACKUPS_COPY_ID_BUTTON = 1328,
     // The shell-level activity shortcut stays available from every page.
     IDC_GLOBAL_QUEUE_BUTTON = 1329,
+    IDC_JB_SCAN_BUTTON = 1330,
+    IDC_JB_GAMES_LISTVIEW = 1331,
 };

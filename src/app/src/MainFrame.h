@@ -11,6 +11,7 @@
 #include "DashboardView.h"
 #include "StorageView.h"
 #include "GamesView.h"
+#include "JbGamesView.h"
 #include "UpdatesView.h"
 #include "DownloadsView.h"
 #include "NetworkView.h"
@@ -178,6 +179,7 @@ private:
 
     DashboardView dashboardView_;
     GamesView gamesView_;
+    JbGamesView jbGamesView_;
     UpdatesView updatesView_;
     DownloadsView downloadsView_;
     StorageView storageView_;
