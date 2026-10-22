@@ -68,7 +68,9 @@ HBITMAP RenderRoundedTile(const std::function<void(Gdiplus::Graphics&)>& drawCon
 PosterCache::PosterCache() {
     Gdiplus::GdiplusStartupInput input;
     Gdiplus::GdiplusStartup(&gdiplusToken_, &input, nullptr);
-    cacheDir_ = (gth::infrastructure::ServiceContainer::defaultDataDirectory() / "Covers").wstring();
+    // The old Covers directory contained images from the previous web provider. Keep it intact,
+    // but namespace this cache so a provider change cannot silently display stale artwork.
+    cacheDir_ = (gth::infrastructure::ServiceContainer::defaultDataDirectory() / "Covers" / "psprices-v1").wstring();
     std::error_code ec;
     std::filesystem::create_directories(cacheDir_, ec);
 }
@@ -215,7 +217,13 @@ HBITMAP PosterCache::posterFor(const std::string& titleId, const std::string& ti
     if (const auto it = byTitleId_.find(titleId); it != byTitleId_.end()) return it->second;
 
     std::string pngBytes = readDiskCache(titleId);
-    bool fromDisk = !pngBytes.empty();
+    const bool fromDisk = !pngBytes.empty();
+
+    // Queue PSPrices before considering the package's embedded icon. The embedded icon keeps the
+    // tile useful while the network request runs, but a successful PSPrices result replaces it in
+    // drainPendingWebResults() and is the only image persisted for the next launch.
+    if (!fromDisk) queueWebFetch(titleId, title);
+
     if (pngBytes.empty() && posterService) {
         if (auto extracted = posterService->extractPosterPng(gameVariantId)) pngBytes = std::move(*extracted);
     }
@@ -223,20 +231,14 @@ HBITMAP PosterCache::posterFor(const std::string& titleId, const std::string& ti
     HBITMAP bitmap = nullptr;
     if (!pngBytes.empty()) {
         bitmap = buildFromPng(pngBytes);
-        if (bitmap && !fromDisk) writeDiskCache(titleId, pngBytes);
+        if (bitmap && !fromDisk && !webClient_) writeDiskCache(titleId, pngBytes);
     }
     if (bitmap) {
         byTitleId_[titleId] = bitmap;
         return bitmap;
     }
 
-    // Deliberately NOT memoized into byTitleId_: unlike a resolved poster (real art, or a titleId
-    // with nothing left to try), this is "nothing worked *this* call" - the drive could come back
-    // online, a rescan could add the game's package files, or (once queueWebFetch's own one-time
-    // dedup lets it) a web fetch could still be running. Returning the placeholder here without
-    // caching it means the very next posterFor() call for this titleId - the next refresh() - just
-    // tries local extraction again instead of being stuck on a placeholder for the rest of the
-    // session.
-    queueWebFetch(titleId, title);
+    // Deliberately NOT memoized into byTitleId_: a queued PSPrices request may still be running,
+    // and a later refresh should see the completed web result before deciding what to display.
     return placeholderFor(platform);
 }

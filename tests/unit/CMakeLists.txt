@@ -38,7 +38,7 @@ add_executable(gth_unit_tests
     test_pkg_file_parser.cpp
     test_enhanced_storage_scanner.cpp
     test_online_title_lookup_service.cpp
-    test_the_games_db_client.cpp
+    test_ps_prices_client.cpp
     test_sony_update_service.cpp
     test_sony_link_import.cpp
     test_update_check_service.cpp

@@ -1,4 +1,4 @@
-#include "gth/network/TheGamesDbClient.h"
+#include "gth/network/PsPricesClient.h"
 
 #include <windows.h>
 #include <winhttp.h>
@@ -13,8 +13,6 @@ namespace gth::network {
 
 namespace {
 
-// Thin RAII wrapper so the several early-return paths below can't leak a WinHTTP handle - the
-// same shape OnlineTitleLookupService.cpp's own copy already uses.
 class WinHttpHandle {
 public:
     WinHttpHandle() = default;
@@ -40,9 +38,6 @@ std::wstring toWide(const std::string& utf8) {
     return wide;
 }
 
-// Percent-encodes raw UTF-8 bytes for use in a URL query value - a game title can carry spaces,
-// apostrophes, or non-ASCII letters, none of which the search page's "name" parameter can take
-// as-is.
 std::string percentEncodeUtf8(const std::string& value) {
     static const char* hex = "0123456789ABCDEF";
     std::string out;
@@ -63,7 +58,7 @@ struct ParsedUrl {
     bool https = false;
     std::wstring host;
     INTERNET_PORT port = 0;
-    std::wstring path;  // including any query
+    std::wstring path;
 };
 
 std::optional<ParsedUrl> crackUrl(const std::wstring& wide) {
@@ -84,7 +79,7 @@ std::optional<ParsedUrl> crackUrl(const std::wstring& wide) {
 }
 
 constexpr DWORD kTimeoutMs = 6000;
-constexpr size_t kMaxResponseBytes = 8 * 1024 * 1024;  // a search page or a cover image, never more
+constexpr size_t kMaxResponseBytes = 8 * 1024 * 1024;
 
 struct HttpOutcome {
     std::optional<std::string> body;
@@ -101,7 +96,7 @@ HttpOutcome requestOn(HINTERNET connection, const std::wstring& path) {
     DWORD statusCode = 0;
     DWORD statusSize = sizeof(statusCode);
     WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX,
-                         &statusCode, &statusSize, WINHTTP_NO_HEADER_INDEX);
+                        &statusCode, &statusSize, WINHTTP_NO_HEADER_INDEX);
     if (statusCode != 200) return {};
 
     std::string body;
@@ -109,37 +104,54 @@ HttpOutcome requestOn(HINTERNET connection, const std::wstring& path) {
         DWORD available = 0;
         if (!WinHttpQueryDataAvailable(request, &available) || available == 0) break;
 
+        if (body.size() + available > kMaxResponseBytes) return {};
         std::string chunk(available, '\0');
         DWORD bytesRead = 0;
-        if (!WinHttpReadData(request, chunk.data(), available, &bytesRead)) break;
+        if (!WinHttpReadData(request, chunk.data(), available, &bytesRead)) return {};
         chunk.resize(bytesRead);
         body += chunk;
-        if (body.size() > kMaxResponseBytes) break;
     }
     return {std::move(body)};
 }
 
 }  // namespace
 
-std::optional<std::string> ExtractFirstBoxArtUrl(const std::string& htmlBody) {
-    // The search page lists each match as a card whose cover, when the game has one at all, is
-    // this exact CDN path - distinctive enough that a plain substring search is safe (verified
-    // live against the real page; see thegamesdb.net/search.php).
-    static const std::string needle = "https://cdn.thegamesdb.net/images/thumb/boxart/front/";
-    const auto pos = htmlBody.find(needle);
-    if (pos == std::string::npos) return std::nullopt;
-    const auto end = htmlBody.find_first_of("\"'", pos);
-    if (end == std::string::npos) return std::nullopt;
-    return htmlBody.substr(pos, end - pos);
+std::optional<std::string> ExtractFirstPsPricesCoverUrl(const std::string& htmlBody) {
+    // A result card is an <a href="/region-us/game/..."> containing the same official cover URL
+    // twice: once for the blurred background and once for the visible poster. Restricting the
+    // image search to that anchor avoids accidentally selecting a platform logo or a page-wide ad.
+    static const std::string gameMarker = "/region-us/game/";
+    static const std::string imageMarker = "https://image.api.playstation.com/";
+
+    size_t cursor = 0;
+    while ((cursor = htmlBody.find(gameMarker, cursor)) != std::string::npos) {
+        const auto anchorStart = htmlBody.rfind("<a", cursor);
+        const auto anchorEnd = htmlBody.find("</a>", cursor);
+        if (anchorStart == std::string::npos || anchorEnd == std::string::npos || anchorStart > cursor ||
+            anchorEnd <= cursor) {
+            cursor += gameMarker.size();
+            continue;
+        }
+
+        const auto imageStart = htmlBody.find(imageMarker, cursor);
+        if (imageStart != std::string::npos && imageStart < anchorEnd) {
+            const auto imageEnd = htmlBody.find_first_of("\"'", imageStart);
+            if (imageEnd != std::string::npos && imageEnd > imageStart) {
+                return htmlBody.substr(imageStart, imageEnd - imageStart);
+            }
+        }
+        cursor = anchorEnd + 4;
+    }
+    return std::nullopt;
 }
 
-struct TheGamesDbClient::Connections {
+struct PsPricesClient::Connections {
     std::unique_ptr<WinHttpHandle> session;
     std::map<std::wstring, std::unique_ptr<WinHttpHandle>> byHost;
 
     HttpOutcome get(const std::wstring& host, const std::wstring& path) {
         if (!session) {
-            session = std::make_unique<WinHttpHandle>(WinHttpOpen(L"GameTransferHub/5.9.1",
+            session = std::make_unique<WinHttpHandle>(WinHttpOpen(L"GameTransferHub/6.9.0",
                                                                     WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
                                                                     WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
             if (!*session) {
@@ -151,8 +163,8 @@ struct TheGamesDbClient::Connections {
 
         auto found = byHost.find(host);
         if (found == byHost.end()) {
-            auto connection =
-                std::make_unique<WinHttpHandle>(WinHttpConnect(*session, host.c_str(), INTERNET_DEFAULT_HTTPS_PORT, 0));
+            auto connection = std::make_unique<WinHttpHandle>(
+                WinHttpConnect(*session, host.c_str(), INTERNET_DEFAULT_HTTPS_PORT, 0));
             if (!*connection) return {};
             found = byHost.emplace(host, std::move(connection)).first;
         }
@@ -160,23 +172,23 @@ struct TheGamesDbClient::Connections {
     }
 };
 
-TheGamesDbClient::TheGamesDbClient() : connections_(std::make_unique<Connections>()) {}
+PsPricesClient::PsPricesClient() : connections_(std::make_unique<Connections>()) {}
 
-TheGamesDbClient::~TheGamesDbClient() = default;
+PsPricesClient::~PsPricesClient() = default;
 
-std::optional<std::string> TheGamesDbClient::fetchPosterByTitle(const std::string& gameTitle) {
+std::optional<std::string> PsPricesClient::fetchPosterByTitle(const std::string& gameTitle) {
     if (gameTitle.empty()) return std::nullopt;
 
-    static const std::wstring kHost = L"thegamesdb.net";
-    const std::wstring searchPath = L"/search.php?name=" + toWide(percentEncodeUtf8(gameTitle));
+    static const std::wstring kHost = L"psprices.com";
+    const std::wstring searchPath = L"/region-us/games/?q=" + toWide(percentEncodeUtf8(gameTitle));
     const auto searchOutcome = connections_->get(kHost, searchPath);
     if (!searchOutcome.body) return std::nullopt;
 
-    const auto imageUrl = ExtractFirstBoxArtUrl(*searchOutcome.body);
+    const auto imageUrl = ExtractFirstPsPricesCoverUrl(*searchOutcome.body);
     if (!imageUrl) return std::nullopt;
 
     const auto parsedUrl = crackUrl(toWide(*imageUrl));
-    if (!parsedUrl || !parsedUrl->https) return std::nullopt;
+    if (!parsedUrl || !parsedUrl->https || parsedUrl->host != L"image.api.playstation.com") return std::nullopt;
 
     const auto imageOutcome = connections_->get(parsedUrl->host, parsedUrl->path);
     if (!imageOutcome.body || imageOutcome.body->empty()) return std::nullopt;

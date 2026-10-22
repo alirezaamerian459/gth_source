@@ -22,6 +22,10 @@ step with Sony's own update servers:
 * **Can run updates automatically** while the app is open: by default it checks Sony, adds missing
   metadata, scans reachable storages for newly added games, and downloads available updates every
   12 hours (first run about two minutes after launch). Automatic package downloads can use many GB.
+* **Uses PSPrices for poster art** in the Games and Updates grids. The public regional search page
+  supplies the official PlayStation image URL; GTH downloads it in the existing background poster
+  worker, caches it under `%LOCALAPPDATA%\\GameTransferHub\\Covers\\psprices-v1`, and can show the
+  package's embedded icon temporarily when the network lookup has not completed.
 * **Backs up local games to Telegram** from the Backups tab. The tab can back up one game or every
   available game in the GTH library to a private Telegram channel, then restore a selected backup
   into a new folder after verifying chunk and full-file SHA-256 hashes. The bot token is kept in

@@ -9,7 +9,7 @@ add_library(gth_network STATIC
     src/SonyUpdateService.cpp
     src/SonyLinkImport.cpp
     src/SonyPieceDownloader.cpp
-    src/TheGamesDbClient.cpp
+    src/PsPricesClient.cpp
     src/WindowsFirewallService.cpp
     src/TelegramBackupTransport.cpp
     UserAgentProvider.cpp

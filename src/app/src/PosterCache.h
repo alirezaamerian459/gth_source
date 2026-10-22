@@ -15,8 +15,8 @@
 #include "gth/core/network/ICoverArtClient.h"
 
 // Box-art tiles for the Games/Updates poster grid: a themed rounded-corner square bitmap per
-// title, real box art once IGamePosterService can supply it (or, failing that, a keyless web
-// lookup by title text - see enableWebFallback), a placeholder until either one succeeds. Every
+// title, PSPrices art once enableWebFallback resolves it, package art as an immediate offline
+// fallback, and a placeholder until either one succeeds. Every
 // bitmap this hands out is owned by the cache and reused for the app's whole lifetime - views
 // never delete them, just like theme::*Brush()'s already-established "intentionally leaked for
 // the process lifetime" convention.
@@ -45,14 +45,11 @@ public:
     // cache started completes. Called once per view, before enableWebFallback (see its own note).
     void subscribe(HWND hwnd);
 
-    // The tile for `titleId` (a game with no titleId, or no title text to search by, always gets
-    // `platform`'s placeholder tile). The first call for a given titleId does real work - a disk-
-    // cache read, or (a cache miss) reading the game's own package file(s) through `posterService`;
-    // if that also comes up empty and the web fallback is enabled, this returns the placeholder
-    // immediately and queues a background web lookup by `title` rather than blocking the
-    // UI thread on a network call - a later posterFor() call for the same titleId then picks up
-    // whatever that lookup found (see kPosterReadyMessage). Every later call once a titleId is
-    // fully resolved (real art either way, or confirmed unavailable) is a plain map lookup.
+    // The tile for `titleId` (a game with no titleId always gets `platform`'s placeholder tile).
+    // PSPrices is queued first and runs off the UI thread; package art may be shown immediately
+    // while that lookup is in flight. When PSPrices returns, its poster replaces the fallback and
+    // becomes the only disk-cached source for future launches. Every later call once a titleId is
+    // fully resolved is a plain map lookup.
     // `posterService` may be null (nothing to resolve from yet); `gameVariantId` is unused then.
     HBITMAP posterFor(const std::string& titleId, const std::string& title, const std::string& platform,
                        gth::application::IGamePosterService* posterService, const std::string& gameVariantId);

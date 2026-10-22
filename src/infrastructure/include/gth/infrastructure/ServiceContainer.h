@@ -93,7 +93,7 @@
 #include "gth/infrastructure/LocalGameBackupSource.h"
 #include "gth/network/SonyPieceDownloader.h"
 #include "gth/network/SonyUpdateService.h"
-#include "gth/network/TheGamesDbClient.h"
+#include "gth/network/PsPricesClient.h"
 #include "gth/network/WindowsFirewallService.h"
 #include "gth/transfer/LocalFileTransferProvider.h"
 #include "gth/storage/LocalStorageDetector.h"
@@ -196,7 +196,7 @@ private:
     application::GameLibraryService gameLibraryService_;
     LocalGameBackupSource localGameBackupSource_;
     application::GamePosterService gamePosterService_;
-    network::TheGamesDbClient coverArtClient_;
+    network::PsPricesClient coverArtClient_;
     network::SonyUpdateService sonyUpdateService_;
     application::UpdateCheckService updateCheckService_;
     application::GameSearchService gameSearchService_;

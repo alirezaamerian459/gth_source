@@ -46,7 +46,7 @@ AppSettings AppSettingsRepository::load() {
     AppSettings settings;
 
     // SteamGridDbApiKey (migration 16) is no longer read - the web fallback it configured was
-    // replaced by a keyless lookup (see PosterCache/TheGamesDbClient) - but the column itself
+    // replaced by a keyless lookup (see PosterCache/PsPricesClient) - but the column itself
     // stays in the schema; a shipped migration is never removed or renumbered.
     auto stmt = db_.prepare(
         "SELECT Theme, HiddenTabs, DefaultLocalFolder, LogLevel, MaxConsoles FROM AppSettings WHERE AppSettingsId = 1;");

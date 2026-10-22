@@ -377,7 +377,7 @@ constexpr std::array<Migration, 16> kMigrations{{
         ALTER TABLE Consoles ADD COLUMN AutoDetected INTEGER NOT NULL DEFAULT 0;
     )SQL"},
     // The Games/Updates poster grid's web fallback originally read a SteamGridDB API key from this
-    // column - since replaced by a keyless lookup (see PosterCache/TheGamesDbClient), so nothing
+    // column - since replaced by a keyless lookup (see PosterCache/PsPricesClient), so nothing
     // reads or writes it any more. Left in place rather than dropped: a shipped migration is never
     // removed or renumbered.
     {16, R"SQL(
