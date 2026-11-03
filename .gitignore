@@ -38,6 +38,21 @@ x86/
 logs/
 *.log
 
+# Local configuration and browser-test runtime data
+.env
+.env.*
+!.env.example
+node_modules/
+coverage/
+tests/browser-automation/logs/
+tests/browser-automation/screenshots/
+tests/browser-automation/videos/
+tests/browser-automation/session-data/
+
+# Generated packages and installer output
+/dist/
+npm-debug.log*
+
 # OS metadata
 Thumbs.db
 .DS_Store

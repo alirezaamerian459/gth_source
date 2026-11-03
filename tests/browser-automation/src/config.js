@@ -66,7 +66,7 @@ export const config = {
 
   // Interaction configuration
   interaction: {
-    // Delay between mouse actions (milliseconds) for realistic behavior
+    // Optional pause between mouse actions (milliseconds)
     interactionDelay: parseInt(process.env.INTERACTION_DELAY || '100', 10),
 
     // Mouse move duration in milliseconds

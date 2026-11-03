@@ -1,13 +1,13 @@
-; Game Transfer Hub Installer Script
-; NSIS 3.0+ Required
-; This script creates an Windows installer for Game Transfer Hub with .pkg recognition
+; Game Transfer Hub installer.
+; Build the Release configuration and create dist/ before invoking makensis.
 
 !include "MUI2.nsh"
 !include "x64.nsh"
 
-; General settings
+!define APP_VERSION "6.9.0"
+
 Name "Game Transfer Hub"
-OutFile "GameTransferHub-Setup-Latest.exe"
+OutFile "dist\GameTransferHub-Setup-${APP_VERSION}.exe"
 InstallDir "$PROGRAMFILES\GameTransferHub"
 InstallDirRegKey HKLM "Software\GameTransferHub" "InstallLocation"
 
@@ -23,11 +23,11 @@ RequestExecutionLevel admin
 !insertmacro MUI_LANGUAGE "English"
 
 ; Version Info
-VIProductVersion "6.9.0.0"
+VIProductVersion "${APP_VERSION}.0"
 VIAddVersionKey "ProductName" "Game Transfer Hub"
-VIAddVersionKey "ProductVersion" "6.9.0"
-VIAddVersionKey "FileVersion" "6.9.0.0"
-VIAddVersionKey "FileDescription" "Game Transfer Hub - PlayStation Game Manager with .pkg Recognition"
+VIAddVersionKey "ProductVersion" "${APP_VERSION}"
+VIAddVersionKey "FileVersion" "${APP_VERSION}.0"
+VIAddVersionKey "FileDescription" "Game Transfer Hub"
 VIAddVersionKey "CompanyName" "Game Transfer Hub"
 VIAddVersionKey "LegalCopyright" "2026"
 
@@ -35,25 +35,21 @@ VIAddVersionKey "LegalCopyright" "2026"
 Section "Game Transfer Hub"
   SetOutPath "$INSTDIR"
 
-  ; Copy main executable
-  File "build\Release\GameTransferHubApp.exe"
-
-  ; Copy required DLLs and dependencies
-  File "build\_deps\curl-build\lib\Release\libcurl.dll"
-  File "build\_deps\libssh2-build\src\Release\libssh2.dll"
+  ; The application target is configured for static dependencies.
+  File "build\src\app\Release\GameTransferHub.exe"
 
   ; Create program shortcuts
   SetOutPath "$INSTDIR"
   CreateDirectory "$SMPROGRAMS\Game Transfer Hub"
-  CreateShortCut "$SMPROGRAMS\Game Transfer Hub\Game Transfer Hub.lnk" "$INSTDIR\GameTransferHubApp.exe"
+  CreateShortCut "$SMPROGRAMS\Game Transfer Hub\Game Transfer Hub.lnk" "$INSTDIR\GameTransferHub.exe"
   CreateShortCut "$SMPROGRAMS\Game Transfer Hub\Uninstall.lnk" "$INSTDIR\uninstall.exe"
-  CreateShortCut "$DESKTOP\Game Transfer Hub.lnk" "$INSTDIR\GameTransferHubApp.exe"
+  CreateShortCut "$DESKTOP\Game Transfer Hub.lnk" "$INSTDIR\GameTransferHub.exe"
 
   ; Write registry keys for uninstall
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameTransferHub" "DisplayName" "Game Transfer Hub"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameTransferHub" "UninstallString" "$INSTDIR\uninstall.exe"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameTransferHub" "DisplayVersion" "2.0.0"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameTransferHub" "DisplayIcon" "$INSTDIR\GameTransferHubApp.exe"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameTransferHub" "DisplayVersion" "${APP_VERSION}"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameTransferHub" "DisplayIcon" "$INSTDIR\GameTransferHub.exe"
   WriteRegStr HKLM "Software\GameTransferHub" "InstallLocation" "$INSTDIR"
 
   ; Create uninstaller
@@ -63,9 +59,7 @@ SectionEnd
 ; Section: Uninstall
 Section "Uninstall"
   ; Remove files
-  Delete "$INSTDIR\GameTransferHubApp.exe"
-  Delete "$INSTDIR\libcurl.dll"
-  Delete "$INSTDIR\libssh2.dll"
+  Delete "$INSTDIR\GameTransferHub.exe"
   Delete "$INSTDIR\uninstall.exe"
 
   ; Remove shortcuts

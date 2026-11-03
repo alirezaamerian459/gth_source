@@ -139,7 +139,7 @@ export class PageController {
     }
   }
 
-  // Realistic interaction: move, wait, click
+  // Convenience interaction: move, pause, then click
   async interactWithElement(selector) {
     try {
       await this.moveMouse(selector);

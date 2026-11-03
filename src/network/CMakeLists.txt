@@ -12,9 +12,6 @@ add_library(gth_network STATIC
     src/PsPricesClient.cpp
     src/WindowsFirewallService.cpp
     src/TelegramBackupTransport.cpp
-    UserAgentProvider.cpp
-    BehavioralEvader.cpp
-    CookieManager.cpp
 )
 
 target_include_directories(gth_network PUBLIC

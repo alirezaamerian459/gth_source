@@ -1,7 +1,7 @@
 {
   "name": "gth-browser-automation",
   "version": "1.0.0",
-  "description": "Playwright-based browser automation module for GTH testing",
+  "description": "Playwright browser tests for authorized GTH test targets",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
@@ -9,8 +9,7 @@
     "test:watch": "node --watch --test tests/**/*.test.js",
     "test:manual": "node scripts/manual-interaction-test.js",
     "test:captcha": "node scripts/captcha-workflow-test.js",
-    "test:integration": "node tests/integration.test.js",
-    "dev": "node scripts/dev-server.js"
+    "test:integration": "node tests/integration.test.js"
   },
   "keywords": ["gth", "playwright", "browser-automation", "captcha", "testing"],
   "author": "GTH Development",
@@ -18,9 +17,6 @@
   "dependencies": {
     "playwright": "^1.40.0",
     "dotenv": "^21.4.0"
-  },
-  "devDependencies": {
-    "node-test-utils": "^1.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
