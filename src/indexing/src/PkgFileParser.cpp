@@ -1,6 +1,7 @@
 #include "gth/indexing/PkgFileParser.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdint>
 #include <filesystem>
@@ -169,9 +170,9 @@ std::optional<PkgMetadata> PkgFileParser::parseFile(const std::string& pkgFilePa
     const long long fileSize = file.tellg();
     if (fileSize < 4) return parseFromFilename(pkgFilePath, fileSize);
 
-    unsigned char magicBuf[4];
-    if (!readExact(file, 0, magicBuf, sizeof(magicBuf))) return parseFromFilename(pkgFilePath, fileSize);
-    const uint32_t magic = be32(magicBuf);
+    std::array<unsigned char, 4> magicBuf;
+    if (!readExact(file, 0, magicBuf.data(), magicBuf.size())) return parseFromFilename(pkgFilePath, fileSize);
+    const uint32_t magic = be32(magicBuf.data());
 
     std::optional<PkgMetadata> metadata;
     if (magic == kMagicPs3) {
@@ -224,9 +225,9 @@ std::optional<PkgMetadata> PkgFileParser::parsePs3(std::ifstream& file, long lon
     constexpr size_t kContentIdSize = 0x30;
     if (fileSize < static_cast<long long>(kContentIdOffset + kContentIdSize)) return std::nullopt;
 
-    unsigned char buf[kContentIdSize];
-    if (!readExact(file, kContentIdOffset, buf, sizeof(buf))) return std::nullopt;
-    const std::string contentId = decodeCString(buf, sizeof(buf));
+    std::array<unsigned char, kContentIdSize> buf;
+    if (!readExact(file, kContentIdOffset, buf.data(), buf.size())) return std::nullopt;
+    const std::string contentId = decodeCString(buf.data(), buf.size());
     if (contentId.empty()) return std::nullopt;
 
     PkgMetadata metadata;
@@ -244,18 +245,18 @@ std::optional<PkgMetadata> PkgFileParser::parsePs3(std::ifstream& file, long lon
 std::optional<PkgMetadata> PkgFileParser::parsePs4(std::ifstream& file, long long fileSize) {
     if (fileSize < static_cast<long long>(kPs4HeaderSize)) return std::nullopt;
 
-    unsigned char header[kPs4HeaderSize];
-    if (!readExact(file, 0, header, sizeof(header))) return std::nullopt;
+    std::array<unsigned char, kPs4HeaderSize> header;
+    if (!readExact(file, 0, header.data(), header.size())) return std::nullopt;
 
-    const uint32_t entryCount = be32(header + 0x10);
-    const uint32_t tableOffset = be32(header + 0x18);
+    const uint32_t entryCount = be32(header.data() + 0x10);
+    const uint32_t tableOffset = be32(header.data() + 0x18);
     if (entryCount == 0 || entryCount > kMaxEntryCount) return std::nullopt;
     if (tableOffset < kPs4HeaderSize) return std::nullopt;
     const long long tableEnd =
         static_cast<long long>(tableOffset) + static_cast<long long>(entryCount) * kPs4EntrySize;
     if (tableEnd > fileSize) return std::nullopt;
 
-    const std::string contentId = decodeCString(header + 0x40, 36);
+    const std::string contentId = decodeCString(header.data() + 0x40, 36);
 
     PkgMetadata metadata;
     metadata.sizeBytes = fileSize;
@@ -268,16 +269,16 @@ std::optional<PkgMetadata> PkgFileParser::parsePs4(std::ifstream& file, long lon
 
     // Walk the entry table looking for PARAM_SFO_ID (0x1000) - the real
     // human-readable title lives there, not in the opaque content ID.
-    unsigned char entry[kPs4EntrySize];
+    std::array<unsigned char, kPs4EntrySize> entry;
     for (uint32_t i = 0; i < entryCount; ++i) {
         const long long entryOffset = static_cast<long long>(tableOffset) + static_cast<long long>(i) * kPs4EntrySize;
-        if (!readExact(file, entryOffset, entry, sizeof(entry))) break;
+        if (!readExact(file, entryOffset, entry.data(), entry.size())) break;
 
-        const uint32_t fileId = be32(entry + 0);
+        const uint32_t fileId = be32(entry.data() + 0);
         if (fileId != kPs4ParamSfoId) continue;
 
-        const uint32_t dataOffset = be32(entry + 16);
-        const uint32_t size = be32(entry + 20);
+        const uint32_t dataOffset = be32(entry.data() + 16);
+        const uint32_t size = be32(entry.data() + 20);
         if (size == 0 || size > kMaxMetadataSize) break;
         if (static_cast<long long>(dataOffset) + size > fileSize) break;
 
@@ -331,13 +332,13 @@ std::optional<PkgMetadata> PkgFileParser::parseSplitPs5Parts(
 std::optional<PkgMetadata> PkgFileParser::parsePs5Core(const ReadAtFn& readAt, long long totalSize) {
     if (totalSize < 0x100) return std::nullopt;
 
-    unsigned char fih[0x60];
-    if (!readAt(0, fih, sizeof(fih))) return std::nullopt;
-    if (be32(fih) != kMagicPs5Fih) return std::nullopt;
+    std::array<unsigned char, 0x60> fih;
+    if (!readAt(0, fih.data(), fih.size())) return std::nullopt;
+    if (be32(fih.data()) != kMagicPs5Fih) return std::nullopt;
 
-    const uint64_t pfsOffset = le64(fih + 0x10);
+    const uint64_t pfsOffset = le64(fih.data() + 0x10);
     if (pfsOffset != kPs5FihHeaderSize) return std::nullopt;  // not a finalized PS5 image we understand
-    const uint64_t sc_offset = le64(fih + 0x58);
+    const uint64_t sc_offset = le64(fih.data() + 0x58);
 
     // The embedded CNT header (and everything under it - entry table,
     // param.json) sits *after* the encrypted game image, which is normally
@@ -349,18 +350,18 @@ std::optional<PkgMetadata> PkgFileParser::parsePs5Core(const ReadAtFn& readAt, l
         return std::nullopt;
     }
 
-    unsigned char cnt[kPs5CntHeaderSize];
-    if (!readAt(static_cast<long long>(sc_offset), cnt, sizeof(cnt))) return std::nullopt;
-    if (be32(cnt) != kMagicPs4Cnt) return std::nullopt;  // embedded CNT uses the same \x7fCNT magic
+    std::array<unsigned char, kPs5CntHeaderSize> cnt;
+    if (!readAt(static_cast<long long>(sc_offset), cnt.data(), cnt.size())) return std::nullopt;
+    if (be32(cnt.data()) != kMagicPs4Cnt) return std::nullopt;  // embedded CNT uses the same \x7fCNT magic
 
-    const uint32_t entryCount = be32(cnt + 0x10);
-    const uint32_t entryTableRelative = be32(cnt + 0x18);
+    const uint32_t entryCount = be32(cnt.data() + 0x10);
+    const uint32_t entryTableRelative = be32(cnt.data() + 0x18);
     if (entryCount == 0 || entryCount > kMaxEntryCount) return std::nullopt;
     const long long entryTableOffset = static_cast<long long>(sc_offset) + entryTableRelative;
     const long long entryTableEnd = entryTableOffset + static_cast<long long>(entryCount) * kPs5EntrySize;
     if (entryTableRelative < kPs5CntHeaderSize || entryTableEnd > totalSize) return std::nullopt;
 
-    const std::string contentId = decodeCString(cnt + 0x40, 48);
+    const std::string contentId = decodeCString(cnt.data() + 0x40, 48);
 
     PkgMetadata metadata;
     metadata.sizeBytes = totalSize;
@@ -384,15 +385,15 @@ std::optional<PkgMetadata> PkgFileParser::parsePs5Core(const ReadAtFn& readAt, l
     long long namesOffset = -1;
     uint32_t namesSize = 0;
 
-    unsigned char entry[kPs5EntrySize];
+    std::array<unsigned char, kPs5EntrySize> entry;
     for (uint32_t i = 0; i < entryCount; ++i) {
-        if (!readAt(entryTableOffset + static_cast<long long>(i) * kPs5EntrySize, entry, sizeof(entry))) {
+        if (!readAt(entryTableOffset + static_cast<long long>(i) * kPs5EntrySize, entry.data(), entry.size())) {
             break;
         }
-        const uint32_t fileId = be32(entry + 0);
-        const uint32_t nameOffset = be32(entry + 4);
-        const uint32_t relativeOffset = be32(entry + 16);
-        const uint32_t size = be32(entry + 20);
+        const uint32_t fileId = be32(entry.data() + 0);
+        const uint32_t nameOffset = be32(entry.data() + 4);
+        const uint32_t relativeOffset = be32(entry.data() + 16);
+        const uint32_t size = be32(entry.data() + 20);
         const long long absoluteOffset = static_cast<long long>(sc_offset) + relativeOffset;
         if (absoluteOffset < static_cast<long long>(sc_offset) || absoluteOffset + size > totalSize) continue;
 
@@ -461,9 +462,9 @@ std::optional<std::string> PkgFileParser::extractPoster(const std::string& pkgFi
     const long long fileSize = file.tellg();
     if (fileSize < 4) return std::nullopt;
 
-    unsigned char magicBuf[4];
-    if (!readExact(file, 0, magicBuf, sizeof(magicBuf))) return std::nullopt;
-    const uint32_t magic = be32(magicBuf);
+    std::array<unsigned char, 4> magicBuf;
+    if (!readExact(file, 0, magicBuf.data(), magicBuf.size())) return std::nullopt;
+    const uint32_t magic = be32(magicBuf.data());
 
     if (magic == kMagicPs4Cnt) return extractPs4Poster(file, fileSize);
     if (magic == kMagicPs5Fih) {
@@ -489,27 +490,27 @@ std::optional<std::string> PkgFileParser::extractPosterFromParts(
 std::optional<std::string> PkgFileParser::extractPs4Poster(std::ifstream& file, long long fileSize) {
     if (fileSize < static_cast<long long>(kPs4HeaderSize)) return std::nullopt;
 
-    unsigned char header[kPs4HeaderSize];
-    if (!readExact(file, 0, header, sizeof(header))) return std::nullopt;
+    std::array<unsigned char, kPs4HeaderSize> header;
+    if (!readExact(file, 0, header.data(), header.size())) return std::nullopt;
 
-    const uint32_t entryCount = be32(header + 0x10);
-    const uint32_t tableOffset = be32(header + 0x18);
+    const uint32_t entryCount = be32(header.data() + 0x10);
+    const uint32_t tableOffset = be32(header.data() + 0x18);
     if (entryCount == 0 || entryCount > kMaxEntryCount) return std::nullopt;
     if (tableOffset < kPs4HeaderSize) return std::nullopt;
     const long long tableEnd =
         static_cast<long long>(tableOffset) + static_cast<long long>(entryCount) * kPs4EntrySize;
     if (tableEnd > fileSize) return std::nullopt;
 
-    unsigned char entry[kPs4EntrySize];
+    std::array<unsigned char, kPs4EntrySize> entry;
     for (uint32_t i = 0; i < entryCount; ++i) {
         const long long entryOffset = static_cast<long long>(tableOffset) + static_cast<long long>(i) * kPs4EntrySize;
-        if (!readExact(file, entryOffset, entry, sizeof(entry))) break;
+        if (!readExact(file, entryOffset, entry.data(), entry.size())) break;
 
-        const uint32_t fileId = be32(entry + 0);
+        const uint32_t fileId = be32(entry.data() + 0);
         if (fileId != kIcon0PngId) continue;
 
-        const uint32_t dataOffset = be32(entry + 16);
-        const uint32_t size = be32(entry + 20);
+        const uint32_t dataOffset = be32(entry.data() + 16);
+        const uint32_t size = be32(entry.data() + 20);
         if (size == 0 || size > kMaxPosterSize) return std::nullopt;
         if (static_cast<long long>(dataOffset) + size > fileSize) return std::nullopt;
 
@@ -523,24 +524,24 @@ std::optional<std::string> PkgFileParser::extractPs4Poster(std::ifstream& file, 
 std::optional<std::string> PkgFileParser::extractPs5PosterCore(const ReadAtFn& readAt, long long totalSize) {
     if (totalSize < 0x100) return std::nullopt;
 
-    unsigned char fih[0x60];
-    if (!readAt(0, fih, sizeof(fih))) return std::nullopt;
-    if (be32(fih) != kMagicPs5Fih) return std::nullopt;
+    std::array<unsigned char, 0x60> fih;
+    if (!readAt(0, fih.data(), fih.size())) return std::nullopt;
+    if (be32(fih.data()) != kMagicPs5Fih) return std::nullopt;
 
-    const uint64_t pfsOffset = le64(fih + 0x10);
+    const uint64_t pfsOffset = le64(fih.data() + 0x10);
     if (pfsOffset != kPs5FihHeaderSize) return std::nullopt;
-    const uint64_t sc_offset = le64(fih + 0x58);
+    const uint64_t sc_offset = le64(fih.data() + 0x58);
     if (sc_offset > static_cast<uint64_t>(totalSize) ||
         static_cast<uint64_t>(totalSize) - sc_offset < kPs5CntHeaderSize) {
         return std::nullopt;
     }
 
-    unsigned char cnt[kPs5CntHeaderSize];
-    if (!readAt(static_cast<long long>(sc_offset), cnt, sizeof(cnt))) return std::nullopt;
-    if (be32(cnt) != kMagicPs4Cnt) return std::nullopt;
+    std::array<unsigned char, kPs5CntHeaderSize> cnt;
+    if (!readAt(static_cast<long long>(sc_offset), cnt.data(), cnt.size())) return std::nullopt;
+    if (be32(cnt.data()) != kMagicPs4Cnt) return std::nullopt;
 
-    const uint32_t entryCount = be32(cnt + 0x10);
-    const uint32_t entryTableRelative = be32(cnt + 0x18);
+    const uint32_t entryCount = be32(cnt.data() + 0x10);
+    const uint32_t entryTableRelative = be32(cnt.data() + 0x18);
     if (entryCount == 0 || entryCount > kMaxEntryCount) return std::nullopt;
     const long long entryTableOffset = static_cast<long long>(sc_offset) + entryTableRelative;
     const long long entryTableEnd = entryTableOffset + static_cast<long long>(entryCount) * kPs5EntrySize;
@@ -556,14 +557,14 @@ std::optional<std::string> PkgFileParser::extractPs5PosterCore(const ReadAtFn& r
     long long namesOffset = -1;
     uint32_t namesSize = 0;
 
-    unsigned char entry[kPs5EntrySize];
+    std::array<unsigned char, kPs5EntrySize> entry;
     for (uint32_t i = 0; i < entryCount; ++i) {
-        if (!readAt(entryTableOffset + static_cast<long long>(i) * kPs5EntrySize, entry, sizeof(entry))) break;
+        if (!readAt(entryTableOffset + static_cast<long long>(i) * kPs5EntrySize, entry.data(), entry.size())) break;
 
-        const uint32_t fileId = be32(entry + 0);
-        const uint32_t nameOffset = be32(entry + 4);
-        const uint32_t relativeOffset = be32(entry + 16);
-        const uint32_t size = be32(entry + 20);
+        const uint32_t fileId = be32(entry.data() + 0);
+        const uint32_t nameOffset = be32(entry.data() + 4);
+        const uint32_t relativeOffset = be32(entry.data() + 16);
+        const uint32_t size = be32(entry.data() + 20);
         const long long absoluteOffset = static_cast<long long>(sc_offset) + relativeOffset;
         if (absoluteOffset < static_cast<long long>(sc_offset) || absoluteOffset + size > totalSize) continue;
 

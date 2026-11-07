@@ -171,3 +171,13 @@ Verification:
 ### Findings capture follow-up
 
 The completed IDE run log was recovered from VS Code's local logs and confirms 1,761 findings across 177 files at 16:54:40 on 2026-11-07. It contains aggregate progress counts, not individual issue details. The SonarQube for IDE H2 cache remains locked by the open IDE, and a read-only connection was rejected because the database is already in use. VS Code activation and screenshot capture also failed, so the existing scan remains intact and no issue list was reset. The user was asked to bring VS Code to the foreground so the current findings can be captured page by page.
+
+### Candidate cleanup — package parser fixed byte buffers
+
+Replaced the 13 fixed-size `unsigned char` C arrays in `PkgFileParser.cpp` with `std::array` buffers of the same compile-time lengths. Each binary read now receives `.data()` and `.size()`, and byte offsets use the same base pointer. The buffer contents, sizes, parsing offsets, and fallback paths are unchanged. This matches the C-style array rule visible in the IDE for `StorageView.cpp`, but individual parser findings were not captured; this candidate batch is not added to the 23 confirmed IDE-row count.
+
+Verification:
+- `cmake --build build --config Debug --target gth_unit_tests --parallel 4` — passed.
+- `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=PkgFileParserTest.*` — 15 passed.
+- `git diff --check -- src/indexing/src/PkgFileParser.cpp` — passed.
+- No Sonar re-analysis was run.
