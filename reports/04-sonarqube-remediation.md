@@ -57,4 +57,4 @@ Verification in the versioned checkout:
 - Focused git diff --check passed.
 - A separate wrapper test build failed before the changed target because its MSVC 14.51 invocation could not locate the standard header string. The normal Visual Studio 2022 build succeeded and the relevant tests were run directly.
 - The IDE scan has not been rerun. The 1,761 count remains the completed Desktop scan baseline, not a post-fix result. The scan exposed only part of its issue list, so additional findings still need to be enumerated and triaged.
-- The follow-up accept-loop changes passed a new Debug build and all 512 unit tests (506 passed, 6 skipped). No refreshed Sonar analysis was run.
+- The follow-up accept-loop changes passed Debug builds for `gth_acceleratorserver` and `gth_unit_tests`, the 35 focused proxy tests, and all 512 unit tests (506 passed, 6 skipped). A full Debug build compiled the app sources but its final link failed with LNK1168 because the running `GameTransferHub.exe` was locked; the app was left running. No refreshed Sonar analysis was run.

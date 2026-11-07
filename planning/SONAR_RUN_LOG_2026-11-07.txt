@@ -107,3 +107,5 @@ Verification:
 ### Follow-up after local checkpoint 8b3c6e6
 
 The additional accept-loop cleanups documented above were applied only in the versioned Codex checkout. Debug builds of `gth_acceleratorserver` and `gth_unit_tests` passed; the focused proxy/local-server filter passed all 35 tests; and the full unit suite passed 506 tests with 6 environment/live-service skips (512 total). No Sonar rerun or remote push was performed.
+
+The full `cmake --build build --config Debug --parallel` build compiled the changed modules, unit tests, and app source files, but the final app link failed with LNK1168 because the running `GameTransferHub.exe` could not be overwritten. The app was left running; the build target and full unit tests had already passed independently.
