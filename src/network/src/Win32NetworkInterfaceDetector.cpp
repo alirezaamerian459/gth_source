@@ -5,6 +5,7 @@
 #include <iphlpapi.h>
 #include <ws2tcpip.h>
 
+#include <array>
 #include <cstdio>
 #include <vector>
 
@@ -20,23 +21,23 @@ using core::NetworkInterfaceType;
 namespace {
 
 std::string ipToString(const SOCKADDR* addr) {
-    char buf[INET6_ADDRSTRLEN] = {};
+    std::array<char, INET6_ADDRSTRLEN> buf{};
     if (addr->sa_family == AF_INET) {
         const auto* addr4 = reinterpret_cast<const sockaddr_in*>(addr);
-        ::InetNtopA(AF_INET, const_cast<IN_ADDR*>(&addr4->sin_addr), buf, sizeof(buf));
+        ::InetNtopA(AF_INET, const_cast<IN_ADDR*>(&addr4->sin_addr), buf.data(), static_cast<DWORD>(buf.size()));
     } else if (addr->sa_family == AF_INET6) {
         const auto* addr6 = reinterpret_cast<const sockaddr_in6*>(addr);
-        ::InetNtopA(AF_INET6, const_cast<IN6_ADDR*>(&addr6->sin6_addr), buf, sizeof(buf));
+        ::InetNtopA(AF_INET6, const_cast<IN6_ADDR*>(&addr6->sin6_addr), buf.data(), static_cast<DWORD>(buf.size()));
     }
-    return buf;
+    return buf.data();
 }
 
 std::string macToString(const BYTE* addr, ULONG len) {
     if (len < 6) return "";
-    char buf[32] = {};
-    std::snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X", addr[0], addr[1], addr[2], addr[3], addr[4],
+    std::array<char, 32> buf{};
+    std::snprintf(buf.data(), buf.size(), "%02X:%02X:%02X:%02X:%02X:%02X", addr[0], addr[1], addr[2], addr[3], addr[4],
                    addr[5]);
-    return buf;
+    return buf.data();
 }
 
 std::string wideToUtf8(const wchar_t* wide) {
@@ -95,9 +96,9 @@ std::vector<NetworkInterfaceInfo> Win32NetworkInterfaceDetector::detect() {
                 ::ConvertLengthToIpv4Mask(unicast->OnLinkPrefixLength, &mask);
                 IN_ADDR maskAddr{};
                 maskAddr.S_un.S_addr = mask;
-                char maskBuf[INET_ADDRSTRLEN] = {};
-                ::InetNtopA(AF_INET, &maskAddr, maskBuf, sizeof(maskBuf));
-                info.subnetMask = maskBuf;
+                std::array<char, INET_ADDRSTRLEN> maskBuf{};
+                ::InetNtopA(AF_INET, &maskAddr, maskBuf.data(), static_cast<DWORD>(maskBuf.size()));
+                info.subnetMask = maskBuf.data();
             } else if (sockAddr->sa_family == AF_INET6 && info.ipv6.empty()) {
                 info.ipv6 = ipToString(sockAddr);
             }

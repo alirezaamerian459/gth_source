@@ -181,3 +181,13 @@ Verification:
 - `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=PkgFileParserTest.*` — 15 passed.
 - `git diff --check -- src/indexing/src/PkgFileParser.cpp` — passed.
 - No Sonar re-analysis was run.
+
+### Candidate cleanup — Windows network address buffers
+
+In `Win32NetworkInterfaceDetector.cpp`, replaced the three fixed `char` buffers used for IP and MAC text with same-size `std::array` buffers. The `InetNtopA` output capacities remain unchanged, and the strings are still returned from the same null-terminated text. This follows the buffer rule shown in the IDE, but these exact issue rows were not captured; the three locations are candidates and do not increase the confirmed count.
+
+Verification:
+- `cmake --build build --config Debug --target gth_unit_tests --parallel 4` — passed.
+- `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=Win32NetworkInterfaceDetectorTest.*:NetworkInterfaceInfoTest.*` — 5 passed.
+- Focused `git diff --check` — passed.
+- No Sonar re-analysis was run.
