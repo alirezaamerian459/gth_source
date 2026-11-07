@@ -50,9 +50,9 @@ VerificationResult FileVerifier::verify(const std::string& path, long long expec
         return result;
     }
 
-    if (expectedSha256Hex && !expectedSha256Hex->empty() && !isDirectory) {
+    if (expectedSha256Hex.has_value() && !expectedSha256Hex->empty() && !isDirectory) {
         auto actualHash = computeSha256Hex(path);
-        if (!actualHash) {
+        if (!actualHash.has_value()) {
             result.errorMessage = "Failed to compute hash for: " + path;
             return result;
         }
@@ -90,7 +90,7 @@ VerificationResult FileVerifier::verifyRange(const std::string& path, long long 
     }
 
     const auto actualHash = computeSha256HexRange(path, offsetBytes, expectedSizeBytes);
-    if (!actualHash) {
+    if (!actualHash.has_value()) {
         result.errorMessage = "Failed to compute the range hash for: " + path;
         return result;
     }

@@ -31,21 +31,21 @@ ReplacementOutcome ArchiveUpdater::applyVerifiedUpdate(const std::string& update
     ReplacementOutcome outcome;
 
     auto jobOpt = jobRepository_.getById(updateJobId);
-    if (!jobOpt) {
+    if (!jobOpt.has_value()) {
         outcome.errorMessage = "UpdateJob not found: " + updateJobId;
         return outcome;
     }
     const UpdateJob job = *jobOpt;
 
     auto variantOpt = variantRepository_.getById(job.gameVariantId);
-    if (!variantOpt) {
+    if (!variantOpt.has_value()) {
         outcome.errorMessage = "GameVariant not found: " + job.gameVariantId;
         return outcome;
     }
     const GameVariant variant = *variantOpt;
 
     auto storageOpt = storageRepository_.getById(variant.storageId);
-    if (!storageOpt) {
+    if (!storageOpt.has_value()) {
         outcome.errorMessage = "Storage not found: " + variant.storageId;
         return outcome;
     }

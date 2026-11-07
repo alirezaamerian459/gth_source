@@ -40,7 +40,7 @@ UpdateInfo UpdateDetectorService::detectForVariant(const core::GameVariant& vari
 
     for (auto* source : sources_) {
         auto result = source->checkForUpdate(variant, info.currentVersion);
-        if (!result) continue;  // this source has no information about this variant
+        if (!result.has_value()) continue;  // this source has no information about this variant
 
         info.source = source->name();
         info.latestVersion = result->updateAvailable ? result->latestVersion : info.currentVersion;

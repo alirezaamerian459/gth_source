@@ -17,7 +17,7 @@ inline std::optional<core::GameVersion> currentActiveVersion(core::IGameVersionR
     for (auto& version : versions.getByVariantId(gameVariantId)) {
         if (version.status != core::GameVariantStatus::Active) continue;
         if (version.isCurrent) return version;
-        if (!fallback) fallback = std::move(version);
+        if (!fallback.has_value()) fallback = std::move(version);
     }
     return fallback;
 }

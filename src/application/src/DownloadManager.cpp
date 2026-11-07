@@ -19,7 +19,7 @@ DownloadOutcome DownloadManager::downloadForJob(const std::string& updateJobId,
     DownloadOutcome outcome;
 
     auto jobOpt = jobRepository_.getById(updateJobId);
-    if (!jobOpt) {
+    if (!jobOpt.has_value()) {
         outcome.errorMessage = "UpdateJob not found: " + updateJobId;
         return outcome;
     }

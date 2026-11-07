@@ -61,7 +61,7 @@ void ConsoleManagerService::recordConnection(const std::string& ipAddress, const
 
 ConsoleStatus ConsoleManagerService::checkReachability(const std::string& consoleId) {
     auto consoleOpt = repository_.getById(consoleId);
-    if (!consoleOpt) return ConsoleStatus::Unknown;
+    if (!consoleOpt.has_value()) return ConsoleStatus::Unknown;
 
     Console console = *consoleOpt;
     const bool reachable = reachabilityChecker_.isReachable(console.ipAddress, console.port, reachabilityTimeoutMs_);

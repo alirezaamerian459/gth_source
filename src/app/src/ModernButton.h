@@ -52,8 +52,15 @@ private:
 
         switch (kind_) {
             case Kind::Primary:
-                fill = !enabled ? theme::DisabledFill() : pressed_ ? theme::AccentPressed()
-                                                                 : hovering_ ? theme::AccentHover() : theme::Accent();
+                if (!enabled) {
+                    fill = theme::DisabledFill();
+                } else if (pressed_) {
+                    fill = theme::AccentPressed();
+                } else if (hovering_) {
+                    fill = theme::AccentHover();
+                } else {
+                    fill = theme::Accent();
+                }
                 textColor = !enabled ? theme::TextDisabled() : theme::TextOnAccent();
                 break;
             case Kind::Danger:
@@ -61,14 +68,14 @@ private:
                 textColor = !enabled ? theme::TextDisabled() : theme::TextOnAccent();
                 break;
             case Kind::Subtle:
-                fill = pressed_ ? theme::HoverBg() : hovering_ ? theme::HoverBg() : theme::ContentBg();
+                fill = (pressed_ || hovering_) ? theme::HoverBg() : theme::ContentBg();
                 textColor = !enabled ? theme::TextDisabled() : theme::Accent();
                 break;
             case Kind::Secondary:
             default:
-                fill = pressed_ ? theme::HoverBg() : hovering_ ? theme::HoverBg() : theme::ContentBg();
+                fill = (pressed_ || hovering_) ? theme::HoverBg() : theme::ContentBg();
                 textColor = !enabled ? theme::TextDisabled() : theme::TextPrimary();
-                border = !enabled ? theme::Border() : theme::Border();
+                border = theme::Border();
                 break;
         }
 

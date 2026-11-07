@@ -353,7 +353,7 @@ SyncResult PackageSyncService::runOnce(const std::string& gameVariantId, SyncMod
     const auto analysisOpt = analyze(gameVariantId, basePlan);
     result.titleId = basePlan.titleId;
     result.storageId = basePlan.storageId;
-    if (!analysisOpt) {
+    if (!analysisOpt.has_value()) {
         result.kind = SyncKind::Unavailable;
         result.message = basePlan.detail;
         return result;
@@ -475,7 +475,12 @@ SyncResult PackageSyncService::runOnce(const std::string& gameVariantId, SyncMod
     };
     if (a.metadataPiece) {
         const auto stagedMetadata = stagedPathFor(leafOfPath(a.metadataPiece->url));
-        const fs::path metadataPath = stagedMetadata ? *stagedMetadata : (a.metadata ? a.metadata->path : fs::path());
+        fs::path metadataPath;
+        if (stagedMetadata.has_value()) {
+            metadataPath = *stagedMetadata;
+        } else if (a.metadata.has_value()) {
+            metadataPath = a.metadata->path;
+        }
         const std::string firstLeaf = a.pfsPieces.empty() ? std::string() : leafOfPath(a.pfsPieces.front().url);
         const auto stagedFirst = firstLeaf.empty() ? std::nullopt : stagedPathFor(firstLeaf);
         const fs::path firstPartPath = stagedFirst ? *stagedFirst : a.numbered.front().path;

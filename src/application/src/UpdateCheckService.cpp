@@ -32,7 +32,7 @@ std::optional<std::vector<long long>> OrderedPartSizes(const std::vector<core::G
     std::vector<const core::GameFile*> numbered;
     for (const auto& file : files) {
         if (isMetadataPieceFileName(file.relativePath)) {
-            if (metadataPieceSize) return std::nullopt;  // two of them: not a package we understand
+            if (metadataPieceSize.has_value()) return std::nullopt;  // two of them: not a package we understand
             metadataPieceSize = file.sizeBytes;
         } else {
             numbered.push_back(&file);
@@ -41,7 +41,7 @@ std::optional<std::vector<long long>> OrderedPartSizes(const std::vector<core::G
     if (numbered.empty()) return std::nullopt;
 
     std::vector<long long> sizes;
-    if (numbered.size() == 1 && !metadataPieceSize) {
+    if (numbered.size() == 1 && !metadataPieceSize.has_value()) {
         sizes.push_back(numbered[0]->sizeBytes);  // a package that is one file is just that file
         return sizes;
     }
@@ -59,7 +59,7 @@ std::optional<std::vector<long long>> OrderedPartSizes(const std::vector<core::G
 
     sizes.reserve(parts.size() + 1);
     for (const auto& part : parts) sizes.push_back(part.second);
-    if (metadataPieceSize) sizes.push_back(*metadataPieceSize);
+    if (metadataPieceSize.has_value()) sizes.push_back(*metadataPieceSize);
     return sizes;
 }
 
@@ -90,7 +90,7 @@ UpdateCheckSummary UpdateCheckService::checkAll() {
         if (variant.platform != "PS4" && variant.platform != "PS5") continue;
 
         auto current = currentActiveVersion(versionRepository_, variant.gameVariantId);
-        if (!current) continue;
+        if (!current.has_value()) continue;
 
         const std::string titleId = titleIdFromVersionPath(current->relativePath);
         if (titleId.empty()) continue;

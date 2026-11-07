@@ -53,14 +53,14 @@ UpdateManagerResult UpdateManagerService::processJob(const std::string& updateJo
     UpdateManagerResult result;
 
     auto jobOpt = jobRepository_.getById(updateJobId);
-    if (!jobOpt) {
+    if (!jobOpt.has_value()) {
         result.errorMessage = "UpdateJob not found: " + updateJobId;
         return result;
     }
     UpdateJob job = *jobOpt;
 
     auto variantOpt = variantRepository_.getById(job.gameVariantId);
-    if (!variantOpt) {
+    if (!variantOpt.has_value()) {
         failJob(job, "GameVariant not found: " + job.gameVariantId);
         result.errorMessage = *job.errorMessage;
         return result;
@@ -70,7 +70,7 @@ UpdateManagerResult UpdateManagerService::processJob(const std::string& updateJo
     // value - the "Exact Variant Matching" and "no update proceeds on an
     // uncertain match" rules apply right up to the moment we download.
     auto sourceInfoOpt = source.checkForUpdate(*variantOpt, job.oldVersion);
-    if (!sourceInfoOpt || !sourceInfoOpt->updateAvailable) {
+    if (!sourceInfoOpt.has_value() || !sourceInfoOpt->updateAvailable) {
         failJob(job, "Source no longer reports an update available for this variant");
         recordHistory(job, "NotVerified", "Failed", 0, job.errorMessage);
         result.errorMessage = *job.errorMessage;

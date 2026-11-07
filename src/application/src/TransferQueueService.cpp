@@ -126,7 +126,7 @@ void TransferQueueService::workerLoop() {
 
 void TransferQueueService::processItem(const std::string& transferItemId) {
     auto itemOpt = itemRepository_.getById(transferItemId);
-    if (!itemOpt) return;
+    if (!itemOpt.has_value()) return;
     TransferItem item = *itemOpt;
 
     auto cancelFlag = std::make_shared<std::atomic<bool>>(false);
@@ -200,10 +200,16 @@ void TransferQueueService::maybeCompleteJob(const std::string& transferJobId) {
     if (anyPending) return;
 
     auto jobOpt = jobRepository_.getById(transferJobId);
-    if (!jobOpt) return;
+    if (!jobOpt.has_value()) return;
 
     TransferJob job = *jobOpt;
-    job.status = anyFailed ? TransferStatus::Failed : (anyCancelled ? TransferStatus::Cancelled : TransferStatus::Completed);
+    if (anyFailed) {
+        job.status = TransferStatus::Failed;
+    } else if (anyCancelled) {
+        job.status = TransferStatus::Cancelled;
+    } else {
+        job.status = TransferStatus::Completed;
+    }
     job.completedAt = core::Clock::utcNowIso8601();
     job.updatedAt = *job.completedAt;
     jobRepository_.update(job);

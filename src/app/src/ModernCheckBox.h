@@ -52,7 +52,8 @@ private:
         CRect boxRect(rect.left, boxTop, rect.left + kBoxSize, boxTop + kBoxSize);
 
         const bool checked = check == BST_CHECKED || check == BST_INDETERMINATE;
-        const COLORREF boxFill = checked ? (enabled ? theme::Accent() : theme::DisabledFill()) : theme::EditBg();
+        COLORREF boxFill = theme::EditBg();
+        if (checked) boxFill = enabled ? theme::Accent() : theme::DisabledFill();
         const COLORREF boxBorder = checked ? boxFill : theme::Border();
         theme::FillRoundRect(hdc, boxRect, 3, boxFill, boxBorder);
 

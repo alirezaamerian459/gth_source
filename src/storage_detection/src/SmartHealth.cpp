@@ -143,7 +143,16 @@ HealthAssessment assessAtaHealth(const std::vector<SmartAttribute>& attributes, 
     };
     if (const auto reallocated = counter(5)) {
         // A few remapped sectors are normal wear; hundreds mean the surface is failing.
-        int points = reallocated <= 5 ? 8 : reallocated <= 20 ? 15 : reallocated <= 100 ? 25 : reallocated <= 500 ? 40 : 55;
+        int points = 55;
+        if (reallocated <= 5) {
+            points = 8;
+        } else if (reallocated <= 20) {
+            points = 15;
+        } else if (reallocated <= 100) {
+            points = 25;
+        } else if (reallocated <= 500) {
+            points = 40;
+        }
         score.deduct(points, "Reallocated sectors: " + std::to_string(reallocated));
     }
     if (const auto pending = counter(197)) {

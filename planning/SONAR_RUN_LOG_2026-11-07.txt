@@ -139,4 +139,21 @@ Verification:
 - `cmake --build build --config Debug --target GameTransferHubApp --parallel 2` — compiled `BackupsView.cpp`, then final app linking failed with LNK1168 because the running `GameTransferHub.exe` locked the output. The existing app was left running.
 - No new Sonar analysis was started.
 
+### Behavior-preserving rule-pattern pass — optional presence and nested conditionals
+
+The IDE had confirmed `cpp:S7172` (make optional presence checks explicit) and `cpp:S3358` (avoid nested conditional operators) in the StorageView group. A source review found and simplified matching patterns across the local checkout:
+
+| Rule pattern | Files touched | Code locations changed | Status |
+|---|---|---:|---|
+| Explicit optional presence (`has_value()`) | `ArchiveUpdater.cpp`, `ConsoleManagerService.cpp`, `CurrentVersion.h`, `DownloadManager.cpp`, `FileVerifier.cpp`, `PackageSyncService.cpp`, `TransferQueueService.cpp`, `UpdateCheckService.cpp`, `UpdateDetectorService.cpp`, `UpdateManagerService.cpp` | 22 presence checks | Candidate remediations; actual IDE rows for these locations were not captured. |
+| Replace nested conditional operators with ordered branches or a boolean condition | `PackageSyncService.cpp`, `TransferQueueService.cpp`, `SmartHealth.cpp`, `ModernButton.h`, `ModernCheckBox.h` | 7 nested expressions reviewed | Candidate remediations; only S3358 in StorageView was directly exposed in the IDE. |
+
+Branch order, thresholds, comparison operators, and selected values were kept the same. This table is code-review evidence, not a claim that these edits clear the same number of Sonar diagnostics. They are excluded from the 23 confirmed IDE-row count until the existing IDE findings can be paged and matched.
+
+Verification after this pass:
+- `cmake --build build --config Debug --target gth_unit_tests --parallel 4` — passed.
+- `ctest --test-dir build -C Debug --output-on-failure` — 512/512 completed; 506 passed, 6 skipped, 0 failed.
+- `cmake --build build --config Debug --target GameTransferHubApp --parallel 2` — changed modules and app sources compiled; final link failed with LNK1168 because the running `GameTransferHub.exe` was locked. It remains running.
+- No Sonar rerun was started.
+
 The full `cmake --build build --config Debug --parallel` build compiled the changed modules, unit tests, and app source files, but the final app link failed with LNK1168 because the running `GameTransferHub.exe` could not be overwritten. The app was left running; the build target and full unit tests had already passed independently.
