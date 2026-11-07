@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <thread>
@@ -66,7 +67,7 @@ public:
 
 private:
     static std::wstring key(const ParsedUrl& url) {
-        return url.host + L":" + std::to_wstring(url.port) + (url.https ? L"s" : L"");
+        return std::format(L"{}:{}{}", url.host, url.port, url.https ? L"s" : L"");
     }
 
     SonyHttpResponse failure(const std::string& text) {
@@ -114,7 +115,7 @@ private:
         }
 
         std::wstring rangeHeader;
-        if (maxBytes > 0) rangeHeader = L"Range: bytes=0-" + std::to_wstring(maxBytes - 1);
+        if (maxBytes > 0) rangeHeader = std::format(L"Range: bytes=0-{}", maxBytes - 1);
         if (!WinHttpSendRequest(request, rangeHeader.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : rangeHeader.c_str(),
                                 rangeHeader.empty() ? 0 : static_cast<DWORD>(-1L), WINHTTP_NO_REQUEST_DATA, 0, 0, 0)) {
             return failedWith(GetLastError());
@@ -525,7 +526,7 @@ core::LatestReleaseResult SonyUpdateService::ps4Latest(const std::string& titleI
         return result;
     }
     if (response.status != 200) {
-        result.detail = "Sony answered HTTP " + std::to_string(response.status);
+        result.detail = std::format("Sony answered HTTP {}", response.status);
         return result;
     }
     const auto info = ParseSonyPs4UpdateXml(response.body);
@@ -578,7 +579,7 @@ core::LatestReleaseResult SonyUpdateService::ps5Latest(const std::string& titleI
         return result;
     }
     if (versionFile.status != 200) {
-        result.detail = "Sony answered HTTP " + std::to_string(versionFile.status) + " for the saved link - it may be out of date";
+        result.detail = std::format("Sony answered HTTP {} for the saved link - it may be out of date", versionFile.status);
         return result;
     }
     const auto info = ParseSonyPs5VersionXml(versionFile.body);

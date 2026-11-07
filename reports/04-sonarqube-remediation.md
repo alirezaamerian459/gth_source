@@ -80,3 +80,5 @@ The SFTP directory/transfer buffers and remote report acknowledgement buffer wer
 Nine storage health reason strings now use equivalent `std::format` calls. The unit test target rebuilt, and all 14 focused SMART/NVMe health and reason-summary tests passed. Because the individual IDE rows were not captured, these are candidate `cpp:S6185` matches and are not added to the 23 confirmed issue rows.
 
 Four Sony piece downloader diagnostics/messages now use equivalent `std::format` expressions. The unit test executable rebuilt, both `SonyPieceDownloaderTest` cases passed, and focused diff checking passed. These are candidate matches only; the confirmed IDE-row count remains unchanged.
+
+Four Sony update service text expressions now use equivalent `std::format` calls. The unit test target rebuilt and all 14 `SonyUpdateServiceTest` cases passed. These remain candidate matches, not confirmed IDE rows.
