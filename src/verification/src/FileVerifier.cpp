@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <format>
 
 #include "gth/verification/Sha256.h"
 
@@ -45,8 +46,8 @@ VerificationResult FileVerifier::verify(const std::string& path, long long expec
     }
 
     if (expectedSizeBytes > 0 && actualSize != expectedSizeBytes) {
-        result.errorMessage = "Size mismatch: expected " + std::to_string(expectedSizeBytes) + " bytes, found " +
-                               std::to_string(actualSize) + " bytes";
+        result.errorMessage = std::format("Size mismatch: expected {} bytes, found {} bytes", expectedSizeBytes,
+                                          actualSize);
         return result;
     }
 

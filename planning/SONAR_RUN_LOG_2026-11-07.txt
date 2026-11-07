@@ -263,3 +263,13 @@ Verification:
 - `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=BackupServiceTest.*` — 4 passed.
 - `git diff --check -- src/application/src/BackupService.cpp` — passed.
 - No Sonar re-analysis was run.
+
+### Candidate cleanup — file verification size message
+
+Changed the expected/actual size mismatch text in `FileVerifier.cpp` to `std::format`, keeping the same words, values, and units. This is a candidate match for the IDE-visible string concatenation rule; the corresponding IDE row was not captured and is not included in the 23 confirmed count.
+
+Verification:
+- `cmake --build build --config Debug --target gth_unit_tests --parallel 4` — passed.
+- `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=FileVerifierTest.*` — 11 passed.
+- `git diff --check -- src/verification/src/FileVerifier.cpp` — passed.
+- No Sonar re-analysis was run.
