@@ -2,7 +2,7 @@
 
 ## Scope and baseline
 
-This pass reviewed the captured Sonar issue snapshot and corrected actionable findings in the local working tree while preserving the app's existing workflows and protocol compatibility. No changes were committed or pushed.
+This pass reviewed the captured Sonar issue snapshot and corrected actionable findings in the local working tree while preserving the app's existing workflows and protocol compatibility. A focused local checkpoint was created as commit `8b3c6e6`; no remote push was performed. Additional accept-loop cleanups and verification are recorded in [the IDE run log](../planning/SONAR_RUN_LOG_2026-11-07.txt).
 
 The snapshot belongs to analysis `2680bb86-4582-43e6-9717-94f85666d053`, run on 2026-11-03 against baseline HEAD `32a32b9bab987862e7fc1089354dc0d2d1bf6eea`. It contained 153 open issues: 112 security, 38 reliability, and 22 maintainability in the dashboard's overlapping categories. The issue types in the export were 93 vulnerabilities, 19 bugs, and 41 code smells. These are baseline counts, not the count after this local change.
 
@@ -47,7 +47,7 @@ The local SonarQube Server responds as version 2026.5.3.133540 with status `UP`.
 
 The corrected SonarQube for IDE pass completed in VS Code against the open Desktop workspace. The IDE reached 1,761 of 1,761 Sonar findings across 177 files; VS Code showed 1,763 Problems including two C/C++ IntelliSense configuration errors. The run log in planning/SONAR_RUN_LOG_2026-11-07.txt records progress snapshots and the captured findings.
 
-The configured compilation database is stored in this checkout, but its source-file entries point to the Desktop copy of the project. The Desktop workspace and versioned checkout are not byte-identical. Nine low-risk findings were addressed in the versioned checkout in WinsockCachingProxyServer.cpp, and the const_cast finding was reviewed against the BCryptHashData input-only contract and retained. The best-effort connection logging catches remain in place so logging failures cannot interrupt proxy handling; comments now explain why their bodies are intentionally empty.
+The configured compilation database is stored in this checkout, but its source-file entries point to the Desktop copy of the project. The Desktop workspace and versioned checkout are not byte-identical. The initial checkpoint addressed low-risk findings in WinsockCachingProxyServer.cpp, and a follow-up addressed its accept-loop nesting, fixed-size buffer, worker type, cacheDir parameter passing, and redundant type. The const_cast finding was reviewed against the BCryptHashData input-only contract and retained. The best-effort connection logging catches remain in place so logging failures cannot interrupt proxy handling; comments now explain why their bodies are intentionally empty.
 
 Verification in the versioned checkout:
 - Debug build of gth_acceleratorserver passed.
@@ -57,3 +57,4 @@ Verification in the versioned checkout:
 - Focused git diff --check passed.
 - A separate wrapper test build failed before the changed target because its MSVC 14.51 invocation could not locate the standard header string. The normal Visual Studio 2022 build succeeded and the relevant tests were run directly.
 - The IDE scan has not been rerun. The 1,761 count remains the completed Desktop scan baseline, not a post-fix result. The scan exposed only part of its issue list, so additional findings still need to be enumerated and triaged.
+- The follow-up accept-loop changes passed a new Debug build and all 512 unit tests (506 passed, 6 skipped). No refreshed Sonar analysis was run.

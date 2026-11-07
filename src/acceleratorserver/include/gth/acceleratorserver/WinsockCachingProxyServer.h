@@ -51,7 +51,8 @@ public:
 
 private:
     void acceptLoop(core::AcceleratorServerConfig config);
-    void handleClient(std::uintptr_t clientSocket, std::string clientIp, std::string cacheDir, bool cacheEnabled);
+    void handleClient(std::uintptr_t clientSocket, std::string clientIp, const std::string& cacheDir,
+                      bool cacheEnabled);
 
     MirrorResolveFn resolveMirrorIp_;
     application::IConsoleManager& consoleManager_;

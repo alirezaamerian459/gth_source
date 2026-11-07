@@ -682,7 +682,7 @@ void WinsockCachingProxyServer::acceptLoop(core::AcceleratorServerConfig config)
     u_long nonBlocking = 1;
     ::ioctlsocket(listenSocket, FIONBIO, &nonBlocking);
 
-    std::vector<std::thread> connectionThreads;
+    std::vector<std::jthread> connectionThreads;
     const std::string cacheDir = config.cacheDir;
     const bool cacheEnabled = config.cacheEnabled;
 
@@ -693,22 +693,24 @@ void WinsockCachingProxyServer::acceptLoop(core::AcceleratorServerConfig config)
         timeval tv{};
         tv.tv_usec = 200000;
 
-        if (::select(0, &readSet, nullptr, nullptr, &tv) > 0) {
-            sockaddr_in peerAddr{};
-            int peerAddrLen = sizeof(peerAddr);
-            const SOCKET clientSocket =
-                ::accept(listenSocket, reinterpret_cast<sockaddr*>(&peerAddr), &peerAddrLen);
-            if (clientSocket != INVALID_SOCKET) {
-                u_long blockingMode = 0;
-                ::ioctlsocket(clientSocket, FIONBIO, &blockingMode);
-                char ipBuf[INET_ADDRSTRLEN]{};
-                std::string clientIp;
-                if (::inet_ntop(AF_INET, &peerAddr.sin_addr, ipBuf, sizeof(ipBuf))) clientIp = ipBuf;
-                connectionThreads.emplace_back(&WinsockCachingProxyServer::handleClient, this,
-                                                static_cast<std::uintptr_t>(clientSocket), clientIp, cacheDir,
-                                                cacheEnabled);
-            }
+        if (::select(0, &readSet, nullptr, nullptr, &tv) <= 0) continue;
+
+        sockaddr_in peerAddr{};
+        int peerAddrLen = sizeof(peerAddr);
+        const auto clientSocket =
+            ::accept(listenSocket, reinterpret_cast<sockaddr*>(&peerAddr), &peerAddrLen);
+        if (clientSocket == INVALID_SOCKET) continue;
+
+        u_long blockingMode = 0;
+        ::ioctlsocket(clientSocket, FIONBIO, &blockingMode);
+        std::array<char, INET_ADDRSTRLEN> ipBuf{};
+        std::string clientIp;
+        if (::inet_ntop(AF_INET, &peerAddr.sin_addr, ipBuf.data(), ipBuf.size())) {
+            clientIp = ipBuf.data();
         }
+        connectionThreads.emplace_back(&WinsockCachingProxyServer::handleClient, this,
+                                        static_cast<std::uintptr_t>(clientSocket), clientIp, cacheDir,
+                                        cacheEnabled);
     }
 
     for (auto& t : connectionThreads) {
@@ -720,7 +722,7 @@ void WinsockCachingProxyServer::acceptLoop(core::AcceleratorServerConfig config)
 }
 
 void WinsockCachingProxyServer::handleClient(std::uintptr_t clientSocketHandle, std::string clientIp,
-                                              std::string cacheDir, bool cacheEnabled) {
+                                             const std::string& cacheDir, bool cacheEnabled) {
     const SOCKET clientSocket = static_cast<SOCKET>(clientSocketHandle);
     ProxySession session({.clientSocket = clientSocket,
                           .clientIp = std::move(clientIp),

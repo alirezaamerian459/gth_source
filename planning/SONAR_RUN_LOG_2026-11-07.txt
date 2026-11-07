@@ -69,6 +69,25 @@ The IDE Problems rows did not expose rule keys. The locations below are from the
 
 The IDE showed 80 Sonar problems grouped under WinsockCachingProxyServer.cpp. These fourteen rows are the entries exposed in the captured visible portion; the other findings in this file and the remaining project findings have not been enumerated here.
 
+### Additional proxy findings captured and triaged after the checkpoint
+
+The following rows were visible near the end of the IDE's filtered 80-item list. Their line numbers refer to the Desktop scan target. The Desktop workspace is not identical to the versioned checkout, so each location was matched to code before editing. Status is local and has not been confirmed by a new Sonar analysis.
+
+| Severity | File | Desktop line | Diagnostic message | Status in versioned checkout |
+|---|---|---:|---|---|
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 638 | Use std::byte for byte-oriented memory access. | Retained at the WinSock setsockopt boundary; it requires a const char* byte buffer and no safer behavior-neutral replacement was confirmed. |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 645 | Replace reinterpret_cast with a safer operation. | Retained at the WinSock bind boundary, which requires sockaddr*. |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 655 | Replace reinterpret_cast with a safer operation. | Retained at the WinSock getsockname boundary, which requires sockaddr*. |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 661 | Replace std::thread with std::jthread. | Addressed for connection workers with std::jthread; explicit joins and worker function behavior remain in place. |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 676 | Replace reinterpret_cast with a safer operation. | Retained at the WinSock accept boundary, which requires sockaddr*. |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 680 | Replace C-style char array with std::string or std::array. | Addressed using a fixed-size std::array for inet_ntop's output buffer. |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 682 | Refactor code to avoid nesting more than three control statements. | Addressed with early continues in the accept loop; existing acceptance and forwarding conditions remain unchanged. |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 690 | Replace std::thread with std::jthread. | IDE location does not match the on-disk Desktop file at this line (the join loop is there); exact source-buffer mapping remains open. |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 699 | Pass expensive-to-copy cacheDir by const reference. | Addressed by changing the private handleClient parameter to const std::string&; the thread still owns its argument copy for the full call. |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 700 | Replace redundant type with auto. | Addressed by inferring the type of the SOCKET value from its explicit cast. |
+
+The WinSock casts are intentionally left at native API boundaries. Replacing the Windows API's sockaddr* and const char* parameters with object-representation conversions would add complexity without improving type safety at the call boundary.
+
 ## Remediation and verification after the completed pass
 
 The IDE target was the Desktop copy of the project. Its configured compilation database is stored in this versioned Codex checkout, while the database source-file entries point to the Desktop copy. The relevant source region was compared before editing. Unrelated existing changes in the versioned checkout were preserved.
@@ -84,3 +103,7 @@ Verification:
 - A separate test-target build in build/sonar-desktop-wrapper-all/build failed before reaching the changed target because that build invoked MSVC 14.51 without its standard library headers available (fatal error: cannot open include file: 'string'). The normal Visual Studio 2022 build successfully built and ran the relevant tests directly.
 - The broader git diff --check reported trailing blank lines in tests/unit/test_sidebar_tabs.cpp and tests/unit/test_storage_service.cpp; those pre-existing modified files were not touched in this pass.
 - No Sonar rerun was started; all remediation statuses above remain unconfirmed by a refreshed analysis.
+
+### Follow-up after local checkpoint 8b3c6e6
+
+The additional accept-loop cleanups documented above were applied only in the versioned Codex checkout. Debug builds of `gth_acceleratorserver` and `gth_unit_tests` passed; the focused proxy/local-server filter passed all 35 tests; and the full unit suite passed 506 tests with 6 environment/live-service skips (512 total). No Sonar rerun or remote push was performed.
