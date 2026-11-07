@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstdio>
 #include <fstream>
+#include <format>
 #include <functional>
 #include <map>
 #include <set>
@@ -309,17 +310,18 @@ void classify(long long& bytes, SyncKind& kind, std::string& detail, bool pfsMat
         }
     }
     if (versionOrder < 0 && pfsMatches) {
-        detail = "Installed version " + installedVersion + " is older than Sony's latest (" + latestVersion + "): " +
-                 std::to_string(missingOrDifferent) + " of " + std::to_string(all.size()) +
-                 " pieces certainly need downloading (" + formatSize(bytes) +
-                 "), and same-sized pieces are checked against Sony's SHA-256 checksums.";
+        detail = std::format(
+            "Installed version {} is older than Sony's latest ({}): {} of {} pieces certainly need downloading ({}), "
+            "and same-sized pieces are checked against Sony's SHA-256 checksums.",
+            installedVersion, latestVersion, missingOrDifferent, all.size(), formatSize(bytes));
     } else if (pfsMatches && !versionsKnown) {
         detail = "The installed version is unknown, so same-sized pieces are checked against Sony's SHA-256 checksums "
                  "before the package can be treated as current.";
     } else {
-        detail = "The files differ from Sony's latest package (" + latestVersion + "): " + std::to_string(missingOrDifferent) +
-                 " of " + std::to_string(all.size()) + " pieces certainly need downloading (" + formatSize(bytes) +
-                 "), and pieces of the right size are checked before being kept.";
+        detail = std::format(
+            "The files differ from Sony's latest package ({}): {} of {} pieces certainly need downloading ({}), and "
+            "pieces of the right size are checked before being kept.",
+            latestVersion, missingOrDifferent, all.size(), formatSize(bytes));
     }
 }
 
@@ -412,8 +414,7 @@ SyncResult PackageSyncService::runOnce(const std::string& gameVariantId, SyncMod
             const fs::path local = a.folder / leafOfPath(piece.url);
             const bool sameSize = fs::exists(local, ec) && static_cast<long long>(fs::file_size(local, ec)) == piece.sizeBytes;
             if (sameSize && !piece.sha256.empty()) {
-                report("Checking the existing piece " + std::to_string(position) + " of " + std::to_string(all.size()),
-                       0, piece.sizeBytes);
+                report(std::format("Checking the existing piece {} of {}", position, all.size()), 0, piece.sizeBytes);
                 if (verifier_.verify(local.string(), piece.sizeBytes, piece.sha256).passed) continue;  // already right
             }
             toFetch.push_back(piece);
@@ -444,7 +445,7 @@ SyncResult PackageSyncService::runOnce(const std::string& gameVariantId, SyncMod
 
         const std::string leaf = leafOfPath(piece.url);
         const fs::path staged = staging / (leaf + ".part");
-        const std::string step = "Downloading " + std::to_string(position) + " of " + std::to_string(toFetch.size()) + ": " + leaf;
+        const std::string step = std::format("Downloading {} of {}: {}", position, toFetch.size(), leaf);
         report(step, 0, piece.sizeBytes);
 
         const auto download = downloader_.download(piece.url, staged, piece.sizeBytes, [&](long long soFar) {
@@ -578,8 +579,8 @@ SyncResult PackageSyncService::runOnce(const std::string& gameVariantId, SyncMod
     result.success = true;
     result.message = result.kind == SyncKind::CompleteMetadata
                          ? "Added the metadata piece (" + formatSize(result.bytesDownloaded) + "); the title and version can now be read from the files."
-                         : "Brought the package up to Sony's latest (" + a.latest.version + "): downloaded " +
-                               std::to_string(result.filesDownloaded) + " piece(s), " + formatSize(result.bytesDownloaded) + ".";
+                         : std::format("Brought the package up to Sony's latest ({}): downloaded {} piece(s), {}.",
+                                       a.latest.version, result.filesDownloaded, formatSize(result.bytesDownloaded));
     return result;
 }
 
@@ -636,8 +637,8 @@ std::optional<Ps4UpdateLayout> layoutOfPs4Update(const std::vector<core::Release
         if (i == 0) stem = pieceStem;
     }
     if (packageSizeBytes > 0 && packageSizeBytes != layout.totalBytes) {
-        why = "Sony's pieces of this update add up to " + std::to_string(layout.totalBytes) + " bytes, but the update is " +
-              std::to_string(packageSizeBytes);
+        why = std::format("Sony's pieces of this update add up to {} bytes, but the update is {}", layout.totalBytes,
+                          packageSizeBytes);
         return std::nullopt;
     }
     layout.finalName = stem + ".pkg";
@@ -677,7 +678,7 @@ std::string joinFiles(const std::vector<fs::path>& sources, const fs::path& targ
     if (!out) return "couldn't write to " + target.string() + " (disk full?)";
     out.close();
     if (written != totalBytes) {
-        return "the joined file has " + std::to_string(written) + " of " + std::to_string(totalBytes) + " bytes";
+        return std::format("the joined file has {} of {} bytes", written, totalBytes);
     }
     return {};
 }
@@ -826,9 +827,9 @@ SyncPlan PackageSyncService::planPs4(const std::string& gameVariantId) {
             result.bytesToDownload += piece.sizeBytes;
         }
     }
-    result.detail = "Update " + a->latest.version + " is out (you have " + a->installedVersion + "): " +
-                    std::to_string(a->latest.pieces.size()) + " file(s), " + formatSize(result.bytesToDownload) +
-                    " to download into the game's Updates folder.";
+    result.detail = std::format("Update {} is out (you have {}): {} file(s), {} to download into the game's Updates folder.",
+                                a->latest.version, a->installedVersion, a->latest.pieces.size(),
+                                formatSize(result.bytesToDownload));
     return result;
 }
 
@@ -899,7 +900,7 @@ SyncResult PackageSyncService::runPs4(const std::string& gameVariantId, SyncMode
         const auto& piece = pieces[i];
         const fs::path loose = a->updatesFolder / leafOfPath(piece.url);
         if (fs::exists(loose, ec) && static_cast<long long>(fs::file_size(loose, ec)) == piece.sizeBytes) {
-            report("Checking the existing file " + std::to_string(i + 1) + " of " + std::to_string(pieces.size()), 0, piece.sizeBytes);
+            report(std::format("Checking the existing file {} of {}", i + 1, pieces.size()), 0, piece.sizeBytes);
             if (verifier_.verify(loose.string(), piece.sizeBytes, piece.sha256).passed) {
                 pieceOnDisk[i] = loose;
                 looseReused.push_back(loose);
@@ -933,7 +934,7 @@ SyncResult PackageSyncService::runPs4(const std::string& gameVariantId, SyncMode
         if (cancelled()) return wasCancelled();
         const std::string leaf = leafOfPath(piece.url);
         const fs::path staged = staging / (leaf + ".part");
-        const std::string step = "Downloading " + std::to_string(position) + " of " + std::to_string(toFetch.size()) + ": " + leaf;
+        const std::string step = std::format("Downloading {} of {}: {}", position, toFetch.size(), leaf);
         report(step, 0, piece.sizeBytes);
 
         const auto download = downloader_.download(piece.url, staged, piece.sizeBytes, [&](long long soFar) {
@@ -1027,11 +1028,11 @@ SyncResult PackageSyncService::runPs4(const std::string& gameVariantId, SyncMode
     }
 
     result.success = true;
-    result.message = "Downloaded update " + a->latest.version + " (you had " + a->installedVersion + "): " +
-                     std::to_string(result.filesDownloaded) + " file(s), " + formatSize(result.bytesDownloaded) + ", saved as " +
-                     a->layout.finalName + " in " + a->updatesFolder.string() + ".";
+    result.message = std::format("Downloaded update {} (you had {}): {} file(s), {}, saved as {} in {}.", a->latest.version,
+                                 a->installedVersion, result.filesDownloaded, formatSize(result.bytesDownloaded),
+                                 a->layout.finalName, a->updatesFolder.string());
     if (filesRemoved > 0) {
-        result.message += " Removed " + std::to_string(filesRemoved) + " outdated update file(s) (" + formatSize(freedBytes) + ").";
+        result.message += std::format(" Removed {} outdated update file(s) ({}).", filesRemoved, formatSize(freedBytes));
     }
     return result;
 }
@@ -1135,8 +1136,8 @@ SyncBatchResult PackageSyncService::runAll(SyncMode mode, const SyncCallbacks& c
     for (int round = 1; round <= callbacks.retryRounds && !retryLater.empty() && !batch.cancelled; ++round) {
         if (callbacks.onProgress) {
             SyncProgress waiting;
-            waiting.step = "Waiting before trying " + std::to_string(retryLater.size()) + " failed game(s) again (round " +
-                           std::to_string(round) + " of " + std::to_string(callbacks.retryRounds) + ")";
+            waiting.step = std::format("Waiting before trying {} failed game(s) again (round {} of {})", retryLater.size(),
+                                       round, callbacks.retryRounds);
             callbacks.onProgress(waiting);
         }
         const auto pause = callbacks.retryPause * round;
