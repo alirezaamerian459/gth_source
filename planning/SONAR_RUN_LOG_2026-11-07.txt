@@ -201,3 +201,14 @@ Verification:
 - `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=SonyAutomation*` — 8 passed.
 - `git diff --check -- src/application/src/SonyAutomation.cpp` — passed.
 - No Sonar re-analysis was run.
+
+### Candidate cleanup — timestamp and transfer error buffers
+
+Converted one fixed timestamp buffer in `SonyLinkCopyWatcher.cpp` and one fixed Windows error-message buffer in `LocalFileTransferProvider.cpp` to same-size `std::array` instances. The timestamp format, `FormatMessageW` output limit (511 characters), null termination, and error text conversion remain unchanged. These are candidate matches for the C-style buffer rule; their individual IDE rows were unavailable, so they are not counted among the 23 confirmed issue rows.
+
+Verification:
+- `cmake --build build --config Debug --target gth_captcha --parallel 4` — passed. MSVC also repeated the pre-existing C4244 warning at `SonyLinkCopyWatcher.cpp:442` for the explicit ASCII-only title-ID narrowing conversion; that line was not modified.
+- `cmake --build build --config Debug --target gth_unit_tests --parallel 4` — passed.
+- `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=LocalFileTransferProviderTest.*` — 4 passed.
+- Focused `git diff --check` — passed.
+- No Sonar re-analysis was run.

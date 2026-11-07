@@ -9,6 +9,7 @@
 #include <shobjidl.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstring>
 #include <cwchar>
@@ -250,9 +251,9 @@ std::string LocalTimestamp() {
     const std::time_t now = std::time(nullptr);
     std::tm local{};
     localtime_s(&local, &now);
-    char buffer[32];
-    std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &local);
-    return buffer;
+    std::array<char, 32> buffer;
+    std::strftime(buffer.data(), buffer.size(), "%Y-%m-%d %H:%M:%S", &local);
+    return buffer.data();
 }
 
 // Creates a Desktop shortcut to `targetFile`, named "GTH Latest Update URL.lnk", the first time

@@ -2,6 +2,7 @@
 
 #include <windows.h>
 
+#include <array>
 #include <filesystem>
 
 namespace gth::transfer {
@@ -77,9 +78,10 @@ core::TransferOutcome LocalFileTransferProvider::copyFile(const std::string& sou
         return outcome;
     }
 
-    wchar_t buf[512] = {};
-    ::FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, error, 0, buf, 511, nullptr);
-    const std::string message = wideToUtf8(buf);
+    std::array<wchar_t, 512> buf{};
+    ::FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, error, 0, buf.data(),
+                     static_cast<DWORD>(buf.size() - 1), nullptr);
+    const std::string message = wideToUtf8(buf.data());
     outcome.errorMessage = message.empty() ? ("CopyFileEx failed with error " + std::to_string(error)) : message;
     return outcome;
 }
