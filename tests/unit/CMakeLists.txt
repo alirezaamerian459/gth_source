@@ -46,6 +46,7 @@ add_executable(gth_unit_tests
     test_package_sync_service.cpp
     test_sony_automation.cpp
     test_download_history.cpp
+    test_sidebar_navigation.cpp
     test_sidebar_tabs.cpp
     test_ftp_layout.cpp
     test_windows_firewall_service.cpp

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <set>
 #include <string>
@@ -18,6 +19,66 @@ inline constexpr std::array<const wchar_t*, 15> kSidebarTabs = {
 inline constexpr int kSidebarTabCount = static_cast<int>(kSidebarTabs.size());
 inline constexpr int kSidebarDashboardIndex = 0;
 inline constexpr int kSidebarSettingsIndex = kSidebarTabCount - 1;
+
+inline constexpr int kSidebarGroupCount = 5;
+
+enum class SidebarGroup : int { Workspace = 0, Devices = 1, LibraryData = 2, Administration = 3, Settings = 4 };
+
+inline constexpr SidebarGroup SidebarGroupForLogicalIndex(int index) {
+    switch (index) {
+        case 0:  // Dashboard
+        case 1:  // Games
+        case 2:  // JB
+        case 3:  // Updates
+        case 4:  // Downloads
+        case 7:  // Transfers
+            return SidebarGroup::Workspace;
+        case 6:  // Consoles
+        case 8:  // FTP
+        case 9:  // Network
+            return SidebarGroup::Devices;
+        case 5:   // Storage
+        case 13:  // Backups
+            return SidebarGroup::LibraryData;
+        case 10:  // Logs
+        case 11:  // Reports
+        case 12:  // Enterprise
+            return SidebarGroup::Administration;
+        case 14:  // Settings
+        default:
+            return SidebarGroup::Settings;
+    }
+}
+
+inline constexpr int SidebarGroupRowValue(SidebarGroup group) { return -1 - static_cast<int>(group); }
+
+inline constexpr bool IsSidebarGroupRow(int rowValue) { return rowValue < 0 && rowValue >= -kSidebarGroupCount; }
+
+// Build the rows shown by the owner-drawn navigation list. Group rows are
+// encoded as negative values; page rows keep their stable logical tab index.
+// This keeps visual disclosure independent from the app's routing indices.
+inline std::vector<int> BuildSidebarNavigationRows(const std::vector<int>& visibleTabs,
+                                                   const std::array<bool, kSidebarGroupCount>& expandedGroups) {
+    std::vector<int> rows;
+    rows.reserve(visibleTabs.size() + kSidebarGroupCount);
+
+    for (int groupIndex = 0; groupIndex < kSidebarGroupCount; ++groupIndex) {
+        const auto group = static_cast<SidebarGroup>(groupIndex);
+        const bool hasVisibleTabs = std::any_of(visibleTabs.begin(), visibleTabs.end(), [group](int logicalIndex) {
+            return SidebarGroupForLogicalIndex(logicalIndex) == group;
+        });
+        if (!hasVisibleTabs) continue;
+
+        rows.push_back(SidebarGroupRowValue(group));
+        if (!expandedGroups[static_cast<size_t>(groupIndex)]) continue;
+
+        for (int logicalIndex : visibleTabs) {
+            if (SidebarGroupForLogicalIndex(logicalIndex) == group) rows.push_back(logicalIndex);
+        }
+    }
+
+    return rows;
+}
 
 inline constexpr bool IsSidebarTabHideable(int logicalIndex) {
     return logicalIndex != kSidebarDashboardIndex && logicalIndex != kSidebarSettingsIndex;

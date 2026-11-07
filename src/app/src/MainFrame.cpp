@@ -30,38 +30,9 @@ constexpr int kSettingsIndex = kSidebarSettingsIndex;
 constexpr int kSidebarWidth = 216;
 constexpr int kSidebarItemHeight = 36;
 constexpr int kSidebarPadding = 8;
-constexpr int kSidebarHeaderHeight = 74;
 constexpr int kShellHeaderHeight = 64;
 // Two lines of small text beneath the nav list - the credit/rights footer.
 constexpr int kFooterHeight = 34;
-
-enum class SidebarGroup : int { Workspace = 0, Devices = 1, LibraryData = 2, Administration = 3, Settings = 4 };
-
-SidebarGroup groupForLogicalIndex(int index) {
-    switch (index) {
-        case kDashboardIndex:
-        case kGamesIndex:
-        case kJbIndex:
-        case kUpdatesIndex:
-        case kDownloadsIndex:
-        case kTransfersIndex:
-            return SidebarGroup::Workspace;
-        case kConsolesIndex:
-        case kFtpIndex:
-        case kNetworkIndex:
-            return SidebarGroup::Devices;
-        case kStorageIndex:
-        case kBackupsIndex:
-            return SidebarGroup::LibraryData;
-        case kLogsIndex:
-        case kReportsIndex:
-        case kEnterpriseIndex:
-            return SidebarGroup::Administration;
-        case kSettingsIndex:
-        default:
-            return SidebarGroup::Settings;
-    }
-}
 
 const wchar_t* groupLabel(SidebarGroup group) {
     switch (group) {
@@ -163,19 +134,12 @@ LRESULT MainFrame::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     CRect clientRect;
     GetClientRect(&clientRect);
 
-    CRect productRect(20, 14, kSidebarWidth - 16, 42);
-    productLabel_.Create(m_hWnd, productRect, L"Game Transfer Hub", WS_CHILD | WS_VISIBLE);
-    productLabel_.SetFont(theme::BodyFontBold());
-
-    CRect productSubtitleRect(20, 42, kSidebarWidth - 16, 62);
-    productSubtitle_.Create(m_hWnd, productSubtitleRect, L"Your game library, in one place", WS_CHILD | WS_VISIBLE);
-    productSubtitle_.SetFont(theme::SmallFont());
-
-    CRect sidebarRect(0, kSidebarHeaderHeight, kSidebarWidth, clientRect.Height() - kFooterHeight);
+    CRect sidebarRect(0, kShellHeaderHeight, kSidebarWidth, clientRect.Height() - kFooterHeight);
     sidebar_.Create(m_hWnd, sidebarRect, L"",
-                     WS_CHILD | WS_VISIBLE | LBS_NOTIFY | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | LBS_NOINTEGRALHEIGHT |
-                         WS_VSCROLL,
+                     WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS |
+                         LBS_NOINTEGRALHEIGHT | WS_VSCROLL,
                      0, IDC_SIDEBAR_LIST);
+    ::SetWindowSubclass(sidebar_.m_hWnd, SidebarSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
 
     CRect footerRect(0, clientRect.Height() - kFooterHeight, kSidebarWidth, clientRect.Height());
     footer_.Create(m_hWnd, footerRect,
@@ -183,11 +147,17 @@ LRESULT MainFrame::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
                    WS_CHILD | WS_VISIBLE | SS_CENTER);
     footer_.SetFont(theme::SmallFont());
 
-    CRect contextRect(kSidebarWidth + 28, 13, clientRect.right - 220, 36);
+    CRect navButtonRect(12, 16, 76, 48);
+    navToggleButton_.Create(m_hWnd, navButtonRect, L"\x2630 Hide",
+                            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0, IDC_NAV_TOGGLE_BUTTON);
+    navToggleButton_.SetFont(theme::BodyFont());
+    navToggleButton_.setKind(ModernButton::Kind::Secondary);
+
+    CRect contextRect(88, 12, clientRect.right - 220, 36);
     pageContextLabel_.Create(m_hWnd, contextRect, L"Game Transfer Hub", WS_CHILD | WS_VISIBLE);
     pageContextLabel_.SetFont(theme::SectionFont());
 
-    CRect hintRect(kSidebarWidth + 28, 37, clientRect.right - 220, 56);
+    CRect hintRect(88, 37, clientRect.right - 220, 56);
     pageContextHint_.Create(m_hWnd, hintRect,
                             L"Manage games, consoles, transfers, and backups from one workspace.",
                             WS_CHILD | WS_VISIBLE);
@@ -296,15 +266,19 @@ LRESULT MainFrame::OnEraseBkgnd(UINT, WPARAM wParam, LPARAM, BOOL&) {
     HBRUSH contentBrush = theme::ContentBgBrush();
     ::FillRect(hdc, &clientRect, contentBrush);
 
-    CRect sidebarRect(0, 0, kSidebarWidth, clientRect.bottom);
-    HBRUSH sidebarBrush = theme::SidebarBgBrush();
-    ::FillRect(hdc, &sidebarRect, sidebarBrush);
+    if (sidebarVisible_) {
+        CRect sidebarRect(0, kShellHeaderHeight, kSidebarWidth, clientRect.bottom);
+        HBRUSH sidebarBrush = theme::SidebarBgBrush();
+        ::FillRect(hdc, &sidebarRect, sidebarBrush);
+    }
 
     HPEN separator = ::CreatePen(PS_SOLID, 1, theme::Border());
     HGDIOBJ oldPen = ::SelectObject(hdc, separator);
-    ::MoveToEx(hdc, kSidebarWidth, 0, nullptr);
-    ::LineTo(hdc, kSidebarWidth, clientRect.bottom);
-    ::MoveToEx(hdc, kSidebarWidth, kShellHeaderHeight, nullptr);
+    if (sidebarVisible_) {
+        ::MoveToEx(hdc, kSidebarWidth, kShellHeaderHeight, nullptr);
+        ::LineTo(hdc, kSidebarWidth, clientRect.bottom);
+    }
+    ::MoveToEx(hdc, 0, kShellHeaderHeight, nullptr);
     ::LineTo(hdc, clientRect.right, kShellHeaderHeight);
     ::SelectObject(hdc, oldPen);
     ::DeleteObject(separator);
@@ -353,17 +327,40 @@ LRESULT MainFrame::OnDrawItem(UINT, WPARAM, LPARAM lParam, BOOL&) {
     const int logicalIndex = dis->itemID < visibleLogicalIndices_.size()
                                  ? visibleLogicalIndices_[static_cast<size_t>(dis->itemID)]
                                  : -1;
-    if (logicalIndex < 0) {
-        wchar_t groupText[128]{};
-        sidebar_.GetText(static_cast<int>(dis->itemID), groupText);
+    if (IsSidebarGroupRow(logicalIndex)) {
+        const auto group = static_cast<SidebarGroup>(-1 - logicalIndex);
+        const bool expanded = expandedSidebarGroups_[static_cast<size_t>(group)];
+        if (selected) {
+            CRect pillRect = itemRect;
+            pillRect.DeflateRect(kSidebarPadding, 3);
+            theme::FillRoundRect(dis->hDC, pillRect, 8, theme::AccentSoft());
+        }
+
         CRect headingRect = itemRect;
         headingRect.left += kSidebarPadding + 12;
-        headingRect.top += 6;
+        headingRect.right -= 26;
         HGDIOBJ oldFont = ::SelectObject(dis->hDC, theme::SmallFont());
         ::SetBkMode(dis->hDC, TRANSPARENT);
-        ::SetTextColor(dis->hDC, theme::TextSecondary());
-        ::DrawText(dis->hDC, groupText, -1, &headingRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+        ::SetTextColor(dis->hDC, selected ? theme::Accent() : theme::TextSecondary());
+        ::DrawText(dis->hDC, groupLabel(group), -1, &headingRect,
+                   DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
         ::SelectObject(dis->hDC, oldFont);
+
+        const int centerX = itemRect.right - 18;
+        const int centerY = itemRect.top + itemRect.Height() / 2;
+        HPEN chevronPen = ::CreatePen(PS_SOLID, 1, selected ? theme::Accent() : theme::TextSecondary());
+        HGDIOBJ oldPen = ::SelectObject(dis->hDC, chevronPen);
+        if (expanded) {
+            ::MoveToEx(dis->hDC, centerX - 4, centerY - 2, nullptr);
+            ::LineTo(dis->hDC, centerX, centerY + 2);
+            ::LineTo(dis->hDC, centerX + 4, centerY - 2);
+        } else {
+            ::MoveToEx(dis->hDC, centerX - 2, centerY - 4, nullptr);
+            ::LineTo(dis->hDC, centerX + 2, centerY);
+            ::LineTo(dis->hDC, centerX - 2, centerY + 4);
+        }
+        ::SelectObject(dis->hDC, oldPen);
+        ::DeleteObject(chevronPen);
         return 1;
     }
 
@@ -387,18 +384,17 @@ LRESULT MainFrame::OnDrawItem(UINT, WPARAM, LPARAM lParam, BOOL&) {
     return 1;
 }
 
-// Only the footer_ static is ever a direct child of the frame itself (every view's own statics are
-// parented to that view, which handles WM_CTLCOLORSTATIC on its own) - so this paints it to match
-// the sidebar it sits under rather than the frame's own (unthemed) default background.
+// Every view's own statics are parented to that view, which handles
+// WM_CTLCOLORSTATIC on its own. The sidebar footer is the only frame-level
+// static that needs the navigation surface brush.
 LRESULT MainFrame::OnCtlColorStatic(UINT, WPARAM wParam, LPARAM lParam, BOOL&) {
     HDC hdc = reinterpret_cast<HDC>(wParam);
     ::SetBkMode(hdc, TRANSPARENT);
-    // The parent frame owns the brand/footer and the shell header controls.
-    // Their backgrounds are painted by OnEraseBkgnd, so return the matching
-    // brush to prevent white rectangles when text is refreshed.
+    // The frame owns the footer and shell header controls. Their backgrounds
+    // are painted by OnEraseBkgnd, so return the matching brush on refresh.
     HWND source = reinterpret_cast<HWND>(lParam);
-    const bool sidebarControl = source == productLabel_.m_hWnd || source == productSubtitle_.m_hWnd || source == footer_.m_hWnd;
-    const bool primaryText = source == productLabel_.m_hWnd || source == pageContextLabel_.m_hWnd;
+    const bool sidebarControl = source == footer_.m_hWnd;
+    const bool primaryText = source == pageContextLabel_.m_hWnd;
     ::SetTextColor(hdc, primaryText ? theme::TextPrimary() : theme::TextSecondary());
     return reinterpret_cast<LRESULT>(sidebarControl ? theme::SidebarBgBrush() : theme::ContentBgBrush());
 }
@@ -415,19 +411,93 @@ LRESULT MainFrame::OnSidebarSelChange(WORD, WORD, HWND, BOOL&) {
     if (sel < 0 || sel >= static_cast<int>(visibleLogicalIndices_.size())) return 0;
 
     const int logicalIndex = visibleLogicalIndices_[static_cast<size_t>(sel)];
-    if (logicalIndex < 0) {
-        // Section headings are deliberately not selectable. If keyboard
-        // navigation lands on one, move to the first real page below it.
-        for (int next = sel + 1; next < static_cast<int>(visibleLogicalIndices_.size()); ++next) {
-            if (visibleLogicalIndices_[static_cast<size_t>(next)] >= 0) {
-                sidebar_.SetCurSel(next);
+    if (IsSidebarGroupRow(logicalIndex)) return 0;
+
+    showView(logicalIndex);
+    return 0;
+}
+
+LRESULT MainFrame::SidebarSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR subclassId,
+                                       DWORD_PTR referenceData) {
+    auto* self = reinterpret_cast<MainFrame*>(referenceData);
+    if (!self) return ::DefSubclassProc(hwnd, msg, wParam, lParam);
+
+    const auto groupAtPoint = [self, hwnd](LPARAM point) {
+        const LRESULT hit = ::SendMessage(hwnd, LB_ITEMFROMPOINT, 0, point);
+        if (HIWORD(hit) != 0) return -1;
+        const auto row = static_cast<size_t>(LOWORD(hit));
+        if (row >= self->visibleLogicalIndices_.size()) return -1;
+        const int rowValue = self->visibleLogicalIndices_[row];
+        return IsSidebarGroupRow(rowValue) ? -1 - rowValue : -1;
+    };
+
+    if (msg == WM_LBUTTONDOWN) {
+        const int groupIndex = groupAtPoint(lParam);
+        if (groupIndex >= 0) {
+            self->pressedSidebarGroup_ = groupIndex;
+            ::SetFocus(hwnd);
+            ::SetCapture(hwnd);
+            return 0;
+        }
+    } else if (msg == WM_LBUTTONUP && self->pressedSidebarGroup_ >= 0) {
+        const int pressedGroup = self->pressedSidebarGroup_;
+        self->pressedSidebarGroup_ = -1;
+        if (::GetCapture() == hwnd) ::ReleaseCapture();
+        if (groupAtPoint(lParam) == pressedGroup) {
+            ::SendMessage(::GetParent(hwnd), kSidebarToggleGroupMessage, static_cast<WPARAM>(pressedGroup), 0);
+        }
+        return 0;
+    } else if (msg == WM_KEYDOWN && (wParam == VK_SPACE || wParam == VK_RETURN)) {
+        const LRESULT selected = ::SendMessage(hwnd, LB_GETCURSEL, 0, 0);
+        if (selected >= 0 && static_cast<size_t>(selected) < self->visibleLogicalIndices_.size()) {
+            const int rowValue = self->visibleLogicalIndices_[static_cast<size_t>(selected)];
+            if (IsSidebarGroupRow(rowValue)) {
+                ::SendMessage(::GetParent(hwnd), kSidebarToggleGroupMessage, static_cast<WPARAM>(-1 - rowValue), 1);
+                return 0;
+            }
+        }
+    } else if (msg == WM_CAPTURECHANGED) {
+        self->pressedSidebarGroup_ = -1;
+    } else if (msg == WM_NCDESTROY) {
+        ::RemoveWindowSubclass(hwnd, SidebarSubclassProc, subclassId);
+    }
+
+    return ::DefSubclassProc(hwnd, msg, wParam, lParam);
+}
+
+LRESULT MainFrame::OnSidebarToggleGroup(UINT, WPARAM wParam, LPARAM lParam, BOOL&) {
+    toggleSidebarGroup(static_cast<int>(wParam), lParam != 0);
+    return 0;
+}
+
+void MainFrame::toggleSidebarGroup(int groupIndex, bool keepGroupFocused) {
+    if (groupIndex < 0 || groupIndex >= kSidebarGroupCount) return;
+    const auto groupPosition = static_cast<size_t>(groupIndex);
+    expandedSidebarGroups_[groupPosition] = !expandedSidebarGroups_[groupPosition];
+    populateSidebar(currentLogicalIndex_);
+
+    if (keepGroupFocused) {
+        const int target = SidebarGroupRowValue(static_cast<SidebarGroup>(groupIndex));
+        for (size_t row = 0; row < visibleLogicalIndices_.size(); ++row) {
+            if (visibleLogicalIndices_[row] == target) {
+                sidebar_.SetCurSel(static_cast<int>(row));
+                sidebar_.SetFocus();
                 break;
             }
         }
-        return 0;
     }
+}
 
-    showView(logicalIndex);
+LRESULT MainFrame::OnNavToggleClick(WORD, WORD, HWND, BOOL&) {
+    sidebarVisible_ = !sidebarVisible_;
+    if (sidebarVisible_) {
+        expandedSidebarGroups_[static_cast<size_t>(SidebarGroupForLogicalIndex(currentLogicalIndex_))] = true;
+    }
+    navToggleButton_.SetWindowText(sidebarVisible_ ? L"\x2630 Hide" : L"\x2630 Menu");
+    if (sidebar_.IsWindow()) sidebar_.ShowWindow(sidebarVisible_ ? SW_SHOW : SW_HIDE);
+    if (footer_.IsWindow()) footer_.ShowWindow(sidebarVisible_ ? SW_SHOW : SW_HIDE);
+    layout();
+    ::RedrawWindow(m_hWnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_ERASE);
     return 0;
 }
 
@@ -438,16 +508,15 @@ LRESULT MainFrame::OnGlobalQueueClick(WORD, WORD, HWND, BOOL&) {
         shellStatusLabel_.SetWindowText(L"Sign in to use the transfer queue.");
         return 0;
     }
+    expandedSidebarGroups_[static_cast<size_t>(SidebarGroup::Workspace)] = true;
+    populateSidebar(currentLogicalIndex_);
     selectSidebarLogical(kTransfersIndex);
     showView(kTransfersIndex);
     return 0;
 }
 
-// Rebuilds the sidebar listbox from whichever tabs are currently visible
-// (Settings' hidden-tabs checkboxes), then restores selection to
-// keepLogicalIndex if it's still present - it always is, since Dashboard
-// and Settings can never be hidden, and this is only ever called while the
-// user is on one of those two.
+// Rebuilds the accordion navigation from the pages currently available to
+// this user, then restores the active page selection when its section is open.
 void MainFrame::populateSidebar(int keepLogicalIndex) {
     if (!sidebar_.IsWindow()) return;
 
@@ -457,31 +526,20 @@ void MainFrame::populateSidebar(int keepLogicalIndex) {
     // whatever they've personally chosen to hide - see VisibleSidebarTabIndices.
     sidebar_.ResetContent();
     const auto visibleTabs = VisibleSidebarTabIndices(settings.hiddenTabs, adminAuthService_.isSignedIn());
-    visibleLogicalIndices_.clear();
-    int keepPosition = 0;
-    constexpr std::array<SidebarGroup, 5> groupOrder = {SidebarGroup::Workspace, SidebarGroup::Devices,
-                                                        SidebarGroup::LibraryData, SidebarGroup::Administration,
-                                                        SidebarGroup::Settings};
-    for (const SidebarGroup group : groupOrder) {
-        bool wroteGroup = false;
-        for (int logicalIndex : visibleTabs) {
-            if (groupForLogicalIndex(logicalIndex) != group) continue;
-
-            if (!wroteGroup) {
-                // Negative entries are section rows. Encode the group ordinal so
-                // future drawing and keyboard handling can identify them without
-                // changing the logical tab indices consumed by Settings/tests.
-                const int sectionRow = -1 - static_cast<int>(group);
-                visibleLogicalIndices_.push_back(sectionRow);
-                sidebar_.AddString(groupLabel(group));
-                wroteGroup = true;
-            }
-
-            const int row = static_cast<int>(visibleLogicalIndices_.size());
-            visibleLogicalIndices_.push_back(logicalIndex);
-            if (logicalIndex == keepLogicalIndex) keepPosition = row;
-            sidebar_.AddString(kSidebarTabs[static_cast<size_t>(logicalIndex)]);
+    visibleLogicalIndices_ = BuildSidebarNavigationRows(visibleTabs, expandedSidebarGroups_);
+    int keepPosition = -1;
+    for (size_t row = 0; row < visibleLogicalIndices_.size(); ++row) {
+        const int rowValue = visibleLogicalIndices_[row];
+        if (IsSidebarGroupRow(rowValue)) {
+            const auto group = static_cast<SidebarGroup>(-1 - rowValue);
+            std::wstring accessibleLabel = groupLabel(group);
+            accessibleLabel += expandedSidebarGroups_[static_cast<size_t>(group)] ? L", expanded" : L", collapsed";
+            sidebar_.AddString(accessibleLabel.c_str());
+            continue;
         }
+
+        if (rowValue == keepLogicalIndex) keepPosition = static_cast<int>(row);
+        sidebar_.AddString(kSidebarTabs[static_cast<size_t>(rowValue)]);
     }
 
     sidebar_.SetCurSel(keepPosition);
@@ -512,6 +570,7 @@ void MainFrame::applyThemeToWindow() {
 
 void MainFrame::onSettingsChanged() {
     applyThemeToWindow();
+    expandedSidebarGroups_[static_cast<size_t>(SidebarGroup::Settings)] = true;
     populateSidebar(kSettingsIndex);
     ::RedrawWindow(m_hWnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_ERASE | RDW_UPDATENOW);
 }
@@ -570,6 +629,7 @@ void MainFrame::showView(int index) {
 
     if (currentView_ && currentView_ != newView) ::ShowWindow(currentView_, SW_HIDE);
     currentView_ = newView;
+    currentLogicalIndex_ = index;
     ::ShowWindow(currentView_, SW_SHOW);
 
     // Keep the shell context consistent even when a view is opened from a
@@ -580,14 +640,32 @@ void MainFrame::showView(int index) {
         pageContextHint_.SetWindowText(L"A quick view of your library, storage, and connection status.");
     } else if (index == kJbIndex) {
         pageContextHint_.SetWindowText(L"Browse JB games found under local 'hacked' or 'p30day' folders, with local package and DLC markers.");
+    } else if (index == kGamesIndex) {
+        pageContextHint_.SetWindowText(L"Browse games found across your registered storage locations.");
+    } else if (index == kUpdatesIndex) {
+        pageContextHint_.SetWindowText(L"Check game updates, manage versions, and sync packages.");
+    } else if (index == kDownloadsIndex) {
+        pageContextHint_.SetWindowText(L"Review downloaded files and recent download activity.");
+    } else if (index == kStorageIndex) {
+        pageContextHint_.SetWindowText(L"Add storage, organize drives into categories, and scan for games.");
+    } else if (index == kConsolesIndex) {
+        pageContextHint_.SetWindowText(L"Register consoles and check their network connection.");
     } else if (index == kTransfersIndex) {
         pageContextHint_.SetWindowText(L"Monitor downloads, updates, console sends, and backups in one queue.");
+    } else if (index == kFtpIndex) {
+        pageContextHint_.SetWindowText(L"Manage file-transfer connections, local hosting, and network tools.");
+    } else if (index == kNetworkIndex) {
+        pageContextHint_.SetWindowText(L"Review the network interfaces and addresses available to GTH.");
+    } else if (index == kLogsIndex) {
+        pageContextHint_.SetWindowText(L"Review recent application activity and diagnostic messages.");
+    } else if (index == kReportsIndex) {
+        pageContextHint_.SetWindowText(L"Review summaries of your game library and storage.");
+    } else if (index == kEnterpriseIndex) {
+        pageContextHint_.SetWindowText(L"Manage central-server and agent connections.");
     } else if (index == kBackupsIndex) {
         pageContextHint_.SetWindowText(L"Protect your local game library and restore it when you need it.");
     } else if (index == kSettingsIndex) {
         pageContextHint_.SetWindowText(L"Adjust appearance, access, automation, and advanced tools.");
-    } else {
-        pageContextHint_.SetWindowText(L"Choose an item to get started, or use Queue to see active work.");
     }
 }
 
@@ -596,17 +674,20 @@ void MainFrame::layout() {
     GetClientRect(&clientRect);
 
     if (sidebar_.IsWindow())
-        sidebar_.MoveWindow(0, kSidebarHeaderHeight, kSidebarWidth, clientRect.Height() - kFooterHeight - kSidebarHeaderHeight);
+        sidebar_.MoveWindow(0, kShellHeaderHeight, kSidebarWidth, clientRect.Height() - kFooterHeight - kShellHeaderHeight);
     if (footer_.IsWindow()) {
         footer_.MoveWindow(0, clientRect.Height() - kFooterHeight, kSidebarWidth, kFooterHeight);
     }
 
-    if (pageContextLabel_.IsWindow()) pageContextLabel_.MoveWindow(kSidebarWidth + 28, 13, clientRect.right - kSidebarWidth - 248, 24);
-    if (pageContextHint_.IsWindow()) pageContextHint_.MoveWindow(kSidebarWidth + 28, 37, clientRect.right - kSidebarWidth - 248, 20);
+    if (navToggleButton_.IsWindow()) navToggleButton_.MoveWindow(12, 16, 64, 32);
+    const int contextWidth = std::max(0, static_cast<int>(clientRect.right) - 220 - 88);
+    if (pageContextLabel_.IsWindow()) pageContextLabel_.MoveWindow(88, 12, contextWidth, 24);
+    if (pageContextHint_.IsWindow()) pageContextHint_.MoveWindow(88, 37, contextWidth, 20);
     if (shellStatusLabel_.IsWindow()) shellStatusLabel_.MoveWindow(clientRect.right - 205, 15, 85, 23);
     if (globalQueueButton_.IsWindow()) globalQueueButton_.MoveWindow(clientRect.right - 108, 13, 80, 32);
 
-    CRect contentRect(kSidebarWidth, kShellHeaderHeight, clientRect.right, clientRect.bottom);
+    const int contentLeft = sidebarVisible_ ? kSidebarWidth : 0;
+    CRect contentRect(contentLeft, kShellHeaderHeight, clientRect.right, clientRect.bottom);
     if (dashboardView_.IsWindow()) dashboardView_.MoveWindow(&contentRect);
     if (gamesView_.IsWindow()) gamesView_.MoveWindow(&contentRect);
     if (jbGamesView_.IsWindow()) jbGamesView_.MoveWindow(&contentRect);

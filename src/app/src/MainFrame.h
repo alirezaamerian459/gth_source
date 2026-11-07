@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <filesystem>
 #include <vector>
 
@@ -25,6 +26,7 @@
 #include "BackupsView.h"
 #include "ComingSoonView.h"
 #include "ModernButton.h"
+#include "SidebarTabs.h"
 #include "gth/application/devices/IConsoleManager.h"
 #include "gth/application/enterprise/IAgentService.h"
 #include "gth/application/enterprise/ICentralServerService.h"
@@ -54,6 +56,7 @@
 // Posted to the frame at the end of startup so the firewall fix runs once the
 // window is up, not in the middle of creating it.
 constexpr UINT kAutoAllowFirewallMessage = WM_APP + 41;
+constexpr UINT kSidebarToggleGroupMessage = WM_APP + 42;
 
 class MainFrame : public CFrameWindowImpl<MainFrame> {
 public:
@@ -96,7 +99,9 @@ public:
         MESSAGE_HANDLER(WM_MEASUREITEM, OnMeasureItem)
         MESSAGE_HANDLER(WM_DRAWITEM, OnDrawItem)
         MESSAGE_HANDLER(WM_CTLCOLORSTATIC, OnCtlColorStatic)
+        MESSAGE_HANDLER(kSidebarToggleGroupMessage, OnSidebarToggleGroup)
         COMMAND_HANDLER(IDC_SIDEBAR_LIST, LBN_SELCHANGE, OnSidebarSelChange)
+        COMMAND_HANDLER(IDC_NAV_TOGGLE_BUTTON, BN_CLICKED, OnNavToggleClick)
         COMMAND_HANDLER(IDC_GLOBAL_QUEUE_BUTTON, BN_CLICKED, OnGlobalQueueClick)
         CHAIN_MSG_MAP(CFrameWindowImpl<MainFrame>)
     END_MSG_MAP()
@@ -111,8 +116,12 @@ private:
     LRESULT OnMeasureItem(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
     LRESULT OnDrawItem(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
     LRESULT OnCtlColorStatic(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
+    LRESULT OnSidebarToggleGroup(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
     LRESULT OnSidebarSelChange(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnNavToggleClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnGlobalQueueClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    static LRESULT CALLBACK SidebarSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
+                                                 UINT_PTR subclassId, DWORD_PTR referenceData);
 
     void showView(int index);
     void layout();
@@ -121,6 +130,7 @@ private:
     void applyThemeToWindow();
     void onSettingsChanged();
     void selectSidebarLogical(int logicalIndex);
+    void toggleSidebarGroup(int groupIndex, bool keepGroupFocused);
 
     gth::application::IStorageService& storageService_;
     gth::application::IGameIndexer& gameIndexer_;
@@ -158,24 +168,23 @@ private:
     PosterCache posterCache_;
 
     CListBox sidebar_;
-    // Brand and section labels keep the navigation legible when the list is
-    // grouped into task-oriented areas.
-    CStatic productLabel_;
-    CStatic productSubtitle_;
     // Rights/credit footer beneath the sidebar's nav list - always visible, unlike the splash
     // screen's own copy of the same wording, which is only up for a couple of seconds at launch.
     CStatic footer_;
     CStatic pageContextLabel_;
     CStatic pageContextHint_;
     CStatic shellStatusLabel_;
+    ModernButton navToggleButton_;
     ModernButton globalQueueButton_;
     // Position in sidebar_ -> logical kXIndex, rebuilt by populateSidebar().
-    // Negative values are non-selectable section headings.
-    // whenever the visible-tab set changes (Settings' hidden-tabs
-    // checkboxes) - the sidebar only ever contains a filtered subset of
-    // kSidebarItems, so a listbox row position is no longer the same thing
-    // as a tab's logical index once any tab is hidden.
+    // Negative values identify expandable section rows; nonnegative values
+    // are stable page indices. The sidebar only contains a filtered subset
+    // of the page list, so row positions are never used as route indices.
     std::vector<int> visibleLogicalIndices_;
+    std::array<bool, kSidebarGroupCount> expandedSidebarGroups_{{true, false, false, false, false}};
+    bool sidebarVisible_ = true;
+    int currentLogicalIndex_ = kSidebarDashboardIndex;
+    int pressedSidebarGroup_ = -1;
 
     DashboardView dashboardView_;
     GamesView gamesView_;
