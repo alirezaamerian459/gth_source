@@ -191,3 +191,13 @@ Verification:
 - `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=Win32NetworkInterfaceDetectorTest.*:NetworkInterfaceInfoTest.*` — 5 passed.
 - Focused `git diff --check` — passed.
 - No Sonar re-analysis was run.
+
+### Candidate cleanup — Sony automation text formatting
+
+Converted two fixed 32-character time/size buffers in `SonyAutomation.cpp` to same-size `std::array` buffers. Also replaced the three `std::to_string` concatenation branches in the internal duration formatter with equivalent `std::format` expressions (`h m`, `m`, and `s` forms). The timestamp patterns, units, precision, and branch thresholds are unchanged. The IDE did not expose individual rows for this file, so these five locations are candidates only and do not increase the 23 confirmed-row count.
+
+Verification:
+- `cmake --build build --config Debug --target gth_unit_tests --parallel 4` — passed.
+- `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=SonyAutomation*` — 8 passed.
+- `git diff --check -- src/application/src/SonyAutomation.cpp` — passed.
+- No Sonar re-analysis was run.

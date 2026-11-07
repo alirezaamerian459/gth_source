@@ -1,8 +1,10 @@
 #include "gth/application/indexing/SonyAutomation.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdio>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <sstream>
@@ -47,28 +49,28 @@ bool hasCurrentSettingsVersion(const std::string& text) {
 }
 
 std::string formatSize(long long bytes) {
-    char buffer[32];
+    std::array<char, 32> buffer;
     if (bytes >= 1024LL * 1024 * 1024) {
-        snprintf(buffer, sizeof(buffer), "%.2f GB", static_cast<double>(bytes) / 1024.0 / 1024.0 / 1024.0);
+        std::snprintf(buffer.data(), buffer.size(), "%.2f GB", static_cast<double>(bytes) / 1024.0 / 1024.0 / 1024.0);
     } else {
-        snprintf(buffer, sizeof(buffer), "%.1f MB", static_cast<double>(bytes) / 1024.0 / 1024.0);
+        std::snprintf(buffer.data(), buffer.size(), "%.1f MB", static_cast<double>(bytes) / 1024.0 / 1024.0);
     }
-    return buffer;
+    return buffer.data();
 }
 
 std::string formatDuration(std::chrono::seconds duration) {
     const long long total = duration.count();
-    if (total >= 3600) return std::to_string(total / 3600) + "h " + std::to_string((total % 3600) / 60) + "m";
-    if (total >= 60) return std::to_string(total / 60) + "m";
-    return std::to_string(total) + "s";
+    if (total >= 3600) return std::format("{}h {}m", total / 3600, (total % 3600) / 60);
+    if (total >= 60) return std::format("{}m", total / 60);
+    return std::format("{}s", total);
 }
 
 std::string formatWhen(std::time_t when) {
     std::tm local{};
     localtime_s(&local, &when);
-    char buffer[32];
-    std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M", &local);
-    return buffer;
+    std::array<char, 32> buffer;
+    std::strftime(buffer.data(), buffer.size(), "%Y-%m-%d %H:%M", &local);
+    return buffer.data();
 }
 
 constexpr char kReportMarker[] = "=== ";
