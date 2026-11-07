@@ -130,4 +130,13 @@ Verification for the StorageView cleanup:
 - `cmake --build build --config Debug --target GameTransferHubApp --parallel 2` — compiled `StorageView.cpp`, then final app linking failed with LNK1168 because the running `GameTransferHub.exe` locked the output. The existing app was left running.
 - No refreshed Sonar analysis was run, so the IDE finding count has not been revalidated against the modified checkout.
 
+### Candidate cleanup — BackupsView fixed buffers
+
+The VS Code Explorer showed eight problems for `src/app/src/BackupsView.cpp`, but the individual rows were not available from the current IDE capture. Review found two fixed `wchar_t[MAX_PATH]` buffers in the backup destination picker. Both were converted to same-size `std::array<wchar_t, MAX_PATH>` buffers, with `.data()` passed to the Windows Shell APIs. This matches the `cpp:S5945` pattern confirmed in `StorageView.cpp`; because the BackupsView messages were not captured, these two are recorded as likely candidates and are not included in the 23 confirmed findings count.
+
+Verification:
+- `git diff --check -- src/app/src/BackupsView.cpp` — passed.
+- `cmake --build build --config Debug --target GameTransferHubApp --parallel 2` — compiled `BackupsView.cpp`, then final app linking failed with LNK1168 because the running `GameTransferHub.exe` locked the output. The existing app was left running.
+- No new Sonar analysis was started.
+
 The full `cmake --build build --config Debug --parallel` build compiled the changed modules, unit tests, and app source files, but the final app link failed with LNK1168 because the running `GameTransferHub.exe` could not be overwritten. The app was left running; the build target and full unit tests had already passed independently.

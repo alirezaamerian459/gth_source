@@ -3,6 +3,7 @@
 #include <shlobj.h>
 
 #include <algorithm>
+#include <array>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -309,16 +310,16 @@ LRESULT BackupsView::OnRefreshClick(WORD, WORD, HWND, BOOL&) { refresh(); return
 LRESULT BackupsView::OnBrowseClick(WORD, WORD, HWND, BOOL&) {
     const HRESULT result = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     const bool initializedHere = SUCCEEDED(result);
-    wchar_t display[MAX_PATH]{};
+    std::array<wchar_t, MAX_PATH> display{};
     BROWSEINFOW info{};
     info.hwndOwner = m_hWnd;
-    info.pszDisplayName = display;
+    info.pszDisplayName = display.data();
     info.lpszTitle = L"Choose a restore destination folder";
     info.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
     LPITEMIDLIST item = ::SHBrowseForFolderW(&info);
     if (item) {
-        wchar_t path[MAX_PATH]{};
-        if (::SHGetPathFromIDListW(item, path)) restorePathEdit_.SetWindowText(path);
+        std::array<wchar_t, MAX_PATH> path{};
+        if (::SHGetPathFromIDListW(item, path.data())) restorePathEdit_.SetWindowText(path.data());
         ::CoTaskMemFree(item);
     }
     if (initializedHere) ::CoUninitialize();
