@@ -1,6 +1,7 @@
 #include "gth/storage/SmartHealth.h"
 
 #include <algorithm>
+#include <format>
 
 namespace gth::storage {
 
@@ -153,22 +154,22 @@ HealthAssessment assessAtaHealth(const std::vector<SmartAttribute>& attributes, 
         } else if (reallocated <= 500) {
             points = 40;
         }
-        score.deduct(points, "Reallocated sectors: " + std::to_string(reallocated));
+        score.deduct(points, std::format("Reallocated sectors: {}", reallocated));
     }
     if (const auto pending = counter(197)) {
-        score.deduct(sectorCountPenalty(pending, 10, 20, 20, 35), "Pending sectors: " + std::to_string(pending));
+        score.deduct(sectorCountPenalty(pending, 10, 20, 20, 35), std::format("Pending sectors: {}", pending));
     }
     if (const auto uncorrectable = counter(198)) {
-        score.deduct(sectorCountPenalty(uncorrectable, 10, 20, 20, 35), "Uncorrectable sectors: " + std::to_string(uncorrectable));
+        score.deduct(sectorCountPenalty(uncorrectable, 10, 20, 20, 35), std::format("Uncorrectable sectors: {}", uncorrectable));
     }
     if (const auto reported = counter(187)) {
-        score.deduct(reported <= 5 ? 10 : 25, "Uncorrectable errors: " + std::to_string(reported));
+        score.deduct(reported <= 5 ? 10 : 25, std::format("Uncorrectable errors: {}", reported));
     }
     if (const auto endToEnd = counter(184)) {
-        score.deduct(20, "End-to-end errors: " + std::to_string(endToEnd));
+        score.deduct(20, std::format("End-to-end errors: {}", endToEnd));
     }
     if (const auto spinRetries = counter(10)) {
-        score.deduct(10, "Spin retries: " + std::to_string(spinRetries));
+        score.deduct(10, std::format("Spin retries: {}", spinRetries));
     }
 
     // 3. SSD wear: these attributes report the life left directly as their normalised value (100 = new).
@@ -178,7 +179,7 @@ HealthAssessment assessAtaHealth(const std::vector<SmartAttribute>& attributes, 
         const auto* attribute = readLifeCounters ? find(attributes, id) : nullptr;
         if (attribute == nullptr || attribute->current < 1 || attribute->current > 100) continue;
         if (attribute->current < 100) {
-            score.cap(attribute->current, std::string("SSD life remaining: ") + std::to_string(attribute->current) + "%");
+            score.cap(attribute->current, std::format("SSD life remaining: {}%", attribute->current));
         }
     }
 
@@ -211,12 +212,12 @@ HealthAssessment assessNvmeHealth(const NvmeHealth& health) {
     if (health.criticalWarning & 0x08) score.cap(10, "The drive has gone read-only");
     if (health.criticalWarning & 0x10) score.cap(10, "The drive's volatile-memory backup has failed");
     if (health.spareThreshold > 0 && health.availableSpare < health.spareThreshold) {
-        score.cap(10, "Available spare " + std::to_string(health.availableSpare) + "% is below the threshold");
+        score.cap(10, std::format("Available spare {}% is below the threshold", health.availableSpare));
     }
 
     // Percentage used is the drive's own estimate of rated endurance consumed.
     const int used = std::min<int>(health.percentageUsed, 100);
-    if (used > 0) score.cap(100 - used, "Drive wear: " + std::to_string(health.percentageUsed) + "% of its rated life used");
+    if (used > 0) score.cap(100 - used, std::format("Drive wear: {}% of its rated life used", health.percentageUsed));
 
     score.percent = std::clamp(score.percent, 0, 100);
     return {score.percent, score.percent < 100 ? score.detail : std::string()};

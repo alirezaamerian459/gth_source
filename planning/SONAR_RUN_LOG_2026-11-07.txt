@@ -223,3 +223,13 @@ Verification:
 - `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=CentralServerListenerTest.*` — 2 passed, including the sender/listener acknowledgement path.
 - Focused `git diff --check` — passed.
 - No Sonar re-analysis was run.
+
+### Candidate cleanup — storage health reason formatting
+
+Replaced nine manual numeric string concatenations in `SmartHealth.cpp` with `std::format`, preserving each reason label, number, percent sign, branch condition, and text. The specific IDE rows for this file were not captured, so these nine locations are candidate matches for `cpp:S6185` and are excluded from the 23 confirmed-row count.
+
+Verification:
+- `cmake --build build --config Debug --target gth_unit_tests --parallel 4` — passed.
+- `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=SmartAssessTest.*:NvmeHealthTest.*:SummarizeDetailTest.*` — 14 passed.
+- `git diff --check -- src/storage_detection/src/SmartHealth.cpp` — passed.
+- No Sonar re-analysis was run.
