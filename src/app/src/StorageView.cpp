@@ -1,6 +1,8 @@
 #include "StorageView.h"
 
 #include <algorithm>
+#include <array>
+#include <format>
 #include <unordered_set>
 
 #include "gth/core/enums/StorageStatus.h"
@@ -14,28 +16,39 @@ constexpr int kMargin = 24;
 // data (see SmartHealth.h); where a disk can't be read that way, Windows' Healthy / Warning / Unhealthy shows up as
 // 100 / 50 / 10.
 std::wstring healthText(const std::optional<int>& percent) {
-    if (!percent) return L"Unknown";
-    const wchar_t* rating = *percent >= 90 ? L"Excellent" : *percent >= 70 ? L"Good" : *percent >= 40 ? L"Fair" : *percent >= 20 ? L"Poor" : L"Critical";
-    return std::to_wstring(*percent) + L"%  " + rating;
+    if (!percent.has_value()) return L"Unknown";
+
+    const wchar_t* rating = L"Critical";
+    if (*percent >= 90) {
+        rating = L"Excellent";
+    } else if (*percent >= 70) {
+        rating = L"Good";
+    } else if (*percent >= 40) {
+        rating = L"Fair";
+    } else if (*percent >= 20) {
+        rating = L"Poor";
+    }
+
+    return std::format(L"{}%  {}", *percent, rating);
 }
 
 std::wstring temperatureText(const std::optional<int>& celsius) {
-    if (!celsius) return L"Unknown";
-    wchar_t buffer[32];
-    swprintf_s(buffer, L"%d°C", *celsius);
-    return buffer;
+    if (!celsius.has_value()) return L"Unknown";
+    std::array<wchar_t, 32> buffer{};
+    swprintf_s(buffer.data(), buffer.size(), L"%d°C", *celsius);
+    return buffer.data();
 }
 
 std::wstring formatSizeBytes(unsigned long long bytes) {
     if (bytes == 0) return L"-";
-    wchar_t buffer[48];
+    std::array<wchar_t, 48> buffer{};
     const double gb = static_cast<double>(bytes) / 1024.0 / 1024.0 / 1024.0;
     if (gb >= 1024.0) {
-        swprintf_s(buffer, L"%.2f TB", gb / 1024.0);
+        swprintf_s(buffer.data(), buffer.size(), L"%.2f TB", gb / 1024.0);
     } else {
-        swprintf_s(buffer, L"%.1f GB", gb);
+        swprintf_s(buffer.data(), buffer.size(), L"%.1f GB", gb);
     }
-    return buffer;
+    return buffer.data();
 }
 
 std::wstring getEditText(CEdit& edit) {

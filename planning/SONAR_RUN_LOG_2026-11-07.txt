@@ -108,4 +108,26 @@ Verification:
 
 The additional accept-loop cleanups documented above were applied only in the versioned Codex checkout. Debug builds of `gth_acceleratorserver` and `gth_unit_tests` passed; the focused proxy/local-server filter passed all 35 tests; and the full unit suite passed 506 tests with 6 environment/live-service skips (512 total). No Sonar rerun or remote push was performed.
 
+### Follow-up — StorageView findings exposed by the IDE
+
+The VS Code SonarQube Findings tree showed a 17-finding group. Its first eight visible records mapped by message, line, and column to `src/app/src/StorageView.cpp` in the Desktop scan copy:
+
+| Rule | Desktop line / column | Finding | Status in versioned checkout |
+|---|---:|---|---|
+| cpp:S7172 | 16:9 | Use `has_value()` or another member function to clarify an optional presence check. | Addressed with `percent.has_value()`; no value or branch change. |
+| cpp:S3358 | 17:114 | Extract nested conditional operator. | Addressed by equivalent ordered rating branches. |
+| cpp:S3358 | 17:87 | Extract nested conditional operator. | Addressed by equivalent ordered rating branches. |
+| cpp:S3358 | 17:60 | Extract nested conditional operator. | Addressed by equivalent ordered rating branches. |
+| cpp:S6185 | 18:11 | Use `std::format` instead of manual string concatenation. | Addressed with the same integer, percent sign, two spaces, and rating text. |
+| cpp:S7172 | 22:9 | Use `has_value()` or another member function to clarify an optional presence check. | Addressed with `celsius.has_value()`; no value or branch change. |
+| cpp:S5945 | 23:4 | Replace C-style character array with `std::string` or `std::array`. | Addressed with a same-size `std::array<wchar_t, 32>`. |
+| cpp:S5945 | 30:4 | Replace C-style character array with `std::string` or `std::array`. | Addressed with a same-size `std::array<wchar_t, 48>`. |
+
+The remaining nine entries in this 17-finding group were not visible in the captured tree and are still untriaged. The open IDE did not yield a safe screenshot or input channel; its local H2 cache is locked while the IDE is running. No second analysis was started. The findings view still reported 1,761 of 1,761 overall. Across the two documented proxy batches and these eight StorageView rows, 23 distinct visible findings have a behavior-preserving code disposition; this is far below the requested 80% threshold of 1,409 findings, which remains open.
+
+Verification for the StorageView cleanup:
+- `git diff --check -- src/app/src/StorageView.cpp` — passed.
+- `cmake --build build --config Debug --target GameTransferHubApp --parallel 2` — compiled `StorageView.cpp`, then final app linking failed with LNK1168 because the running `GameTransferHub.exe` locked the output. The existing app was left running.
+- No refreshed Sonar analysis was run, so the IDE finding count has not been revalidated against the modified checkout.
+
 The full `cmake --build build --config Debug --parallel` build compiled the changed modules, unit tests, and app source files, but the final app link failed with LNK1168 because the running `GameTransferHub.exe` could not be overwritten. The app was left running; the build target and full unit tests had already passed independently.
