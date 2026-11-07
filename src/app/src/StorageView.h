@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -25,6 +26,13 @@ public:
         MESSAGE_HANDLER(WM_CTLCOLORSTATIC, OnCtlColorStatic)
         COMMAND_ID_HANDLER(IDC_RESCAN_BUTTON, OnRescanClick)
         COMMAND_ID_HANDLER(IDC_STORAGE_ADD_BUTTON, OnAddStorageClick)
+        COMMAND_ID_HANDLER(IDC_STORAGE_CATEGORY_COMBO, OnCategorySelectionChanged)
+        COMMAND_ID_HANDLER(IDC_STORAGE_CATEGORY_CREATE_BUTTON, OnCreateCategoryClick)
+        COMMAND_ID_HANDLER(IDC_STORAGE_CATEGORY_RENAME_BUTTON, OnRenameCategoryClick)
+        COMMAND_ID_HANDLER(IDC_STORAGE_CATEGORY_DELETE_BUTTON, OnDeleteCategoryClick)
+        COMMAND_ID_HANDLER(IDC_STORAGE_CATEGORY_STORAGE_COMBO, OnCategoryStorageSelectionChanged)
+        COMMAND_ID_HANDLER(IDC_STORAGE_CATEGORY_ADD_STORAGE_BUTTON, OnAddStorageToCategoryClick)
+        COMMAND_ID_HANDLER(IDC_STORAGE_CATEGORY_REMOVE_STORAGE_BUTTON, OnRemoveStorageFromCategoryClick)
         NOTIFY_CODE_HANDLER(NM_CUSTOMDRAW, OnListViewCustomDraw)
     END_MSG_MAP()
 
@@ -40,6 +48,13 @@ private:
     LRESULT OnCtlColorStatic(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
     LRESULT OnRescanClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnAddStorageClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnCategorySelectionChanged(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnCreateCategoryClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnRenameCategoryClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnDeleteCategoryClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnCategoryStorageSelectionChanged(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnAddStorageToCategoryClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnRemoveStorageFromCategoryClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnListViewCustomDraw(int idCtrl, LPNMHDR pnmh, BOOL& bHandled);
 
     // Starts a background rescan if one isn't already running; shared by the
@@ -54,8 +69,12 @@ private:
     // drive spread over several disks shows each disk's health and temperature without any clicking.
     struct RowInfo {
         bool flagged = false;
+        std::string storageId;
     };
     std::vector<RowInfo> lastRows_;
+    std::vector<std::string> categoryIds_;
+    std::vector<std::string> categoryStorageIds_;
+    std::string selectedCategoryId_;
 
     // detectAndSyncLocalStorages() calls into Win32/WMI drive probes that -
     // even with LocalStorageDetector/WindowsStorageHealthProvider's own
@@ -73,5 +92,16 @@ private:
     CEdit addPathEdit_;
     ModernButton addPathButton_;
     CStatic addStatusLabel_;
+    CStatic categoryLabel_;
+    CStatic categoryStorageLabel_;
+    CComboBox categoryCombo_;
+    CEdit categoryNameEdit_;
+    ModernButton createCategoryButton_;
+    ModernButton renameCategoryButton_;
+    ModernButton deleteCategoryButton_;
+    CComboBox categoryStorageCombo_;
+    ModernButton addToCategoryButton_;
+    ModernButton removeFromCategoryButton_;
+    CStatic categoryStatusLabel_;
     CListViewCtrl listView_;
 };

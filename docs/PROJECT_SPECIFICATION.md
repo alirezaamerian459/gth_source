@@ -21,6 +21,7 @@ The precise supported console generations, archive layouts, external-service ter
 The source tree and current documentation contain code for:
 
 1. Local storage detection, scanning, and game catalog/indexing.
+   - Owner-approved Storage-tab categories let users create named groups and assign any known storage to multiple groups.
 2. Update metadata, downloads, verification, and archive replacement.
 3. File transfers and FTP-related connections.
 4. Network discovery/reachability, local services, and remote health reporting.
@@ -43,6 +44,8 @@ These are areas present in the repository, not guarantees that every flow is com
 2. Confirm the approved production scope for CAPTCHA-related integrations and external-site automation. The old bypass proposal documents were removed from the working tree; Git history retains them. Existing production call paths still need review.
 3. Confirm which external services are intended to remain supported and what data may be sent to them.
 4. Establish an actually verified Windows build and CTest baseline. The documented commands are not a record of a successful run.
-5. Select the next product goal and define its requirements and acceptance criteria.
+5. Select the next product goal after phase 04 and define its requirements and acceptance criteria.
+
+The Storage-tab category feature is approved and tracked in [phase 04](../planning/phases/04-storage-categories/instructions.md). Its acceptance criteria and many-to-many storage membership are recorded in [ADR-0003](decisions/0003-storage-categories.md).
 
 Record approved changes here and in the relevant ADR. Historical notes or code samples do not constitute product approval.

@@ -9,6 +9,7 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(gth_unit_tests
     test_storage_repository.cpp
+    test_storage_categories.cpp
     test_storage_service.cpp
     test_archive_path_resolver.cpp
     test_game_indexer_service.cpp

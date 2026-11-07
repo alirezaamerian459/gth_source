@@ -16,7 +16,7 @@ struct Migration {
 // location, RootPath unique so a rescan reconciles by path instead of
 // creating duplicates, Type/Status indexed since those are the fields
 // filtered/grouped on most often (dashboard summary, storage list).
-constexpr std::array<Migration, 16> kMigrations{{
+constexpr std::array<Migration, 17> kMigrations{{
     {1, R"SQL(
         CREATE TABLE Storages (
             StorageId TEXT NOT NULL PRIMARY KEY,
@@ -382,6 +382,24 @@ constexpr std::array<Migration, 16> kMigrations{{
     // removed or renumbered.
     {16, R"SQL(
         ALTER TABLE AppSettings ADD COLUMN SteamGridDbApiKey TEXT NOT NULL DEFAULT '';
+    )SQL"},
+    // User-defined Storage-tab groups. Membership is many-to-many so a
+    // storage can appear in every category the owner wants without copying
+    // or moving the underlying storage record.
+    {17, R"SQL(
+        CREATE TABLE StorageCategories (
+            CategoryId TEXT NOT NULL PRIMARY KEY,
+            Name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+            CreatedAt TEXT NOT NULL,
+            UpdatedAt TEXT NOT NULL
+        );
+        CREATE TABLE StorageCategoryMemberships (
+            CategoryId TEXT NOT NULL REFERENCES StorageCategories(CategoryId) ON DELETE CASCADE,
+            StorageId TEXT NOT NULL REFERENCES Storages(StorageId) ON DELETE CASCADE,
+            PRIMARY KEY (CategoryId, StorageId)
+        );
+        CREATE INDEX IX_StorageCategoryMemberships_StorageId
+            ON StorageCategoryMemberships(StorageId);
     )SQL"},
 }};
 

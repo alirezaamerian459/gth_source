@@ -17,6 +17,15 @@ public:
     void update(const core::Storage& storage) override;
     void remove(const std::string& storageId) override;
 
+    std::vector<core::StorageCategory> getCategories() override;
+    std::optional<core::StorageCategory> getCategoryById(const std::string& categoryId) override;
+    void addCategory(const core::StorageCategory& category) override;
+    void updateCategory(const core::StorageCategory& category) override;
+    void removeCategory(const std::string& categoryId) override;
+    std::vector<std::string> getStorageIdsForCategory(const std::string& categoryId) override;
+    void addStorageToCategory(const std::string& categoryId, const std::string& storageId) override;
+    void removeStorageFromCategory(const std::string& categoryId, const std::string& storageId) override;
+
 private:
     Database& db_;
 };

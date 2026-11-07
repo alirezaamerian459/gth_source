@@ -4,9 +4,11 @@
 #include <vector>
 
 #include "gth/application/storage/AddStorageResult.h"
+#include "gth/application/storage/StorageCategoryResult.h"
 #include "gth/application/storage/StorageSummary.h"
 #include "gth/application/storage/StorageSyncResult.h"
 #include "gth/core/entities/Storage.h"
+#include "gth/core/entities/StorageCategory.h"
 #include "gth/core/storage/PhysicalDiskHealth.h"
 
 namespace gth::application {
@@ -20,6 +22,16 @@ public:
     virtual ~IStorageService() = default;
 
     virtual std::vector<core::Storage> getAllStorages() = 0;
+    virtual std::vector<core::StorageCategory> getCategories() = 0;
+    virtual std::vector<std::string> getStorageIdsForCategory(const std::string& categoryId) = 0;
+
+    virtual StorageCategoryResult createCategory(const std::string& name) = 0;
+    virtual StorageCategoryResult renameCategory(const std::string& categoryId, const std::string& name) = 0;
+    virtual StorageCategoryResult deleteCategory(const std::string& categoryId) = 0;
+    virtual StorageCategoryResult addStorageToCategory(const std::string& categoryId,
+                                                       const std::string& storageId) = 0;
+    virtual StorageCategoryResult removeStorageFromCategory(const std::string& categoryId,
+                                                            const std::string& storageId) = 0;
 
     // Runs detection for locally reachable storages and reconciles the
     // results with the database: new drives are added, previously known

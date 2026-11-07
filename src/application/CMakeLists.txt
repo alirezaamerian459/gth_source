@@ -1,5 +1,6 @@
 add_library(gth_application STATIC
     src/StorageService.cpp
+    src/StorageCategoryService.cpp
     src/GameIndexerService.cpp
     src/GameLibraryService.cpp
     src/UpdateCheckService.cpp

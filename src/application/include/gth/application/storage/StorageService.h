@@ -21,6 +21,15 @@ public:
                    core::IStorageHealthProvider* healthProvider = nullptr);
 
     std::vector<core::Storage> getAllStorages() override;
+    std::vector<core::StorageCategory> getCategories() override;
+    std::vector<std::string> getStorageIdsForCategory(const std::string& categoryId) override;
+    StorageCategoryResult createCategory(const std::string& name) override;
+    StorageCategoryResult renameCategory(const std::string& categoryId, const std::string& name) override;
+    StorageCategoryResult deleteCategory(const std::string& categoryId) override;
+    StorageCategoryResult addStorageToCategory(const std::string& categoryId,
+                                               const std::string& storageId) override;
+    StorageCategoryResult removeStorageFromCategory(const std::string& categoryId,
+                                                    const std::string& storageId) override;
     StorageSyncResult detectAndSyncLocalStorages() override;
     AddStorageResult addManualStorage(const std::string& path) override;
     StorageSummary getSummary() override;

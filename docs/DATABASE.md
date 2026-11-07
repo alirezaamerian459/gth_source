@@ -2,11 +2,11 @@
 
 GTH uses SQLite. The migration source of truth is src/database/src/Migrator.cpp. Migrations are ordered by version and tracked with SQLite's PRAGMA user_version. The migration list currently contains versions 1 through 16; inspect the code before changing schema or relying on a particular version in user data.
 
-The migration runner enables WAL mode and applies each migration newer than the database's current user_version. Add a new migration with the next version. Never edit or renumber a migration that may already have shipped.
+The migration runner enables WAL mode and applies each migration newer than the database's current user_version. The migration list currently contains versions 1 through 17. Add a new migration with the next version. Never edit or renumber a migration that may already have shipped.
 
 ## Tables by area
 
-- Storage and indexing: Storages, Games, GameVariants, GameVersions, GameFiles, ScanJobs.
+- Storage and indexing: Storages, StorageCategories, StorageCategoryMemberships, Games, GameVariants, GameVersions, GameFiles, ScanJobs.
 - Updates: UpdateInfos, UpdateJobs, UpdateHistories.
 - Transfers and consoles: TransferJobs, TransferItems, Consoles.
 - Remote health: RemoteNodes, NasDevices, Disks, HealthSnapshots, TemperatureSnapshots.
@@ -14,6 +14,8 @@ The migration runner enables WAL mode and applies each migration newer than the 
 - Network lookup and URL capture: CdnMirrors, CdnUrls.
 
 Column definitions, indexes, foreign keys, and defaults are defined in the migration SQL, not duplicated here.
+
+Storage categories are user-defined names stored separately from storage locations. `StorageCategoryMemberships` is a many-to-many join table, so one storage can appear in several categories. Removing a category or a storage clears only its memberships; category deletion does not remove the underlying storage or its indexed games.
 
 ## Sensitive data
 

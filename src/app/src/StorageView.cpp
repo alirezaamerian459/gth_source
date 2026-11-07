@@ -1,12 +1,13 @@
 #include "StorageView.h"
 
 #include <algorithm>
+#include <unordered_set>
 
 #include "gth/core/enums/StorageStatus.h"
 #include "gth/core/enums/StorageType.h"
 
 namespace {
-constexpr int kTopAreaHeight = 116;
+constexpr int kTopAreaHeight = 184;
 constexpr int kMargin = 24;
 
 // The health estimate with a plain rating beside it ("87%  Good"). The percentage comes from the disk's own SMART
@@ -39,8 +40,9 @@ std::wstring formatSizeBytes(unsigned long long bytes) {
 
 std::wstring getEditText(CEdit& edit) {
     const int len = edit.GetWindowTextLength();
-    std::wstring text(static_cast<size_t>(len), L'\0');
-    if (len > 0) edit.GetWindowText(text.data(), len + 1);
+    std::wstring text(static_cast<size_t>(len) + 1, L'\0');
+    const int copied = edit.GetWindowText(text.data(), len + 1);
+    text.resize(static_cast<size_t>(std::max(0, copied)));
     return text;
 }
 
@@ -91,6 +93,72 @@ LRESULT StorageView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     addStatusLabel_.Create(m_hWnd, addStatusRect, L"", WS_CHILD | WS_VISIBLE);
     addStatusLabel_.SetFont(theme::BodyFont());
 
+    CRect categoryLabelRect(kMargin, 111, kMargin + 72, 134);
+    categoryLabel_.Create(m_hWnd, categoryLabelRect, L"Category", WS_CHILD | WS_VISIBLE);
+    categoryLabel_.SetFont(theme::BodyFont());
+
+    CRect categoryComboRect(kMargin + 76, 108, kMargin + 286, 220);
+    categoryCombo_.Create(m_hWnd, categoryComboRect, L"",
+                          WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, 0,
+                          IDC_STORAGE_CATEGORY_COMBO);
+    categoryCombo_.SetFont(theme::BodyFont());
+
+    CRect categoryNameRect(kMargin + 296, 108, kMargin + 486, 134);
+    categoryNameEdit_.Create(m_hWnd, categoryNameRect, L"",
+                             WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL, 0,
+                             IDC_STORAGE_CATEGORY_NAME_EDIT);
+    categoryNameEdit_.SetFont(theme::BodyFont());
+    categoryNameEdit_.SendMessage(EM_SETCUEBANNER, FALSE, reinterpret_cast<LPARAM>(L"Category name"));
+
+    CRect createCategoryRect(kMargin + 496, 108, kMargin + 594, 136);
+    createCategoryButton_.Create(m_hWnd, createCategoryRect, L"Create",
+                                 WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
+                                 IDC_STORAGE_CATEGORY_CREATE_BUTTON);
+    createCategoryButton_.SetFont(theme::BodyFont());
+    createCategoryButton_.setKind(ModernButton::Kind::Secondary);
+
+    CRect renameCategoryRect(kMargin + 602, 108, kMargin + 700, 136);
+    renameCategoryButton_.Create(m_hWnd, renameCategoryRect, L"Rename",
+                                 WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
+                                 IDC_STORAGE_CATEGORY_RENAME_BUTTON);
+    renameCategoryButton_.SetFont(theme::BodyFont());
+    renameCategoryButton_.setKind(ModernButton::Kind::Secondary);
+
+    CRect deleteCategoryRect(kMargin + 708, 108, kMargin + 806, 136);
+    deleteCategoryButton_.Create(m_hWnd, deleteCategoryRect, L"Delete",
+                                 WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
+                                 IDC_STORAGE_CATEGORY_DELETE_BUTTON);
+    deleteCategoryButton_.SetFont(theme::BodyFont());
+    deleteCategoryButton_.setKind(ModernButton::Kind::Secondary);
+
+    CRect categoryStorageLabelRect(kMargin, 147, kMargin + 72, 170);
+    categoryStorageLabel_.Create(m_hWnd, categoryStorageLabelRect, L"Add storage", WS_CHILD | WS_VISIBLE);
+    categoryStorageLabel_.SetFont(theme::BodyFont());
+
+    CRect categoryStorageComboRect(kMargin + 76, 144, kMargin + 396, 260);
+    categoryStorageCombo_.Create(m_hWnd, categoryStorageComboRect, L"",
+                                 WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, 0,
+                                 IDC_STORAGE_CATEGORY_STORAGE_COMBO);
+    categoryStorageCombo_.SetFont(theme::BodyFont());
+
+    CRect addToCategoryRect(kMargin + 406, 144, kMargin + 536, 172);
+    addToCategoryButton_.Create(m_hWnd, addToCategoryRect, L"Add to Category",
+                                WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
+                                IDC_STORAGE_CATEGORY_ADD_STORAGE_BUTTON);
+    addToCategoryButton_.SetFont(theme::BodyFont());
+    addToCategoryButton_.setKind(ModernButton::Kind::Secondary);
+
+    CRect removeFromCategoryRect(kMargin + 544, 144, kMargin + 704, 172);
+    removeFromCategoryButton_.Create(m_hWnd, removeFromCategoryRect, L"Remove Selected",
+                                     WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
+                                     IDC_STORAGE_CATEGORY_REMOVE_STORAGE_BUTTON);
+    removeFromCategoryButton_.SetFont(theme::BodyFont());
+    removeFromCategoryButton_.setKind(ModernButton::Kind::Secondary);
+
+    CRect categoryStatusRect(kMargin + 714, 149, kMargin + 1040, 168);
+    categoryStatusLabel_.Create(m_hWnd, categoryStatusRect, L"", WS_CHILD | WS_VISIBLE);
+    categoryStatusLabel_.SetFont(theme::BodyFont());
+
     CRect clientRect;
     GetClientRect(&clientRect);
     CRect listRect(kMargin, kTopAreaHeight, clientRect.right - kMargin, clientRect.bottom - kMargin);
@@ -118,6 +186,12 @@ LRESULT StorageView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 LRESULT StorageView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {
     const int width = LOWORD(lParam);
     const int height = HIWORD(lParam);
+    if (addStatusLabel_.IsWindow()) {
+        addStatusLabel_.MoveWindow(kMargin + 560, 74, std::max(120, width - (kMargin + 560) - kMargin), 18);
+    }
+    if (categoryStatusLabel_.IsWindow()) {
+        categoryStatusLabel_.MoveWindow(kMargin + 714, 149, std::max(120, width - (kMargin + 714) - kMargin), 19);
+    }
     if (listView_.IsWindow()) {
         listView_.MoveWindow(kMargin, kTopAreaHeight, std::max(100, width - 2 * kMargin),
                               std::max(100, height - kTopAreaHeight - kMargin));
@@ -163,9 +237,52 @@ void StorageView::refresh() {
     listView_.DeleteAllItems();
     lastRows_.clear();
     const auto storages = service_->getAllStorages();
+    const auto categories = service_->getCategories();
+
+    categoryCombo_.ResetContent();
+    categoryIds_.clear();
+    categoryCombo_.AddString(L"All storages");
+    int selectedCategoryIndex = 0;
+    bool selectedCategoryFound = selectedCategoryId_.empty();
+    for (const auto& category : categories) {
+        const int index = categoryCombo_.AddString(Utf8ToWide(category.name).c_str());
+        categoryIds_.push_back(category.categoryId);
+        if (category.categoryId == selectedCategoryId_) {
+            selectedCategoryIndex = index;
+            selectedCategoryFound = true;
+        }
+    }
+    if (!selectedCategoryFound) selectedCategoryId_.clear();
+    categoryCombo_.SetCurSel(selectedCategoryIndex);
+
+    std::unordered_set<std::string> memberIds;
+    if (!selectedCategoryId_.empty()) {
+        for (const auto& storageId : service_->getStorageIdsForCategory(selectedCategoryId_)) {
+            memberIds.insert(storageId);
+        }
+    }
+
+    categoryStorageCombo_.ResetContent();
+    categoryStorageIds_.clear();
+    if (!selectedCategoryId_.empty()) {
+        for (const auto& storage : storages) {
+            if (memberIds.contains(storage.storageId)) continue;
+            std::wstring label = Utf8ToWide(storage.name) + L" (" + Utf8ToWide(storage.rootPath) + L")";
+            categoryStorageCombo_.AddString(label.c_str());
+            categoryStorageIds_.push_back(storage.storageId);
+        }
+    }
+    categoryStorageCombo_.SetCurSel(categoryStorageIds_.empty() ? -1 : 0);
+    const bool hasCategory = !selectedCategoryId_.empty();
+    renameCategoryButton_.EnableWindow(hasCategory);
+    deleteCategoryButton_.EnableWindow(hasCategory);
+    categoryStorageCombo_.EnableWindow(hasCategory && !categoryStorageIds_.empty());
+    addToCategoryButton_.EnableWindow(hasCategory && !categoryStorageIds_.empty());
+    removeFromCategoryButton_.EnableWindow(hasCategory);
 
     int row = 0;
     for (const auto& s : storages) {
+        if (!selectedCategoryId_.empty() && !memberIds.contains(s.storageId)) continue;
         listView_.InsertItem(row, Utf8ToWide(s.name).c_str());
         listView_.SetItemText(row, 1, Utf8ToWide(gth::core::toString(s.type)).c_str());
         listView_.SetItemText(row, 2, Utf8ToWide(s.rootPath).c_str());
@@ -183,7 +300,7 @@ void StorageView::refresh() {
         listView_.SetItemText(row, 7, temperatureText(s.temperatureCelsius).c_str());
         listView_.SetItemText(row, 8, s.healthAlertReason ? Utf8ToWide(*s.healthAlertReason).c_str() : L"");
 
-        lastRows_.push_back({s.healthAlertReason.has_value()});
+        lastRows_.push_back({s.healthAlertReason.has_value(), s.storageId});
         row++;
 
         // Every physical disk behind a drive that combines several, each with its own health and temperature.
@@ -201,7 +318,7 @@ void StorageView::refresh() {
 
             const bool inTrouble = (disk.healthPercent && *disk.healthPercent < 100) ||
                                    (disk.temperatureCelsius && *disk.temperatureCelsius > gth::core::kOverheatThresholdCelsius);
-            lastRows_.push_back({inTrouble});
+            lastRows_.push_back({inTrouble, {}});
             row++;
         }
     }
@@ -225,6 +342,119 @@ LRESULT StorageView::OnAddStorageClick(WORD, WORD, HWND, BOOL&) {
     } else {
         addStatusLabel_.SetWindowText(Utf8ToWide(result.errorMessage).c_str());
     }
+    return 0;
+}
+
+LRESULT StorageView::OnCategorySelectionChanged(WORD, WORD, HWND, BOOL&) {
+    const int selectedIndex = categoryCombo_.GetCurSel();
+    selectedCategoryId_.clear();
+    if (selectedIndex > 0 && static_cast<size_t>(selectedIndex - 1) < categoryIds_.size()) {
+        selectedCategoryId_ = categoryIds_[static_cast<size_t>(selectedIndex - 1)];
+    }
+    categoryStatusLabel_.SetWindowText(L"");
+    refresh();
+    return 0;
+}
+
+LRESULT StorageView::OnCreateCategoryClick(WORD, WORD, HWND, BOOL&) {
+    if (!service_) return 0;
+
+    const auto result = service_->createCategory(WideToUtf8(getEditText(categoryNameEdit_)));
+    if (!result.success) {
+        categoryStatusLabel_.SetWindowText(Utf8ToWide(result.errorMessage).c_str());
+        return 0;
+    }
+
+    selectedCategoryId_ = result.categoryId;
+    categoryNameEdit_.SetWindowText(L"");
+    categoryStatusLabel_.SetWindowText(L"Category created.");
+    refresh();
+    return 0;
+}
+
+LRESULT StorageView::OnRenameCategoryClick(WORD, WORD, HWND, BOOL&) {
+    if (!service_) return 0;
+    if (selectedCategoryId_.empty()) {
+        categoryStatusLabel_.SetWindowText(L"Select a category to rename.");
+        return 0;
+    }
+
+    const auto result = service_->renameCategory(selectedCategoryId_, WideToUtf8(getEditText(categoryNameEdit_)));
+    categoryStatusLabel_.SetWindowText(result.success ? L"Category renamed."
+                                                        : Utf8ToWide(result.errorMessage).c_str());
+    if (result.success) refresh();
+    return 0;
+}
+
+LRESULT StorageView::OnDeleteCategoryClick(WORD, WORD, HWND, BOOL&) {
+    if (!service_) return 0;
+    if (selectedCategoryId_.empty()) {
+        categoryStatusLabel_.SetWindowText(L"Select a category to delete.");
+        return 0;
+    }
+
+    const int answer = ::MessageBoxW(m_hWnd,
+                                     L"Delete this category? The storage locations and their game data will remain.",
+                                     L"Delete Storage Category", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+    if (answer != IDYES) return 0;
+
+    const auto result = service_->deleteCategory(selectedCategoryId_);
+    if (!result.success) {
+        categoryStatusLabel_.SetWindowText(Utf8ToWide(result.errorMessage).c_str());
+        return 0;
+    }
+
+    selectedCategoryId_.clear();
+    categoryNameEdit_.SetWindowText(L"");
+    categoryStatusLabel_.SetWindowText(L"Category deleted. Storages are unchanged.");
+    refresh();
+    return 0;
+}
+
+LRESULT StorageView::OnCategoryStorageSelectionChanged(WORD, WORD, HWND, BOOL&) {
+    addToCategoryButton_.EnableWindow(!selectedCategoryId_.empty() && categoryStorageCombo_.GetCurSel() >= 0);
+    return 0;
+}
+
+LRESULT StorageView::OnAddStorageToCategoryClick(WORD, WORD, HWND, BOOL&) {
+    if (!service_) return 0;
+    if (selectedCategoryId_.empty()) {
+        categoryStatusLabel_.SetWindowText(L"Select a category first.");
+        return 0;
+    }
+
+    const int selectedIndex = categoryStorageCombo_.GetCurSel();
+    if (selectedIndex < 0 || static_cast<size_t>(selectedIndex) >= categoryStorageIds_.size()) {
+        categoryStatusLabel_.SetWindowText(L"No unassigned storage is available for this category.");
+        return 0;
+    }
+
+    const auto result = service_->addStorageToCategory(
+        selectedCategoryId_, categoryStorageIds_[static_cast<size_t>(selectedIndex)]);
+    categoryStatusLabel_.SetWindowText(result.success ? L"Storage added to category."
+                                                        : Utf8ToWide(result.errorMessage).c_str());
+    if (result.success) refresh();
+    return 0;
+}
+
+LRESULT StorageView::OnRemoveStorageFromCategoryClick(WORD, WORD, HWND, BOOL&) {
+    if (!service_) return 0;
+    if (selectedCategoryId_.empty()) {
+        categoryStatusLabel_.SetWindowText(L"Select a category first.");
+        return 0;
+    }
+
+    const int row = listView_.GetSelectedIndex();
+    if (row < 0 || static_cast<size_t>(row) >= lastRows_.size() || lastRows_[static_cast<size_t>(row)].storageId.empty()) {
+        categoryStatusLabel_.SetWindowText(L"Select a storage row to remove from this category.");
+        return 0;
+    }
+
+    const auto result = service_->removeStorageFromCategory(
+        selectedCategoryId_, lastRows_[static_cast<size_t>(row)].storageId);
+    categoryStatusLabel_.SetWindowText(result.success ? L"Storage removed from category."
+                                                        : Utf8ToWide(result.errorMessage).c_str());
+    if (result.success) refresh();
     return 0;
 }
 

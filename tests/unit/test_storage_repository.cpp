@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <string>
+#include <vector>
+
 #include "gth/database/Database.h"
 #include "gth/database/GameFileRepository.h"
 #include "gth/database/GameRepository.h"
@@ -217,4 +220,48 @@ TEST(StorageRepositoryTest, UpdateChangesPersistedValues) {
     ASSERT_TRUE(found.has_value());
     EXPECT_EQ(found->name, "New Name");
     EXPECT_EQ(found->freeSpaceBytes, 200);
+}
+
+TEST(StorageRepositoryTest, CategoryMembershipsPersistManyToManyAndCategoryDeletionKeepsStorages) {
+    Database db(":memory:");
+    Migrator::applyMigrations(db);
+    StorageRepository repo(db);
+
+    Storage drive1;
+    drive1.name = "HDD 1";
+    drive1.rootPath = "D:\\";
+    repo.add(drive1);
+
+    Storage drive2;
+    drive2.name = "HDD 2";
+    drive2.rootPath = "E:\\";
+    repo.add(drive2);
+
+    StorageCategory category1;
+    category1.name = "PlayStation 4";
+    repo.addCategory(category1);
+
+    StorageCategory category2;
+    category2.name = "Archive";
+    repo.addCategory(category2);
+
+    repo.addStorageToCategory(category1.categoryId, drive1.storageId);
+    repo.addStorageToCategory(category1.categoryId, drive2.storageId);
+    repo.addStorageToCategory(category2.categoryId, drive1.storageId);
+
+    const auto categories = repo.getCategories();
+    ASSERT_EQ(categories.size(), 2u);
+    EXPECT_EQ(repo.getStorageIdsForCategory(category1.categoryId),
+              (std::vector<std::string>{drive1.storageId, drive2.storageId}));
+    EXPECT_EQ(repo.getStorageIdsForCategory(category2.categoryId), (std::vector<std::string>{drive1.storageId}));
+
+    repo.removeCategory(category1.categoryId);
+
+    EXPECT_FALSE(repo.getCategoryById(category1.categoryId).has_value());
+    EXPECT_TRUE(repo.getById(drive1.storageId).has_value());
+    EXPECT_TRUE(repo.getById(drive2.storageId).has_value());
+    EXPECT_EQ(repo.getStorageIdsForCategory(category2.categoryId), (std::vector<std::string>{drive1.storageId}));
+
+    repo.remove(drive1.storageId);
+    EXPECT_TRUE(repo.getStorageIdsForCategory(category2.categoryId).empty());
 }

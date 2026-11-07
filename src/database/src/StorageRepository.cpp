@@ -11,6 +11,8 @@ constexpr const char* kSelectColumns =
     "Status, FileSystem, LastScan, IsAvailable, CreatedAt, UpdatedAt, HealthPercent, TemperatureCelsius, "
     "HealthAlertReason";
 
+constexpr const char* kSelectCategoryColumns = "CategoryId, Name, CreatedAt, UpdatedAt";
+
 Storage mapRow(const Statement& stmt) {
     Storage storage;
     storage.storageId = stmt.columnText(0);
@@ -30,6 +32,15 @@ Storage mapRow(const Statement& stmt) {
     if (const auto temp = stmt.columnInt64OrNull(14)) storage.temperatureCelsius = static_cast<int>(*temp);
     storage.healthAlertReason = stmt.columnTextOrNull(15);
     return storage;
+}
+
+core::StorageCategory mapCategoryRow(const Statement& stmt) {
+    core::StorageCategory category;
+    category.categoryId = stmt.columnText(0);
+    category.name = stmt.columnText(1);
+    category.createdAt = stmt.columnText(2);
+    category.updatedAt = stmt.columnText(3);
+    return category;
 }
 
 }  // namespace
@@ -116,6 +127,10 @@ void StorageRepository::remove(const std::string& storageId) {
     // as permanently orphaned - still shown in the library, with no way to
     // remove it since nothing points back to a storage that no longer
     // exists. Cascade it by hand instead.
+    auto deleteCategoryMemberships = db_.prepare("DELETE FROM StorageCategoryMemberships WHERE StorageId = ?;");
+    deleteCategoryMemberships.bind(1, storageId);
+    deleteCategoryMemberships.step();
+
     auto deleteFiles = db_.prepare(
         "DELETE FROM GameFiles WHERE GameVersionId IN ("
         "SELECT GameVersionId FROM GameVersions WHERE GameVariantId IN ("
@@ -143,6 +158,75 @@ void StorageRepository::remove(const std::string& storageId) {
 
     auto stmt = db_.prepare("DELETE FROM Storages WHERE StorageId = ?;");
     stmt.bind(1, storageId);
+    stmt.step();
+}
+
+std::vector<core::StorageCategory> StorageRepository::getCategories() {
+    auto stmt = db_.prepare(std::string("SELECT ") + kSelectCategoryColumns +
+                            " FROM StorageCategories ORDER BY Name COLLATE NOCASE, CategoryId;");
+    std::vector<core::StorageCategory> results;
+    while (stmt.step()) results.push_back(mapCategoryRow(stmt));
+    return results;
+}
+
+std::optional<core::StorageCategory> StorageRepository::getCategoryById(const std::string& categoryId) {
+    auto stmt = db_.prepare(std::string("SELECT ") + kSelectCategoryColumns +
+                            " FROM StorageCategories WHERE CategoryId = ?;");
+    stmt.bind(1, categoryId);
+    if (!stmt.step()) return std::nullopt;
+    return mapCategoryRow(stmt);
+}
+
+void StorageRepository::addCategory(const core::StorageCategory& category) {
+    auto stmt = db_.prepare("INSERT INTO StorageCategories (CategoryId, Name, CreatedAt, UpdatedAt) "
+                            "VALUES (?, ?, ?, ?);");
+    stmt.bind(1, category.categoryId);
+    stmt.bind(2, category.name);
+    stmt.bind(3, category.createdAt);
+    stmt.bind(4, category.updatedAt);
+    stmt.step();
+}
+
+void StorageRepository::updateCategory(const core::StorageCategory& category) {
+    auto stmt = db_.prepare("UPDATE StorageCategories SET Name = ?, UpdatedAt = ? WHERE CategoryId = ?;");
+    stmt.bind(1, category.name);
+    stmt.bind(2, category.updatedAt);
+    stmt.bind(3, category.categoryId);
+    stmt.step();
+}
+
+void StorageRepository::removeCategory(const std::string& categoryId) {
+    auto deleteMemberships = db_.prepare("DELETE FROM StorageCategoryMemberships WHERE CategoryId = ?;");
+    deleteMemberships.bind(1, categoryId);
+    deleteMemberships.step();
+
+    auto stmt = db_.prepare("DELETE FROM StorageCategories WHERE CategoryId = ?;");
+    stmt.bind(1, categoryId);
+    stmt.step();
+}
+
+std::vector<std::string> StorageRepository::getStorageIdsForCategory(const std::string& categoryId) {
+    auto stmt = db_.prepare(
+        "SELECT membership.StorageId FROM StorageCategoryMemberships AS membership "
+        "JOIN Storages AS storage ON storage.StorageId = membership.StorageId "
+        "WHERE membership.CategoryId = ? ORDER BY storage.Name COLLATE NOCASE, storage.StorageId;");
+    stmt.bind(1, categoryId);
+    std::vector<std::string> results;
+    while (stmt.step()) results.push_back(stmt.columnText(0));
+    return results;
+}
+
+void StorageRepository::addStorageToCategory(const std::string& categoryId, const std::string& storageId) {
+    auto stmt = db_.prepare("INSERT OR IGNORE INTO StorageCategoryMemberships (CategoryId, StorageId) VALUES (?, ?);");
+    stmt.bind(1, categoryId);
+    stmt.bind(2, storageId);
+    stmt.step();
+}
+
+void StorageRepository::removeStorageFromCategory(const std::string& categoryId, const std::string& storageId) {
+    auto stmt = db_.prepare("DELETE FROM StorageCategoryMemberships WHERE CategoryId = ? AND StorageId = ?;");
+    stmt.bind(1, categoryId);
+    stmt.bind(2, storageId);
     stmt.step();
 }
 
