@@ -1,0 +1,86 @@
+# SonarQube for IDE Run Log — 2026-11-07
+
+## Scope and setup
+
+- Target open in VS Code: the Desktop copy of the project.
+- Analyzer: SonarQube for IDE for VS Code 6.2.0.
+- The workspace setting now points to the all-target compilation database through `sonarlint.pathToCompileCommands`.
+- Compilation database: `build/sonar-desktop-wrapper-all/build/compile_commands.json` in the Codex workspace; it contains 176 C++ translation units (129 production and 47 test files).
+- No application source code has been changed for this scan. VS Code and its extension host have not been restarted during the current pass.
+
+## Current pass progress
+
+This is the same pass started after correcting the IDE setting. The table records progress snapshots and the completed result.
+
+| Snapshot | Sonar findings | VS Code Problems | IDE status |
+|---|---:|---:|---|
+| Start | 17 | 19 | Analyzing 177 files |
+| Early | 108 | 110 | Analyzing 177 files |
+| Early | 155 | 157 | Analyzing 177 files |
+| Later | 175 | 177 | Analyzing 177 files |
+| Later | 683 | 685 | Analyzing 177 files |
+| Intermediate | 764 | 766 | Analyzing 177 files |
+| Completed | 1,761 | 1,763 | Analysis status cleared; All Findings showed 1,761 of 1,761 |
+
+The Sonar Output channel had no newer log lines than its earlier 14:11 entry, so completion was verified from the IDE: the All Findings counter reached 1,761 of 1,761 and the active analysis status cleared.
+
+## Previously observed findings (examples only; not the final inventory)
+
+| File | Line | Visible diagnostic |
+|---|---:|---|
+| `tests/unit/test_winsock_ftp_server.cpp` | 35 | Make sure publicly writable directories are used safely here. |
+| `tests/unit/test_winsock_ftp_server.cpp` | 36 | Use `std::format` instead of concatenating pieces manually. |
+| `src/acceleratorserver/src/WinsockCachingProxyServer.cpp` | 5, 7, 9 | Include paths differ in case from the file names on disk. |
+| `src/acceleratorserver/src/WinsockCachingProxyServer.cpp` | 44 | Replace `const std::string&` with `std::string_view`. |
+
+Two additional VS Code C/C++ diagnostics were visible in `tests/unit/test_winsock_ftp_server.cpp`: the include path needs configuration, and `gtest/gtest.h` could not be opened. These are separate from Sonar findings.
+
+## Previous run context
+
+The previous run had reached 1,761 Sonar findings (1,763 total VS Code Problems). Its output did not provide a complete project-wide completion record; the last relevant C++ log entry concerned a single-file `Sha256.cpp` analysis and reported exit code 125 with one compilation unit. Do not treat that earlier log as the result of the current pass.
+
+## Final results and issue-by-issue inventory
+
+Completed on 2026-11-07. The corrected IDE pass reached 1,761 Sonar findings out of 1,761 and then cleared its active analysis status. VS Code showed 1,763 total Problems: 1,761 Sonar warnings and 2 separate C/C++ IntelliSense errors. The IDE reported analysis of 177 files; the configured compilation database lists 176 C++ translation units (129 production and 47 tests). This was the existing corrected pass; no second scan was started.
+
+The issue list currently exposes file groups and visible diagnostics in the VS Code Problems and SonarQube views, but not a complete export of all 1,761 diagnostic records. The examples above are confirmed entries, not a complete inventory. Record each finding’s rule, file, line, message, disposition, and any behavior-preserving fix in this note as it is triaged; do not claim an issue is fixed without verification. The two IntelliSense errors are separate from Sonar and concern the test file’s include path and missing gtest/gtest.h.
+
+No application source was edited as part of this scan or logging step. The previous run context above refers to a different, incomplete pass and is not the completed result.
+## Confirmed per-finding entries captured from the IDE (partial inventory)
+
+The IDE Problems rows did not expose rule keys. The locations below are from the completed Desktop scan; status records work in the versioned Codex checkout. No follow-up Sonar analysis was run to confirm cleared findings.
+
+| Severity | File | Line | Diagnostic message | Status in versioned checkout |
+|---|---|---:|---|---|
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 44 | Replace this const reference to std::string by a std::string_view. | Addressed; not rescanned |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 55 | Define each identifier in a dedicated statement. | Addressed; not rescanned |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 56 | Use std::byte for byte-oriented memory access. | Addressed with a byte view at the CNG API boundary; not rescanned |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 58 | Use std::byte for byte-oriented memory access. | Addressed with a byte view at the CNG API boundary; not rescanned |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 65 | const_cast removing const qualification from the type of a pointer may lead to undefined behavior. | Reviewed; retained because BCryptHashData documents pbInput as input-only and not modified |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 69 | Use std::format instead of standard output manipulators. | Addressed; not rescanned |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 93 | Replace this C-style char array with std::string (for dynamic size), or std::array (for static size). | Addressed with std::array; not rescanned |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 162 | This function has 11 parameters, which is greater than the 7 authorized. | Addressed by grouping the internal constructor arguments; not rescanned |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 181 | Use std::byte for byte-oriented memory access. | Addressed with a byte view at the Winsock API boundary; not rescanned |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 183 | Define each identifier in a dedicated statement. | Addressed; not rescanned |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 202 | Handle this exception or do not catch it at all. | Reviewed; catch retained to preserve proxy behavior; Sonar unverified |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 202 | Catch a more specific exception instead of a generic one. | Retained to preserve best-effort handling for unexpected exceptions; Sonar unverified |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 202 | Fill this compound statement, remove it, or add a nested comment explaining why it is empty. | Rationale comment added; Sonar unverified |
+| Warning | src/acceleratorserver/src/WinsockCachingProxyServer.cpp | 203 | Catch a specific exception type. | Retained to preserve best-effort handling for non-standard exceptions; Sonar unverified |
+
+The IDE showed 80 Sonar problems grouped under WinsockCachingProxyServer.cpp. These fourteen rows are the entries exposed in the captured visible portion; the other findings in this file and the remaining project findings have not been enumerated here.
+
+## Remediation and verification after the completed pass
+
+The IDE target was the Desktop copy of the project. Its configured compilation database is stored in this versioned Codex checkout, while the database source-file entries point to the Desktop copy. The relevant source region was compared before editing. Unrelated existing changes in the versioned checkout were preserved.
+
+In the versioned checkout, behavior-preserving cleanups updated the synchronous string argument to std::string_view; split combined declarations; represented byte views explicitly before passing buffers through CNG and Winsock APIs; formatted hash bytes with the same lowercase two-digit output; replaced the fixed receive buffer with std::array; and grouped the private proxy-session constructor arguments into a named options struct. The const_cast was reviewed and retained: Microsoft documents BCryptHashData pbInput as input-only and explicitly states it does not modify the buffer. The empty exception handlers around console connection recording remain unchanged so a best-effort UI logging failure cannot interrupt proxy handling.
+
+Verification:
+- cmake --build build --config Debug --target gth_acceleratorserver --parallel — passed.
+- cmake --build build --config Debug --target gth_unit_tests --parallel 4 — passed.
+- build/tests/unit/Debug/gth_unit_tests.exe with filter WinsockCachingProxyLogicTest.*:LocalGameServerTest.*:ProxyEndToEndTest.* — 35 tests passed.
+- build/tests/unit/Debug/gth_unit_tests.exe — full unit suite passed: 512 tests across 88 suites, 506 passed and 6 skipped.
+- git diff --check -- src/acceleratorserver/src/WinsockCachingProxyServer.cpp — passed.
+- A separate test-target build in build/sonar-desktop-wrapper-all/build failed before reaching the changed target because that build invoked MSVC 14.51 without its standard library headers available (fatal error: cannot open include file: 'string'). The normal Visual Studio 2022 build successfully built and ran the relevant tests directly.
+- The broader git diff --check reported trailing blank lines in tests/unit/test_sidebar_tabs.cpp and tests/unit/test_storage_service.cpp; those pre-existing modified files were not touched in this pass.
+- No Sonar rerun was started; all remediation statuses above remain unconfirmed by a refreshed analysis.

@@ -1,0 +1,59 @@
+# Report 04 — SonarQube findings remediation
+
+## Scope and baseline
+
+This pass reviewed the captured Sonar issue snapshot and corrected actionable findings in the local working tree while preserving the app's existing workflows and protocol compatibility. No changes were committed or pushed.
+
+The snapshot belongs to analysis `2680bb86-4582-43e6-9717-94f85666d053`, run on 2026-11-03 against baseline HEAD `32a32b9bab987862e7fc1089354dc0d2d1bf6eea`. It contained 153 open issues: 112 security, 38 reliability, and 22 maintainability in the dashboard's overlapping categories. The issue types in the export were 93 vulnerabilities, 19 bugs, and 41 code smells. These are baseline counts, not the count after this local change.
+
+## Changes made
+
+- Replaced unbounded Windows string-length checks with bounded checks and validated the Windows-directory API's returned length.
+- Replaced legacy `gethostbyname` use with `getaddrinfo` while retaining the existing address-selection behavior.
+- Made UI message payload ownership explicit across failed posts, worker shutdown, and queued messages. CAPTCHA click behavior itself was not changed.
+- Corrected unsafe or analyzer-flagged implementation patterns: bounded socket-send lengths, constant response sizes, distinct filesystem error checks, explicit side-effect sequencing, bit-preserving storage conversion, and exception-preserving parallel storage-health work.
+- Applied the configured TLS version to all FTPS operations when TLS is selected. Plain FTP remains available for compatibility.
+- Removed the hardcoded first-use admin password. A first-time user now chooses a non-empty credential, and the service confirms the saved value before unlocking; existing credentials stored in Windows Credential Manager continue to work. This is the one intentional sign-in flow change required to remove the hardcoded credential. Previously stored copies of the old default are not automatically migrated, so an owner who used that default should replace it in Settings.
+- Consolidated unit-test temporary paths under one unique per-run directory in the user's OS temp folder, added assertions to the relevant browser integration case, corrected browser test lint findings, and removed a shadowed duplicate browser getter.
+- No additional production `.cpp` unit was deleted: the CMake inventory already found all 129 production `.cpp` files wired into module builds. Function-level dead-code detection remains for a configured C++ analyzer.
+
+Test-only analyzer exceptions are narrowly documented in source for fixed sample IP addresses, mock URLs, and the shared OS temp-path helper. They do not disable checks across production files.
+
+## Findings intentionally left open
+
+- Some production network paths still support HTTP: the local proxy handles HTTP requests, Sony's legacy update/catalog service uses HTTP URLs, and imported legacy links may contain HTTP before they are upgraded. The upgrade happens before a request in the affected import path. Changing the remaining endpoint behavior without confirming service and certificate compatibility could break existing workflows.
+- Optional plain FTP remains available and can transmit credentials/data without encryption. FTPS is selected when supported by the configured server.
+- These protocol risks are recorded in [the security policy](../docs/SECURITY_POLICY.md). They need endpoint or product-owner confirmation before changing compatibility behavior. A fresh scan is needed to establish the exact remaining issue count.
+
+## Verification
+
+On Windows 10.0.19045.6466 with Visual Studio Build Tools 2022 17.14.39, MSVC 19.44.35228.0, Windows SDK 10.0.26100.0, CMake 4.4.3, and Node.js 24.21.0:
+
+- `cmake --build build --config Debug --parallel` — passed.
+- `ctest --test-dir build -C Debug --output-on-failure` — 499 passed, 6 skipped, 0 failed out of 505 registered tests.
+- `cmake --build build --config Release --parallel` — passed.
+- `ctest --test-dir build -C Release --output-on-failure` — 499 passed, 6 skipped, 0 failed out of 505 registered tests.
+- `npm test` in `tests/browser-automation` — 12 passed.
+- `npm run test:integration` in `tests/browser-automation` — 7 passed.
+- `git diff --check` — passed.
+
+The six skipped CTest cases are three Credential Manager checks unsupported by the current logon and three existing optional live drive/network checks. Debug linking still reports `LNK4098`; Release still reports the documented C4244 conversion in `src/captcha/SonyLinkCopyWatcher.cpp:441`.
+
+## Scan refresh status
+
+The local SonarQube Server responds as version 2026.5.3.133540 with status `UP`. Its API rejects anonymous requests with HTTP 401. `sonar-scanner` is not installed on PATH, and no `SONAR_TOKEN` is configured in this environment. Therefore, this modified working tree has **not** been rescanned, and the baseline counts above must not be treated as a post-fix result. The next step is to configure an authenticated scanner locally, run CFamily analysis against this tree, and review any newly reported issues. Keep the token out of chat and Git.
+
+## 2026-11-07 SonarQube for IDE pass and follow-up
+
+The corrected SonarQube for IDE pass completed in VS Code against the open Desktop workspace. The IDE reached 1,761 of 1,761 Sonar findings across 177 files; VS Code showed 1,763 Problems including two C/C++ IntelliSense configuration errors. The run log in planning/SONAR_RUN_LOG_2026-11-07.txt records progress snapshots and the captured findings.
+
+The configured compilation database is stored in this checkout, but its source-file entries point to the Desktop copy of the project. The Desktop workspace and versioned checkout are not byte-identical. Nine low-risk findings were addressed in the versioned checkout in WinsockCachingProxyServer.cpp, and the const_cast finding was reviewed against the BCryptHashData input-only contract and retained. The best-effort connection logging catches remain in place so logging failures cannot interrupt proxy handling; comments now explain why their bodies are intentionally empty.
+
+Verification in the versioned checkout:
+- Debug build of gth_acceleratorserver passed.
+- Debug build of gth_unit_tests passed.
+- 35 proxy and local-game-server tests passed using the focused GoogleTest filter.
+- The full GoogleTest suite then passed: 512 tests across 88 suites, 506 passed and 6 skipped.
+- Focused git diff --check passed.
+- A separate wrapper test build failed before the changed target because its MSVC 14.51 invocation could not locate the standard header string. The normal Visual Studio 2022 build succeeded and the relevant tests were run directly.
+- The IDE scan has not been rerun. The 1,761 count remains the completed Desktop scan baseline, not a post-fix result. The scan exposed only part of its issue list, so additional findings still need to be enumerated and triaged.

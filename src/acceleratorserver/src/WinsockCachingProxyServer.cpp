@@ -11,12 +11,16 @@
 #include <bcrypt.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <cstddef>
 #include <cstdio>
 #include <filesystem>
+#include <format>
 #include <fstream>
-#include <iomanip>
 #include <sstream>
+#include <span>
+#include <string_view>
 #include <vector>
 
 #pragma comment(lib, "ws2_32.lib")
@@ -41,7 +45,7 @@ bool sendAll(SOCKET socket, const char* data, int length) {
     return true;
 }
 
-bool sendAll(SOCKET socket, const std::string& data) {
+bool sendAll(SOCKET socket, std::string_view data) {
     return sendAll(socket, data.data(), static_cast<int>(data.size()));
 }
 
@@ -52,10 +56,15 @@ std::string sha256Hex(const std::string& data) {
     BCRYPT_ALG_HANDLE alg = nullptr;
     if (!BCRYPT_SUCCESS(::BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, nullptr, 0))) return "";
 
-    DWORD hashObjLen = 0, written = 0;
-    ::BCryptGetProperty(alg, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&hashObjLen), sizeof(DWORD), &written, 0);
+    DWORD hashObjLen = 0;
+    DWORD written = 0;
+    auto hashObjLenBytes = std::as_writable_bytes(std::span{&hashObjLen, 1});
+    ::BCryptGetProperty(alg, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(hashObjLenBytes.data()),
+                        static_cast<ULONG>(hashObjLenBytes.size()), &written, 0);
     DWORD hashLen = 0;
-    ::BCryptGetProperty(alg, BCRYPT_HASH_LENGTH, reinterpret_cast<PUCHAR>(&hashLen), sizeof(DWORD), &written, 0);
+    auto hashLenBytes = std::as_writable_bytes(std::span{&hashLen, 1});
+    ::BCryptGetProperty(alg, BCRYPT_HASH_LENGTH, reinterpret_cast<PUCHAR>(hashLenBytes.data()),
+                        static_cast<ULONG>(hashLenBytes.size()), &written, 0);
 
     std::vector<UCHAR> hashObj(hashObjLen);
     std::vector<UCHAR> hashVal(hashLen);
@@ -65,9 +74,8 @@ std::string sha256Hex(const std::string& data) {
         ::BCryptHashData(hash, reinterpret_cast<PUCHAR>(const_cast<char*>(data.data())),
                           static_cast<ULONG>(data.size()), 0);
         if (BCRYPT_SUCCESS(::BCryptFinishHash(hash, hashVal.data(), hashLen, 0))) {
-            std::ostringstream hex;
-            for (const auto b : hashVal) hex << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(b);
-            result = hex.str();
+            result.reserve(hashVal.size() * 2);
+            for (const auto b : hashVal) result += std::format("{:02x}", static_cast<unsigned int>(b));
         }
         ::BCryptDestroyHash(hash);
     }
@@ -90,10 +98,10 @@ std::string sha256Hex(const std::string& data) {
 bool readHeaderBlock(SOCKET socket, std::string& buffer, std::string& block, std::string& leftover) {
     auto pos = buffer.find("\r\n\r\n");
     while (pos == std::string::npos) {
-        char chunk[4096];
-        const int received = ::recv(socket, chunk, sizeof(chunk), 0);
+        std::array<char, 4096> chunk{};
+        const int received = ::recv(socket, chunk.data(), static_cast<int>(chunk.size()), 0);
         if (received <= 0) return false;
-        buffer.append(chunk, static_cast<size_t>(received));
+        buffer.append(chunk.data(), static_cast<size_t>(received));
         if (buffer.size() > 65536) return false;  // runaway header block
         pos = buffer.find("\r\n\r\n");
     }
@@ -157,30 +165,44 @@ void saveCacheMeta(const fs::path& dir, const std::string& key, const CacheMeta&
 // (CONNECT tunnel, or a resolved-and-optionally-cached forward), then the
 // caller closes the socket - matches WinsockFtpServer's one-thread-per-
 // connection model, just without FTP's multi-command control channel.
+struct ProxySessionOptions {
+    SOCKET clientSocket;
+    std::string clientIp;
+    int listenPort;
+    WinsockCachingProxyServer::MirrorResolveFn resolveMirrorIp;
+    fs::path cacheDir;
+    bool cacheEnabled;
+    std::atomic<std::uint64_t>& hitCount;
+    std::atomic<std::uint64_t>& missCount;
+    application::IConsoleManager& consoleManager;
+    application::ICdnUrlService& cdnUrlService;
+    std::shared_ptr<network::ILocalGameServer> localGameServer;
+};
+
 class ProxySession {
 public:
-    ProxySession(SOCKET clientSocket, std::string clientIp, int listenPort,
-                 WinsockCachingProxyServer::MirrorResolveFn resolveMirrorIp, fs::path cacheDir, bool cacheEnabled,
-                 std::atomic<std::uint64_t>& hitCount, std::atomic<std::uint64_t>& missCount,
-                 application::IConsoleManager& consoleManager, application::ICdnUrlService& cdnUrlService,
-                 std::shared_ptr<network::ILocalGameServer> localGameServer)
-        : client_(clientSocket),
-          clientIp_(std::move(clientIp)),
-          listenPort_(listenPort),
-          resolveMirrorIp_(std::move(resolveMirrorIp)),
-          cacheDir_(std::move(cacheDir)),
-          cacheEnabled_(cacheEnabled),
-          hitCount_(hitCount),
-          missCount_(missCount),
-          consoleManager_(consoleManager),
-          cdnUrlService_(cdnUrlService),
-          localGameServer_(std::move(localGameServer)) {}
+    explicit ProxySession(ProxySessionOptions options)
+        : client_(options.clientSocket),
+          clientIp_(std::move(options.clientIp)),
+          listenPort_(options.listenPort),
+          resolveMirrorIp_(std::move(options.resolveMirrorIp)),
+          cacheDir_(std::move(options.cacheDir)),
+          cacheEnabled_(options.cacheEnabled),
+          hitCount_(options.hitCount),
+          missCount_(options.missCount),
+          consoleManager_(options.consoleManager),
+          cdnUrlService_(options.cdnUrlService),
+          localGameServer_(std::move(options.localGameServer)) {}
 
     void run() {
         DWORD timeoutMs = 15000;
-        ::setsockopt(client_, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeoutMs), sizeof(timeoutMs));
+        const auto timeoutBytes = std::as_bytes(std::span{&timeoutMs, 1});
+        ::setsockopt(client_, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(timeoutBytes.data()),
+                     static_cast<int>(timeoutBytes.size()));
 
-        std::string buffer, block, leftover;
+        std::string buffer;
+        std::string block;
+        std::string leftover;
         if (!readHeaderBlock(client_, buffer, block, leftover)) return;
 
         std::istringstream lineStream(block);
@@ -200,7 +222,9 @@ public:
         try {
             consoleManager_.recordConnection(clientIp_, userAgent, listenPort_, core::ConsoleProtocol::Http);
         } catch (const std::exception&) {
+            // Connection archiving is best-effort; it must not interrupt proxy handling.
         } catch (...) {
+            // Preserve best-effort behavior for non-standard exceptions as well.
         }
 
         if (toLower(req.method) == "connect") {
@@ -698,8 +722,17 @@ void WinsockCachingProxyServer::acceptLoop(core::AcceleratorServerConfig config)
 void WinsockCachingProxyServer::handleClient(std::uintptr_t clientSocketHandle, std::string clientIp,
                                               std::string cacheDir, bool cacheEnabled) {
     const SOCKET clientSocket = static_cast<SOCKET>(clientSocketHandle);
-    ProxySession session(clientSocket, std::move(clientIp), port_.load(), resolveMirrorIp_, fs::path(cacheDir),
-                          cacheEnabled, hitCount_, missCount_, consoleManager_, cdnUrlService_, localGameServer_);
+    ProxySession session({.clientSocket = clientSocket,
+                          .clientIp = std::move(clientIp),
+                          .listenPort = port_.load(),
+                          .resolveMirrorIp = resolveMirrorIp_,
+                          .cacheDir = fs::path(cacheDir),
+                          .cacheEnabled = cacheEnabled,
+                          .hitCount = hitCount_,
+                          .missCount = missCount_,
+                          .consoleManager = consoleManager_,
+                          .cdnUrlService = cdnUrlService_,
+                          .localGameServer = localGameServer_});
     session.run();
     ::closesocket(clientSocket);
 }
