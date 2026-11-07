@@ -233,3 +233,13 @@ Verification:
 - `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=SmartAssessTest.*:NvmeHealthTest.*:SummarizeDetailTest.*` — 14 passed.
 - `git diff --check -- src/storage_detection/src/SmartHealth.cpp` — passed.
 - No Sonar re-analysis was run.
+
+### Candidate cleanup — Sony piece download messages
+
+Replaced four manual numeric string concatenations in `SonyPieceDownloader.cpp` with `std::format`, keeping HTTP status text, expected/actual byte counts, retry limit, and punctuation the same. Exact IDE rows for this file were not captured; these remain candidate `cpp:S6185` matches and are not added to the 23 confirmed issue rows.
+
+Verification:
+- `cmake --build build --config Debug --target gth_unit_tests --parallel 4` — passed.
+- `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=SonyPieceDownloaderTest.*` — 2 passed.
+- `git diff --check -- src/network/src/SonyPieceDownloader.cpp` — passed.
+- No Sonar re-analysis was run.

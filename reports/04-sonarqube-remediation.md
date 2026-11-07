@@ -78,3 +78,5 @@ Two more candidate buffer cleanups replaced fixed arrays in `SonyLinkCopyWatcher
 The SFTP directory/transfer buffers and remote report acknowledgement buffer were changed to same-size `std::array` storage. `gth_ftp` and the unit test executable built successfully. The two `CentralServerListenerTest` cases passed, exercising the `TcpRemoteReportSender` acknowledgement path. The exact IDE issue rows were unavailable, so these four candidate locations are excluded from the confirmed issue count.
 
 Nine storage health reason strings now use equivalent `std::format` calls. The unit test target rebuilt, and all 14 focused SMART/NVMe health and reason-summary tests passed. Because the individual IDE rows were not captured, these are candidate `cpp:S6185` matches and are not added to the 23 confirmed issue rows.
+
+Four Sony piece downloader diagnostics/messages now use equivalent `std::format` expressions. The unit test executable rebuilt, both `SonyPieceDownloaderTest` cases passed, and focused diff checking passed. These are candidate matches only; the confirmed IDE-row count remains unchanged.

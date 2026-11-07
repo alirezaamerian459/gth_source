@@ -1,6 +1,7 @@
 #include "gth/network/SonyPieceDownloader.h"
 
 #include <chrono>
+#include <format>
 #include <fstream>
 #include <thread>
 
@@ -79,8 +80,8 @@ AttemptOutcome fetchRemainder(const ParsedUrl& url, const fs::path& destination,
         append = false;  // the server ignored the Range header (or there was none): the whole file follows
         have = 0;
     } else if (status != 206) {
-        if (status >= 500 || status == 429) return retry("Sony's server answered HTTP " + std::to_string(status));
-        return fatal("Sony's server answered HTTP " + std::to_string(status));
+        if (status >= 500 || status == 429) return retry(std::format("Sony's server answered HTTP {}", status));
+        return fatal(std::format("Sony's server answered HTTP {}", status));
     }
 
     std::ofstream out(destination, std::ios::binary | (append ? std::ios::app : std::ios::trunc));
@@ -104,7 +105,7 @@ AttemptOutcome fetchRemainder(const ParsedUrl& url, const fs::path& destination,
         }
     }
     out.flush();
-    if (written != expectedSize) return retry("the download ended at " + std::to_string(written) + " of " + std::to_string(expectedSize) + " bytes");
+    if (written != expectedSize) return retry(std::format("the download ended at {} of {} bytes", written, expectedSize));
     return {Attempt::Done, {}};
 }
 
@@ -155,7 +156,7 @@ core::PieceDownloadResult SonyPieceDownloader::download(const std::string& url, 
             case Attempt::Retry: lastError = outcome.error; break;  // resumes from what's on disk
         }
     }
-    result.error = "gave up after " + std::to_string(kMaxAttempts) + " attempts: " + lastError;
+    result.error = std::format("gave up after {} attempts: {}", kMaxAttempts, lastError);
     return result;
 }
 
