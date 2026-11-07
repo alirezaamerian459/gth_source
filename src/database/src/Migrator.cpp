@@ -1,6 +1,7 @@
 #include "gth/database/Migrator.h"
 
 #include <array>
+#include <format>
 #include <string>
 
 namespace gth::database {
@@ -417,7 +418,7 @@ void Migrator::applyMigrations(Database& db) {
     for (const auto& migration : kMigrations) {
         if (migration.version <= currentVersion) continue;
         db.execute(migration.sql);
-        db.execute("PRAGMA user_version = " + std::to_string(migration.version) + ";");
+        db.execute(std::format("PRAGMA user_version = {};", migration.version));
     }
 }
 

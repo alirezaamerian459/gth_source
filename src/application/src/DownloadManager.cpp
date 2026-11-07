@@ -1,6 +1,7 @@
 #include "gth/application/updates/DownloadManager.h"
 
 #include <filesystem>
+#include <format>
 
 #include "gth/core/Clock.h"
 
@@ -66,7 +67,7 @@ DownloadOutcome DownloadManager::downloadForJob(const std::string& updateJobId,
     job.status = UpdateJobStatus::Failed;
     job.errorMessage =
         lastResult.errorMessage.empty()
-            ? "Download failed after " + std::to_string(maxRetries_) + " attempt(s)"
+            ? std::format("Download failed after {} attempt(s)", maxRetries_)
             : lastResult.errorMessage;
     job.updatedAt = core::Clock::utcNowIso8601();
     jobRepository_.update(job);

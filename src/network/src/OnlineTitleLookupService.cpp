@@ -4,6 +4,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstdint>
+#include <format>
 #include <map>
 #include <memory>
 
@@ -75,7 +76,7 @@ std::string describeWinHttpError(DWORD code) {
         case ERROR_WINHTTP_CLIENT_AUTH_CERT_NEEDED: meaning = "the site asked for a client certificate"; break;
         default: meaning = "network error"; break;
     }
-    return meaning + " (error " + std::to_string(code) + ")";
+    return std::format("{} (error {})", meaning, code);
 }
 
 // logging::logger() is only valid after logging::init() (the app calls it at
@@ -119,7 +120,7 @@ HttpOutcome requestOn(HINTERNET connection, const std::wstring& path) {
                          &statusCode, &statusSize, WINHTTP_NO_HEADER_INDEX);
     if (statusCode != 200) {
         HttpOutcome outcome;
-        outcome.failure = "the site answered HTTP " + std::to_string(statusCode);
+        outcome.failure = std::format("the site answered HTTP {}", statusCode);
         if (statusCode == 403 || statusCode == 429) outcome.failure += " (blocking or rate-limiting requests)";
         return outcome;
     }

@@ -273,3 +273,14 @@ Verification:
 - `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=FileVerifierTest.*` — 11 passed.
 - `git diff --check -- src/verification/src/FileVerifier.cpp` — passed.
 - No Sonar re-analysis was run.
+
+### Candidate cleanup — archive, download, lookup, and migration diagnostics
+
+Converted five numeric string-concatenation expressions across `ArchiveUpdater.cpp`, `DownloadManager.cpp`, `OnlineTitleLookupService.cpp`, and `Migrator.cpp` to `std::format`. The free-space message, retry count, HTTP/error code text, and SQLite `PRAGMA user_version` statement retain their exact values and formatting. The exact Sonar rows were not captured for these files, so this batch is candidate-only and excluded from the 23 confirmed-row count.
+
+Verification:
+- `cmake --build build --config Debug --target gth_unit_tests --parallel 4` — passed.
+- `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=ArchiveUpdaterTest.*:DownloadManagerTest.*:OnlineTitleLookupServiceTest.*` — 24 passed.
+- The archive tests also exercise applying database migrations.
+- Focused `git diff --check` — passed.
+- No Sonar re-analysis was run.

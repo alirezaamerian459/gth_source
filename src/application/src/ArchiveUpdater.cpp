@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <format>
 #include <vector>
 
 #include "gth/core/Clock.h"
@@ -66,9 +67,8 @@ ReplacementOutcome ArchiveUpdater::applyVerifiedUpdate(const std::string& update
 
     const auto spaceInfo = fs::space(fs::path(storage.rootPath), ec);
     if (!ec && static_cast<long long>(spaceInfo.available) < requiredBytes) {
-        outcome.errorMessage = "Not enough free space on '" + storage.rootPath + "': need " +
-                                std::to_string(requiredBytes) + " bytes, have " +
-                                std::to_string(spaceInfo.available) + " bytes";
+        outcome.errorMessage = std::format("Not enough free space on '{}': need {} bytes, have {} bytes", storage.rootPath,
+                                           requiredBytes, spaceInfo.available);
         return outcome;
     }
 
