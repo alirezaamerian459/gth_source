@@ -253,3 +253,13 @@ Verification:
 - `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=SonyUpdateServiceTest.*` — 14 passed.
 - `git diff --check -- src/network/src/SonyUpdateService.cpp` — passed.
 - No Sonar re-analysis was run.
+
+### Candidate cleanup — backup chunk naming and errors
+
+Replaced seven numeric concatenation segments across four expressions in `BackupService.cpp` with `std::format`. Temporary chunk filenames, transport object IDs, chunk error text, and file indexes still use the same decimal values and labels. The exact IDE rows were not captured; these are candidate `cpp:S6185` matches and are excluded from the 23 confirmed-row count.
+
+Verification:
+- `cmake --build build --config Debug --target gth_unit_tests --parallel 4` — passed.
+- `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=BackupServiceTest.*` — 4 passed.
+- `git diff --check -- src/application/src/BackupService.cpp` — passed.
+- No Sonar re-analysis was run.

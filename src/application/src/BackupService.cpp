@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <limits>
@@ -496,8 +497,7 @@ BackupResult BackupService::createBackup(const BackupGame& game, const BackupCal
                 return result;
             }
             const long long chunkSize = std::min(kChunkBytes, file.size - offset);
-            const fs::path chunkPath = jobRoot / ("chunk-" + std::to_string(fileIndex) + "-" +
-                                                    std::to_string(chunkIndex) + ".bin");
+            const fs::path chunkPath = jobRoot / std::format("chunk-{}-{}.bin", fileIndex, chunkIndex);
             if (!copyRange(path, offset, chunkSize, chunkPath, callbacks, result.error)) {
                 result.cancelled = cancelled(callbacks);
                 if (result.cancelled) result.error = "Backup cancelled.";
@@ -505,11 +505,10 @@ BackupResult BackupService::createBackup(const BackupGame& game, const BackupCal
             }
             const auto copiedDigest = hasher_.sha256(chunkPath);
             if (!copiedDigest || !isDigest(*copiedDigest)) {
-                result.error = "Couldn't verify chunk " + std::to_string(chunkIndex + 1) + " of " + file.relativePath;
+                result.error = std::format("Couldn't verify chunk {} of {}", chunkIndex + 1, file.relativePath);
                 return result;
             }
-            const std::string objectName = result.backupId + "-f" + std::to_string(fileIndex) + "-c" +
-                                           std::to_string(chunkIndex) + ".bin";
+            const std::string objectName = std::format("{}-f{}-c{}.bin", result.backupId, fileIndex, chunkIndex);
             auto objectId = transport_.uploadObject(objectName, chunkPath, chunkSize, callbacks, adapterError);
             if (!objectId || objectId->empty()) {
                 result.cancelled = cancelled(callbacks);
@@ -721,8 +720,7 @@ BackupResult BackupService::restoreBackup(const std::string& manifestObjectId, c
                 return result;
             }
             const auto& chunk = file.chunks[chunkIndex];
-            const fs::path chunkPath = jobRoot / ("download-" + std::to_string(fileIndex) + "-" +
-                                                    std::to_string(chunkIndex) + ".bin");
+            const fs::path chunkPath = jobRoot / std::format("download-{}-{}.bin", fileIndex, chunkIndex);
             if (!transport_.downloadObject(chunk.objectId, chunkPath, callbacks, adapterError)) {
                 result.cancelled = cancelled(callbacks);
                 result.error = result.cancelled ? "Restore cancelled." :

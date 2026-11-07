@@ -82,3 +82,5 @@ Nine storage health reason strings now use equivalent `std::format` calls. The u
 Four Sony piece downloader diagnostics/messages now use equivalent `std::format` expressions. The unit test executable rebuilt, both `SonyPieceDownloaderTest` cases passed, and focused diff checking passed. These are candidate matches only; the confirmed IDE-row count remains unchanged.
 
 Four Sony update service text expressions now use equivalent `std::format` calls. The unit test target rebuilt and all 14 `SonyUpdateServiceTest` cases passed. These remain candidate matches, not confirmed IDE rows.
+
+Backup temporary chunk names, object IDs, and chunk status text now use `std::format` with unchanged decimal values and wording. The application module and unit test target rebuilt; all 4 `BackupServiceTest` cases passed. These are candidate matches only and do not alter the confirmed IDE-row count.
