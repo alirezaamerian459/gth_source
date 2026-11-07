@@ -212,3 +212,14 @@ Verification:
 - `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=LocalFileTransferProviderTest.*` — 4 passed.
 - Focused `git diff --check` — passed.
 - No Sonar re-analysis was run.
+
+### Candidate cleanup — FTP and remote report buffers
+
+Replaced the SFTP directory-name buffer and both 32 KiB transfer buffers in `Libssh2SftpClient.cpp` with same-sized `std::array` storage, passing `.data()` and `.size()` through the Libssh2 and stdio boundaries. Replaced the 64-byte acknowledgement buffer in `TcpRemoteReportSender.cpp` with same-size `std::array`, keeping the same 63-byte receive limit and `OK` prefix check. The IDE did not expose individual rows for these files, so the four locations are candidates only and are not included in the 23 confirmed-row count.
+
+Verification:
+- `cmake --build build --config Debug --target gth_ftp --parallel 4` — passed.
+- `cmake --build build --config Debug --target gth_unit_tests --parallel 4` — passed.
+- `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=CentralServerListenerTest.*` — 2 passed, including the sender/listener acknowledgement path.
+- Focused `git diff --check` — passed.
+- No Sonar re-analysis was run.

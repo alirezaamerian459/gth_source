@@ -4,6 +4,7 @@
 
 #include <ws2tcpip.h>
 
+#include <array>
 #include <cstring>
 
 #pragma comment(lib, "ws2_32.lib")
@@ -47,9 +48,9 @@ bool TcpRemoteReportSender::send(const std::string& serverAddress, int port, con
         if (::connect(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0) {
             const std::string line = nodeId + "\t" + nodeName + "\t" + summaryLine + "\n";
             if (::send(sock, line.c_str(), static_cast<int>(line.size()), 0) > 0) {
-                char buffer[64];
-                const int received = ::recv(sock, buffer, sizeof(buffer) - 1, 0);
-                success = received > 0 && std::strncmp(buffer, "OK", 2) == 0;
+                std::array<char, 64> buffer;
+                const int received = ::recv(sock, buffer.data(), static_cast<int>(buffer.size() - 1), 0);
+                success = received > 0 && std::strncmp(buffer.data(), "OK", 2) == 0;
             }
         }
 

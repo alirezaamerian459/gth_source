@@ -9,6 +9,8 @@
 #include <libssh2.h>
 #include <libssh2_sftp.h>
 
+#include <array>
+
 #pragma comment(lib, "ws2_32.lib")
 
 namespace gth::ftp {
@@ -125,10 +127,10 @@ std::vector<core::FtpDirectoryEntry> Libssh2SftpClient::listDirectory(const std:
     LIBSSH2_SFTP_HANDLE* dir = libssh2_sftp_opendir(sftp, path.c_str());
     if (!dir) return entries;
 
-    char nameBuf[512];
+    std::array<char, 512> nameBuf;
     LIBSSH2_SFTP_ATTRIBUTES attrs;
-    while (libssh2_sftp_readdir(dir, nameBuf, sizeof(nameBuf), &attrs) > 0) {
-        std::string name(nameBuf);
+    while (libssh2_sftp_readdir(dir, nameBuf.data(), nameBuf.size(), &attrs) > 0) {
+        std::string name(nameBuf.data());
         if (name == "." || name == "..") continue;
 
         core::FtpDirectoryEntry entry;
@@ -162,12 +164,12 @@ core::FtpOperationResult Libssh2SftpClient::upload(const std::string& localPath,
         return {false, "Failed to open remote file for writing."};
     }
 
-    char buffer[32768];
+    std::array<char, 32768> buffer;
     long long transferred = 0;
     bool cancelled = false;
     size_t bytesRead;
-    while ((bytesRead = std::fread(buffer, 1, sizeof(buffer), file)) > 0) {
-        char* ptr = buffer;
+    while ((bytesRead = std::fread(buffer.data(), 1, buffer.size(), file)) > 0) {
+        char* ptr = buffer.data();
         size_t remaining = bytesRead;
         while (remaining > 0) {
             const ssize_t written = libssh2_sftp_write(handle, ptr, remaining);
@@ -213,18 +215,18 @@ core::FtpOperationResult Libssh2SftpClient::download(const std::string& remotePa
         return {false, "Could not open local file."};
     }
 
-    char buffer[32768];
+    std::array<char, 32768> buffer;
     long long transferred = 0;
     bool failed = false;
     while (true) {
-        const ssize_t bytesRead = libssh2_sftp_read(handle, buffer, sizeof(buffer));
+        const ssize_t bytesRead = libssh2_sftp_read(handle, buffer.data(), buffer.size());
         if (bytesRead < 0) {
             failed = true;
             break;
         }
         if (bytesRead == 0) break;
 
-        std::fwrite(buffer, 1, static_cast<size_t>(bytesRead), file);
+        std::fwrite(buffer.data(), 1, static_cast<size_t>(bytesRead), file);
         transferred += bytesRead;
         if (onProgress) onProgress(transferred, totalSize);
         if (cancelFlag && cancelFlag->load()) {
