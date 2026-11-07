@@ -284,3 +284,13 @@ Verification:
 - The archive tests also exercise applying database migrations.
 - Focused `git diff --check` — passed.
 - No Sonar re-analysis was run.
+
+### Candidate cleanup — shared Sony HTTP helpers
+
+In the shared Sony HTTP helper, changed two diagnostic strings to `std::format` and replaced the fixed 32-byte certificate digest array with `std::array<BYTE, 32>`. The BCrypt hash request still receives a 32-byte output capacity; digest iteration and lowercase hex output are unchanged. These match rule families already visible in the IDE, but the exact `SonyHttp.h` rows were not captured, so they are candidates and excluded from the 23 confirmed-row count.
+
+Verification:
+- `cmake --build build --config Debug --target gth_unit_tests --parallel 4` — passed.
+- `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=SonyUpdateServiceTest.*:SonyPieceDownloaderTest.*` — 16 passed.
+- `git diff --check -- src/network/src/SonyHttp.h` — passed.
+- No Sonar re-analysis was run.

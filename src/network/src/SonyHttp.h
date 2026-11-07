@@ -10,7 +10,9 @@
 #include <bcrypt.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <format>
 #include <optional>
 #include <string>
 
@@ -68,13 +70,13 @@ inline std::string describeWinHttpError(DWORD code) {
         case ERROR_WINHTTP_SECURE_FAILURE: meaning = "secure connection (TLS) failed"; break;
         default: meaning = "network error"; break;
     }
-    return meaning + " (error " + std::to_string(code) + ")";
+    return std::format("{} (error {})", meaning, code);
 }
 
 inline std::string sha256Hex(const BYTE* data, DWORD length) {
-    BYTE hash[32];
-    DWORD size = sizeof(hash);
-    if (!CryptHashCertificate2(BCRYPT_SHA256_ALGORITHM, 0, nullptr, data, length, hash, &size)) return {};
+    std::array<BYTE, 32> hash;
+    DWORD size = static_cast<DWORD>(hash.size());
+    if (!CryptHashCertificate2(BCRYPT_SHA256_ALGORITHM, 0, nullptr, data, length, hash.data(), &size)) return {};
     static const char* digits = "0123456789abcdef";
     std::string hex;
     for (DWORD i = 0; i < size; ++i) {
@@ -132,7 +134,10 @@ inline bool serverChainIsSonys(HINTERNET request, std::string& why) {
         const CERT_SIMPLE_CHAIN* simple = chain->rgpChain[0];
         const CERT_CONTEXT* root = simple->rgpElement[simple->cElement - 1]->pCertContext;
         accepted = IsPinnedSonyChain(chain->TrustStatus.dwErrorStatus, sha256Hex(root->pbCertEncoded, root->cbCertEncoded));
-        if (!accepted) why = "the server's certificate isn't Sony's (chain status " + std::to_string(chain->TrustStatus.dwErrorStatus) + ")";
+        if (!accepted) {
+            why = std::format("the server's certificate isn't Sony's (chain status {})",
+                              chain->TrustStatus.dwErrorStatus);
+        }
     }
     if (chain) CertFreeCertificateChain(chain);
     CertFreeCertificateContext(leaf);
