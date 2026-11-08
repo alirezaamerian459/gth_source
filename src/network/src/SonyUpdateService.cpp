@@ -1,6 +1,7 @@
 #include "gth/network/SonyUpdateService.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdlib>
 #include <format>
@@ -277,8 +278,8 @@ bool IsPinnedSonyChain(unsigned long trustErrorStatus, const std::string& rootSh
 }
 
 std::string SonyPs4UpdateUrl(const std::string& titleId) {
-    unsigned char key[32];
-    for (size_t i = 0; i < sizeof(key); ++i) key[i] = static_cast<unsigned char>(std::stoi(std::string(kPs4UpdateKeyHex + 2 * i, 2), nullptr, 16));
+    std::array<unsigned char, 32> key{};
+    for (size_t i = 0; i < key.size(); ++i) key[i] = static_cast<unsigned char>(std::stoi(std::string(kPs4UpdateKeyHex + 2 * i, 2), nullptr, 16));
 
     const std::string id = toUpper(titleId);
     const std::string message = "np_" + id;
@@ -286,9 +287,10 @@ std::string SonyPs4UpdateUrl(const std::string& titleId) {
     BCRYPT_ALG_HANDLE algorithm = nullptr;
     std::string digest;
     if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, BCRYPT_ALG_HANDLE_HMAC_FLAG) == 0) {
-        UCHAR mac[32]{};
-        if (BCryptHash(algorithm, key, sizeof(key), reinterpret_cast<PUCHAR>(const_cast<char*>(message.data())),
-                       static_cast<ULONG>(message.size()), mac, sizeof(mac)) == 0) {
+        std::array<UCHAR, 32> mac{};
+        if (BCryptHash(algorithm, key.data(), static_cast<ULONG>(key.size()),
+                       reinterpret_cast<PUCHAR>(const_cast<char*>(message.data())), static_cast<ULONG>(message.size()),
+                       mac.data(), static_cast<ULONG>(mac.size())) == 0) {
             static const char* digits = "0123456789abcdef";
             for (UCHAR byte : mac) {
                 digest += digits[byte >> 4];

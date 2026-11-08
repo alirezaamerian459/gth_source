@@ -372,13 +372,13 @@ LRESULT MainFrame::OnDrawItem(UINT, WPARAM, LPARAM lParam, BOOL&) {
     }
     textRect.left += kSidebarPadding + 12;
 
-    wchar_t text[128]{};
-    sidebar_.GetText(static_cast<int>(dis->itemID), text);
+    std::array<wchar_t, 128> text{};
+    sidebar_.GetText(static_cast<int>(dis->itemID), text.data());
 
     HGDIOBJ oldFont = ::SelectObject(dis->hDC, theme::BodyFontBold());
     ::SetBkMode(dis->hDC, TRANSPARENT);
     ::SetTextColor(dis->hDC, selected ? theme::Accent() : theme::TextPrimary());
-    ::DrawText(dis->hDC, text, -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    ::DrawText(dis->hDC, text.data(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
     ::SelectObject(dis->hDC, oldFont);
 
     return 1;

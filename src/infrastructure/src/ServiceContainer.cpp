@@ -2,6 +2,7 @@
 
 #include <windows.h>
 
+#include <array>
 #include <cstdlib>
 #include <fstream>
 #include <memory>
@@ -54,9 +55,9 @@ std::filesystem::path ServiceContainer::defaultSonyAutomationPath() { return def
 std::vector<std::filesystem::path> ServiceContainer::sonyLinkFiles() {
     std::vector<std::filesystem::path> files;
 
-    wchar_t exePath[MAX_PATH]{};
-    if (::GetModuleFileNameW(nullptr, exePath, MAX_PATH) > 0) {
-        files.push_back(std::filesystem::path(exePath).parent_path() / "sony-version-links.tsv");
+    std::array<wchar_t, MAX_PATH> exePath{};
+    if (::GetModuleFileNameW(nullptr, exePath.data(), static_cast<DWORD>(exePath.size())) > 0) {
+        files.push_back(std::filesystem::path(exePath.data()).parent_path() / "sony-version-links.tsv");
     }
     files.push_back(defaultSonyLinksPath());
     files.push_back(defaultSonyLinksNeededPath());  // the list of games still needing a link, filled in by hand

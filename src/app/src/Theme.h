@@ -2,6 +2,8 @@
 
 #include <commctrl.h>
 
+#include <array>
+
 #include "WtlCommon.h"
 
 #pragma comment(lib, "comctl32.lib")
@@ -196,17 +198,17 @@ inline LRESULT CALLBACK HeaderSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, L
             RECT itemRect;
             Header_GetItemRect(hwnd, i, &itemRect);
 
-            wchar_t textBuf[256]{};
+            std::array<wchar_t, 256> textBuf{};
             HDITEMW item{};
             item.mask = HDI_TEXT;
-            item.pszText = textBuf;
+            item.pszText = textBuf.data();
             item.cchTextMax = 255;
             Header_GetItem(hwnd, i, &item);
 
             RECT textRect = itemRect;
             textRect.left += 8;
             textRect.right -= 4;
-            ::DrawTextW(hdc, textBuf, -1, &textRect,
+            ::DrawTextW(hdc, textBuf.data(), -1, &textRect,
                         DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 
             if (i > 0) {

@@ -1,6 +1,7 @@
 #include "gth/application/indexing/PackageSyncService.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdio>
 #include <fstream>
@@ -45,13 +46,13 @@ bool isSonyUrl(const std::string& url) {
 }
 
 std::string formatSize(long long bytes) {
-    char buffer[32];
+    std::array<char, 32> buffer{};
     if (bytes >= 1024LL * 1024 * 1024) {
-        snprintf(buffer, sizeof(buffer), "%.2f GB", static_cast<double>(bytes) / 1024.0 / 1024.0 / 1024.0);
+        snprintf(buffer.data(), buffer.size(), "%.2f GB", static_cast<double>(bytes) / 1024.0 / 1024.0 / 1024.0);
     } else {
-        snprintf(buffer, sizeof(buffer), "%.1f MB", static_cast<double>(bytes) / 1024.0 / 1024.0);
+        snprintf(buffer.data(), buffer.size(), "%.1f MB", static_cast<double>(bytes) / 1024.0 / 1024.0);
     }
-    return buffer;
+    return buffer.data();
 }
 
 struct LocalPiece {
@@ -108,9 +109,9 @@ bool MetadataPieceBelongsToPackage(const fs::path& firstPart, const fs::path& me
 
     // The FIH wrapper starts a PS5 package; its bytes 0x30..0x50 are a digest
     // of the encrypted image that the metadata block repeats verbatim.
-    unsigned char header[0x50]{};
-    part.read(reinterpret_cast<char*>(header), sizeof(header));
-    if (part.gcount() != static_cast<std::streamsize>(sizeof(header))) return false;
+    std::array<unsigned char, 0x50> header{};
+    part.read(reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(header.size()));
+    if (part.gcount() != static_cast<std::streamsize>(header.size())) return false;
     if (!(header[0] == 0x7f && header[1] == 'F' && header[2] == 'I' && header[3] == 'H')) return false;
 
     constexpr size_t kDigestAt = 0x30;
@@ -122,7 +123,7 @@ bool MetadataPieceBelongsToPackage(const fs::path& firstPart, const fs::path& me
     std::string block(0x10000, '\0');
     piece.read(block.data(), static_cast<std::streamsize>(block.size()));
     block.resize(static_cast<size_t>(piece.gcount()));
-    const std::string digest(reinterpret_cast<const char*>(header + kDigestAt), kDigestLength);
+    const std::string digest(reinterpret_cast<const char*>(header.data() + kDigestAt), kDigestLength);
     return block.find(digest) != std::string::npos;
 }
 

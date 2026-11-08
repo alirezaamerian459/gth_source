@@ -1,6 +1,7 @@
 #include "LogsView.h"
 
 #include <algorithm>
+#include <array>
 #include <fstream>
 #include <sstream>
 
@@ -16,9 +17,9 @@ constexpr int kMargin = 24;
 std::wstring todaysLogFileName() {
     SYSTEMTIME st;
     ::GetLocalTime(&st);
-    wchar_t buf[32];
-    swprintf_s(buf, L"log_%04d-%02d-%02d.txt", st.wYear, st.wMonth, st.wDay);
-    return buf;
+    std::array<wchar_t, 32> buf{};
+    swprintf_s(buf.data(), buf.size(), L"log_%04d-%02d-%02d.txt", st.wYear, st.wMonth, st.wDay);
+    return buf.data();
 }
 }  // namespace
 

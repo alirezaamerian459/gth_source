@@ -2,6 +2,7 @@
 
 #include <shellapi.h>
 
+#include <array>
 #include <fstream>
 
 #pragma comment(lib, "shell32.lib")
@@ -20,13 +21,13 @@ constexpr UINT_PTR kLiveRefreshTimerId = 1;
 constexpr UINT kLiveRefreshTickMs = 1000;
 
 std::wstring formatSize(long long bytes) {
-    wchar_t buffer[48];
+    std::array<wchar_t, 48> buffer{};
     if (bytes >= 1024LL * 1024 * 1024) {
-        swprintf_s(buffer, L"%.2f GB", bytes / 1024.0 / 1024.0 / 1024.0);
+        swprintf_s(buffer.data(), buffer.size(), L"%.2f GB", bytes / 1024.0 / 1024.0 / 1024.0);
     } else {
-        swprintf_s(buffer, L"%.1f MB", bytes / 1024.0 / 1024.0);
+        swprintf_s(buffer.data(), buffer.size(), L"%.1f MB", bytes / 1024.0 / 1024.0);
     }
-    return buffer;
+    return buffer.data();
 }
 
 std::wstring formatDuration(long long seconds) {
@@ -47,9 +48,9 @@ std::wstring formatSpeed(long long bytes, long long seconds) {
 std::wstring formatWhen(std::time_t when) {
     std::tm local{};
     localtime_s(&local, &when);
-    wchar_t buffer[32];
-    wcsftime(buffer, 32, L"%Y-%m-%d %H:%M", &local);
-    return buffer;
+    std::array<wchar_t, 32> buffer{};
+    wcsftime(buffer.data(), buffer.size(), L"%Y-%m-%d %H:%M", &local);
+    return buffer.data();
 }
 
 std::wstring kindText(gth::application::SyncKind kind) {

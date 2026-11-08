@@ -1,6 +1,7 @@
 #include "gth/application/indexing/UpdateCheckService.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdio>
 #include <map>
@@ -16,9 +17,9 @@ namespace gth::application {
 namespace {
 
 std::string formatGigabytes(long long bytes) {
-    char buffer[32];
-    snprintf(buffer, sizeof(buffer), "%.2f GB", static_cast<double>(bytes) / 1024.0 / 1024.0 / 1024.0);
-    return buffer;
+    std::array<char, 32> buffer{};
+    snprintf(buffer.data(), buffer.size(), "%.2f GB", static_cast<double>(bytes) / 1024.0 / 1024.0 / 1024.0);
+    return buffer.data();
 }
 
 }  // namespace

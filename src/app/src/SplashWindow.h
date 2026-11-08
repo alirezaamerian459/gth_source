@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 #include "Theme.h"
@@ -271,9 +272,9 @@ private:
         HFONT percentFont = ::CreateFontW(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                                            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                                            DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-        wchar_t percentText[16];
-        swprintf_s(percentText, L"%d%%", static_cast<int>(loadProgress * 100.0 + 0.5));
-        theme::DrawCenteredText(hdc, percentRect, percentText, percentFont, RGB(200, 190, 215));
+        std::array<wchar_t, 16> percentText{};
+        swprintf_s(percentText.data(), percentText.size(), L"%d%%", static_cast<int>(loadProgress * 100.0 + 0.5));
+        theme::DrawCenteredText(hdc, percentRect, percentText.data(), percentFont, RGB(200, 190, 215));
         ::DeleteObject(percentFont);
 
         // Developer credit + rights notice, bottom-right corner (two lines,

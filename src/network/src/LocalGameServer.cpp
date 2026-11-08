@@ -8,6 +8,7 @@
 #include <ws2tcpip.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <chrono>
 #include <ctime>
@@ -115,10 +116,10 @@ std::string httpDate(std::chrono::system_clock::time_point tp) {
     const std::time_t t = std::chrono::system_clock::to_time_t(tp);
     std::tm g{};
     gmtime_s(&g, &t);
-    char buf[64];
-    std::snprintf(buf, sizeof(buf), "%s, %02d %s %04d %02d:%02d:%02d GMT", kDays[g.tm_wday], g.tm_mday,
+    std::array<char, 64> buf{};
+    std::snprintf(buf.data(), buf.size(), "%s, %02d %s %04d %02d:%02d:%02d GMT", kDays[g.tm_wday], g.tm_mday,
                   kMonths[g.tm_mon], g.tm_year + 1900, g.tm_hour, g.tm_min, g.tm_sec);
-    return buf;
+    return buf.data();
 }
 
 std::string lastModifiedOf(const fs::path& file) {

@@ -294,3 +294,18 @@ Verification:
 - `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=SonyUpdateServiceTest.*:SonyPieceDownloaderTest.*` — 16 passed.
 - `git diff --check -- src/network/src/SonyHttp.h` — passed.
 - No Sonar re-analysis was run.
+
+### 2026-11-08 follow-up — live issue-count check and fixed buffers
+
+The user asked whether the SonarQube total should decrease while fixes are applied. Yes: SonarQube for IDE must recheck the edited file and remove resolved rows. The BackupsView group was observed dropping from 8 to 6, and the observed IDE total dropped from 1,761 to 1,759 after the two fixed destination buffers were converted to same-size `std::array` buffers. The two row messages were not exposed, so the count change is confirmed while the exact rule/location mapping remains unknown.
+
+Current VS Code accessibility state still shows 80 problems in the open `WinsockCachingProxyServer.cpp` tab, which has unsaved edits; that tab and the other unsaved tabs were not changed. The VS Code workspace is the Desktop source copy; this run log and versioned changes are in the Codex checkout. No full Sonar analysis was restarted.
+
+Applied a candidate fixed-buffer pass in the versioned checkout across ten files: `DownloadsView.cpp`, `LogsView.cpp`, `MainFrame.cpp`, `SplashWindow.h`, `Theme.h`, `PackageSyncService.cpp`, `UpdateCheckService.cpp`, `ServiceContainer.cpp`, `LocalGameServer.cpp`, and `SonyUpdateService.cpp`. Twelve fixed arrays were replaced with same-sized `std::array` instances; explicit Win32, Crypto, and parsing capacities were kept unchanged. These fixes are not counted as Sonar-resolved until the IDE's per-file diagnostics refresh.
+
+Verification:
+- `cmake --build build --config Debug --target GameTransferHubApp --parallel 4 -- /p:OutDir=<repo>\build\verification-2026-11-08\Debug\` — passed; linked a separate executable and left the already-running app untouched.
+- Focused package, Sony update, and local-server tests — 80 passed.
+- Full unit CTest run — 506 passed, 6 skipped, 0 failed (512 total). The existing `LocalFileIndexTest.FindsFilesAfterARealScanOfTheStorage` case reported 57,546.58 seconds; avoid repeating the full suite without need.
+- `git diff --check` — passed after the final log update (Git reports only line-ending normalization notices for the two text reports).
+- No Sonar re-analysis was run.

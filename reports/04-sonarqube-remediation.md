@@ -61,7 +61,7 @@ Verification in the versioned checkout:
 
 The next visible IDE group contained 17 findings; eight rows were exposed and matched to `src/app/src/StorageView.cpp` by their messages and source locations. Those eight were addressed in the local checkout with equivalent optional checks, rating branches, formatting, and fixed-size `std::array` buffers. The other nine rows in that group and the rest of the project findings are not yet enumerated. The run log records the individual visible rows and current status. Across the documented proxy and StorageView work, 23 distinct visible findings have a code disposition; the requested 80% threshold (1,409 of 1,761 baseline findings) has not been reached. The Debug app build compiled the changed StorageView source but could not replace the running executable (LNK1168). No Sonar re-analysis was run.
 
-The IDE's Explorer also showed eight problems in `BackupsView.cpp`, but their diagnostic text was unavailable. Two same-pattern fixed destination buffers were converted to `std::array` based on the confirmed `cpp:S5945` pattern from StorageView. These are candidate fixes only and are excluded from the confirmed issue count until their actual IDE rows are captured.
+The IDE's Explorer initially showed eight problems in `BackupsView.cpp`, but their diagnostic text was unavailable. Two same-pattern fixed destination buffers were converted to `std::array` based on the confirmed `cpp:S5945` pattern from StorageView. After the file rechecked, its visible count fell from 8 to 6 and the observed IDE total fell from 1,761 to 1,759. This confirms two fewer live findings, though the individual BackupsView rows were not captured. Later source edits are tracked separately until their issue counts refresh.
 
 The same IDE-visible rule families also motivated a behavior-preserving source pass: 22 optional-presence checks now use `has_value()`, and nested conditional expressions in package selection, transfer status, health scoring, and native control color selection were expressed as ordered branches or an equivalent boolean condition. Since their exact rows were not captured, these are tracked as candidate remediations rather than verified Sonar findings. Debug unit-test build passed and CTest completed with 506 passed, 6 skipped, and 0 failed (512 total). The app sources compiled, but final linking remained blocked by the already-running app executable (LNK1168). No Sonar re-analysis was run.
 
@@ -90,3 +90,15 @@ The size mismatch text in `FileVerifier.cpp` now uses an equivalent `std::format
 Five numeric expressions in archive updates, download failures, title lookup diagnostics, and migration version updates now use `std::format`. The unit test target rebuilt; 24 relevant archive, download, and lookup tests passed, and the archive tests exercised database migration setup. These are candidate matches only and do not alter the confirmed IDE-row count.
 
 The shared Sony HTTP helper now uses `std::format` for two diagnostics and a same-size `std::array` for its 32-byte certificate digest output. The network module and unit tests rebuilt; all 16 Sony update/download tests passed. These are candidate matches only and do not change the confirmed issue count.
+
+### 2026-11-08 follow-up — fixed-buffer cleanup and live count
+
+The user asked whether the problem total should decrease during remediation. Yes: a resolved finding should disappear after SonarQube for IDE rechecks that file. The only verified live decrease at this checkpoint is the observed 1,761-to-1,759 drop after the two BackupsView buffer changes. The latest VS Code title still reports 80 problems for the currently open, unsaved `WinsockCachingProxyServer.cpp`; that file was left untouched. No project-wide Sonar analysis was restarted.
+
+Applied the same-capacity `std::array` conversion to 12 fixed buffers across `DownloadsView.cpp`, `LogsView.cpp`, `MainFrame.cpp`, `SplashWindow.h`, `Theme.h`, `PackageSyncService.cpp`, `UpdateCheckService.cpp`, `ServiceContainer.cpp`, `LocalGameServer.cpp`, and `SonyUpdateService.cpp`. Buffer lengths and Win32/Crypto API capacities remain unchanged. These are candidate `cpp:S5945` remediations until the IDE refreshes their individual issue counts; do not add them to the verified reduction yet.
+
+Verification for the local checkout:
+- Debug application target built to a separate output directory, leaving the running app executable untouched.
+- Focused package, Sony update, and local-server tests: 80 passed.
+- Full unit CTest run: 506 passed, 6 skipped, 0 failed (512 total). One existing long-running scan test reported 57,546.58 seconds, so this full suite should not be repeated without need.
+- `git diff --check` — passed after the final log update; Git reported only line-ending normalization notices for the two text reports. No new Sonar run was performed.
