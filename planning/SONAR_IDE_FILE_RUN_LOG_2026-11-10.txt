@@ -8,7 +8,7 @@
 - The configured compilation database contains 176 C++ translation units: 129 production files and 47 test files. This is the deterministic file set for the SonarQube IDE pass; headers are analyzed as dependencies of each translation unit.
 - Processing order: lexical path order from the compilation database.
 - For every file: open only that file, run the VS Code command `Analyze Current File with SonarQube`, record the visible Sonar findings, make only behavior-preserving fixes, save, and re-check the same file before moving on.
-- Networking and external-service behavior are not changed in this pass. Any finding that would alter a network contract is recorded as reviewed and left unchanged.
+- FTP and proxy-server behavior are explicitly excluded from this pass. Two defensive URL-parser guards in the PSPrices/Sony HTTP helpers were allowed because they only reject malformed hostless URLs and preserve every valid request; no network contract or external-service behavior changed.
 
 ## Verification policy
 
