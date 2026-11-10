@@ -103,6 +103,7 @@ public:
         COMMAND_HANDLER(IDC_SIDEBAR_LIST, LBN_SELCHANGE, OnSidebarSelChange)
         COMMAND_HANDLER(IDC_NAV_TOGGLE_BUTTON, BN_CLICKED, OnNavToggleClick)
         COMMAND_HANDLER(IDC_GLOBAL_QUEUE_BUTTON, BN_CLICKED, OnGlobalQueueClick)
+        COMMAND_HANDLER(IDC_GLOBAL_NOTIFICATIONS_BUTTON, BN_CLICKED, OnNotificationsClick)
         CHAIN_MSG_MAP(CFrameWindowImpl<MainFrame>)
     END_MSG_MAP()
 
@@ -120,6 +121,7 @@ private:
     LRESULT OnSidebarSelChange(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnNavToggleClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnGlobalQueueClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnNotificationsClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     static LRESULT CALLBACK SidebarSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
                                                  UINT_PTR subclassId, DWORD_PTR referenceData);
 
@@ -131,6 +133,7 @@ private:
     void onSettingsChanged();
     void selectSidebarLogical(int logicalIndex);
     void toggleSidebarGroup(int groupIndex, bool keepGroupFocused);
+    void updateNotificationBell(int count);
 
     gth::application::IStorageService& storageService_;
     gth::application::IGameIndexer& gameIndexer_;
@@ -176,6 +179,8 @@ private:
     CStatic shellStatusLabel_;
     ModernButton navToggleButton_;
     ModernButton globalQueueButton_;
+    ModernButton notificationButton_;
+    int notificationCount_ = 0;
     // Position in sidebar_ -> logical kXIndex, rebuilt by populateSidebar().
     // Negative values identify expandable section rows; nonnegative values
     // are stable page indices. The sidebar only contains a filtered subset

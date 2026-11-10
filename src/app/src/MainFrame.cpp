@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
+#include <format>
 #include <set>
 
 #include "SidebarTabs.h"
@@ -139,7 +141,7 @@ LRESULT MainFrame::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
                      WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS |
                          LBS_NOINTEGRALHEIGHT | WS_VSCROLL,
                      0, IDC_SIDEBAR_LIST);
-    ::SetWindowSubclass(sidebar_.m_hWnd, SidebarSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
+    ::SetWindowSubclass(sidebar_.m_hWnd, SidebarSubclassProc, 1, std::bit_cast<DWORD_PTR>(this));
 
     CRect footerRect(0, clientRect.Height() - kFooterHeight, kSidebarWidth, clientRect.Height());
     footer_.Create(m_hWnd, footerRect,
@@ -147,25 +149,32 @@ LRESULT MainFrame::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
                    WS_CHILD | WS_VISIBLE | SS_CENTER);
     footer_.SetFont(theme::SmallFont());
 
-    CRect navButtonRect(12, 16, 76, 48);
+    CRect navButtonRect(12, 16, 90, 48);
     navToggleButton_.Create(m_hWnd, navButtonRect, L"\x2630 Hide",
                             WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0, IDC_NAV_TOGGLE_BUTTON);
     navToggleButton_.SetFont(theme::BodyFont());
     navToggleButton_.setKind(ModernButton::Kind::Secondary);
 
-    CRect contextRect(88, 12, clientRect.right - 220, 36);
+    CRect contextRect(100, 12, clientRect.right - 350, 36);
     pageContextLabel_.Create(m_hWnd, contextRect, L"Game Transfer Hub", WS_CHILD | WS_VISIBLE);
     pageContextLabel_.SetFont(theme::SectionFont());
 
-    CRect hintRect(88, 37, clientRect.right - 220, 56);
+    CRect hintRect(100, 37, clientRect.right - 350, 56);
     pageContextHint_.Create(m_hWnd, hintRect,
                             L"Manage games, consoles, transfers, and backups from one workspace.",
                             WS_CHILD | WS_VISIBLE);
     pageContextHint_.SetFont(theme::SmallFont());
 
-    CRect statusRect(clientRect.right - 205, 15, clientRect.right - 120, 38);
+    CRect statusRect(clientRect.right - 335, 15, clientRect.right - 250, 38);
     shellStatusLabel_.Create(m_hWnd, statusRect, L"Ready", WS_CHILD | WS_VISIBLE | SS_RIGHT);
     shellStatusLabel_.SetFont(theme::SmallFont());
+
+    CRect notificationRect(clientRect.right - 240, 13, clientRect.right - 118, 45);
+    notificationButton_.Create(m_hWnd, notificationRect, L"\xE7F4 Updates",
+                                WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
+                                IDC_GLOBAL_NOTIFICATIONS_BUTTON);
+    notificationButton_.SetFont(theme::BodyFont());
+    notificationButton_.setKind(ModernButton::Kind::Secondary);
 
     CRect queueButtonRect(clientRect.right - 108, 13, clientRect.right - 28, 45);
     globalQueueButton_.Create(m_hWnd, queueButtonRect, L"Queue", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
@@ -186,6 +195,7 @@ LRESULT MainFrame::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     jbGamesView_.Create(m_hWnd, contentRect, nullptr, WS_CHILD);
     updatesView_.init(gameLibrary_, gameIndexer_, updateChecker_, packageSync_, storageService_, sonyLinksPath_,
                       sonyAutomationPath_, sharedState_, posterCache_, gamePosterService_);
+    updatesView_.setNotificationCallback([this](int count) { updateNotificationBell(count); });
     updatesView_.Create(m_hWnd, contentRect, nullptr, WS_CHILD);
     // Both poster-grid views have subscribed to posterCache_ by now (each does so in its own
     // OnCreate, which Create() above already ran synchronously) - safe to start the background
@@ -247,7 +257,7 @@ LRESULT MainFrame::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 // removed the rules on purpose; the outcome is logged and shown in Settings.
 LRESULT MainFrame::OnAutoAllowFirewall(UINT, WPARAM, LPARAM, BOOL&) {
     const auto result = firewallService_.allowThisAppIfNeeded();
-    if (!result) return 0;
+    if (!result.has_value()) return 0;
 
     if (result->success) {
         GTH_LOG_INFO("Firewall: {}", result->message);
@@ -259,7 +269,7 @@ LRESULT MainFrame::OnAutoAllowFirewall(UINT, WPARAM, LPARAM, BOOL&) {
 }
 
 LRESULT MainFrame::OnEraseBkgnd(UINT, WPARAM wParam, LPARAM, BOOL&) {
-    HDC hdc = reinterpret_cast<HDC>(wParam);
+    HDC hdc = std::bit_cast<HDC>(wParam);
     CRect clientRect;
     GetClientRect(&clientRect);
 
@@ -298,13 +308,13 @@ LRESULT MainFrame::OnDestroy(UINT, WPARAM, LPARAM, BOOL& bHandled) {
 
 LRESULT MainFrame::OnCtlColorListBox(UINT, WPARAM wParam, LPARAM, BOOL&) {
     HBRUSH sidebarBrush = theme::SidebarBgBrush();
-    HDC hdc = reinterpret_cast<HDC>(wParam);
+    HDC hdc = std::bit_cast<HDC>(wParam);
     ::SetBkMode(hdc, TRANSPARENT);
-    return reinterpret_cast<LRESULT>(sidebarBrush);
+    return std::bit_cast<LRESULT>(sidebarBrush);
 }
 
 LRESULT MainFrame::OnMeasureItem(UINT, WPARAM, LPARAM lParam, BOOL&) {
-    auto* mis = reinterpret_cast<MEASUREITEMSTRUCT*>(lParam);
+    auto* mis = std::bit_cast<MEASUREITEMSTRUCT*>(lParam);
     mis->itemHeight = kSidebarItemHeight;
     return 1;
 }
@@ -314,7 +324,7 @@ LRESULT MainFrame::OnMeasureItem(UINT, WPARAM, LPARAM lParam, BOOL&) {
 // own Settings app uses for its navigation pane, rather than the flat
 // system-blue highlight bar a stock owner-draw-less listbox would show.
 LRESULT MainFrame::OnDrawItem(UINT, WPARAM, LPARAM lParam, BOOL&) {
-    auto* dis = reinterpret_cast<DRAWITEMSTRUCT*>(lParam);
+    auto* dis = std::bit_cast<DRAWITEMSTRUCT*>(lParam);
     if (dis->CtlID != IDC_SIDEBAR_LIST || dis->itemID == static_cast<UINT>(-1)) return 0;
 
     const bool selected = (dis->itemState & ODS_SELECTED) != 0;
@@ -388,15 +398,15 @@ LRESULT MainFrame::OnDrawItem(UINT, WPARAM, LPARAM lParam, BOOL&) {
 // WM_CTLCOLORSTATIC on its own. The sidebar footer is the only frame-level
 // static that needs the navigation surface brush.
 LRESULT MainFrame::OnCtlColorStatic(UINT, WPARAM wParam, LPARAM lParam, BOOL&) {
-    HDC hdc = reinterpret_cast<HDC>(wParam);
+    HDC hdc = std::bit_cast<HDC>(wParam);
     ::SetBkMode(hdc, TRANSPARENT);
     // The frame owns the footer and shell header controls. Their backgrounds
     // are painted by OnEraseBkgnd, so return the matching brush on refresh.
-    HWND source = reinterpret_cast<HWND>(lParam);
+    HWND source = std::bit_cast<HWND>(lParam);
     const bool sidebarControl = source == footer_.m_hWnd;
     const bool primaryText = source == pageContextLabel_.m_hWnd;
     ::SetTextColor(hdc, primaryText ? theme::TextPrimary() : theme::TextSecondary());
-    return reinterpret_cast<LRESULT>(sidebarControl ? theme::SidebarBgBrush() : theme::ContentBgBrush());
+    return std::bit_cast<LRESULT>(sidebarControl ? theme::SidebarBgBrush() : theme::ContentBgBrush());
 }
 
 void MainFrame::applyRoundedCorners() {
@@ -419,7 +429,7 @@ LRESULT MainFrame::OnSidebarSelChange(WORD, WORD, HWND, BOOL&) {
 
 LRESULT MainFrame::SidebarSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR subclassId,
                                        DWORD_PTR referenceData) {
-    auto* self = reinterpret_cast<MainFrame*>(referenceData);
+    auto* self = std::bit_cast<MainFrame*>(referenceData);
     if (!self) return ::DefSubclassProc(hwnd, msg, wParam, lParam);
 
     const auto groupAtPoint = [self, hwnd](LPARAM point) {
@@ -513,6 +523,26 @@ LRESULT MainFrame::OnGlobalQueueClick(WORD, WORD, HWND, BOOL&) {
     selectSidebarLogical(kTransfersIndex);
     showView(kTransfersIndex);
     return 0;
+}
+
+LRESULT MainFrame::OnNotificationsClick(WORD, WORD, HWND, BOOL&) {
+    const int count = notificationCount_;
+    notificationCount_ = 0;
+    updateNotificationBell(0);
+    expandedSidebarGroups_[static_cast<size_t>(SidebarGroup::Workspace)] = true;
+    populateSidebar(currentLogicalIndex_);
+    selectSidebarLogical(kUpdatesIndex);
+    showView(kUpdatesIndex);
+    shellStatusLabel_.SetWindowText(count > 0 ? L"Updates ready" : L"No new updates");
+    return 0;
+}
+
+void MainFrame::updateNotificationBell(int count) {
+    notificationCount_ = std::max(0, count);
+    if (!notificationButton_.IsWindow()) return;
+    notificationButton_.SetWindowText(notificationCount_ > 0
+                                          ? std::format(L"\xE7F4 Updates ({})", notificationCount_).c_str()
+                                          : L"\xE7F4 Updates");
 }
 
 // Rebuilds the accordion navigation from the pages currently available to
@@ -679,11 +709,15 @@ void MainFrame::layout() {
         footer_.MoveWindow(0, clientRect.Height() - kFooterHeight, kSidebarWidth, kFooterHeight);
     }
 
-    if (navToggleButton_.IsWindow()) navToggleButton_.MoveWindow(12, 16, 64, 32);
-    const int contextWidth = std::max(0, static_cast<int>(clientRect.right) - 220 - 88);
-    if (pageContextLabel_.IsWindow()) pageContextLabel_.MoveWindow(88, 12, contextWidth, 24);
-    if (pageContextHint_.IsWindow()) pageContextHint_.MoveWindow(88, 37, contextWidth, 20);
-    if (shellStatusLabel_.IsWindow()) shellStatusLabel_.MoveWindow(clientRect.right - 205, 15, 85, 23);
+    if (navToggleButton_.IsWindow()) {
+        navToggleButton_.SetWindowText(sidebarVisible_ ? L"\x2630 Hide" : L"\x2630 Menu");
+        navToggleButton_.MoveWindow(12, 16, 78, 32);
+    }
+    const int contextWidth = std::max(0, static_cast<int>(clientRect.right) - 350 - 100);
+    if (pageContextLabel_.IsWindow()) pageContextLabel_.MoveWindow(100, 12, contextWidth, 24);
+    if (pageContextHint_.IsWindow()) pageContextHint_.MoveWindow(100, 37, contextWidth, 20);
+    if (shellStatusLabel_.IsWindow()) shellStatusLabel_.MoveWindow(clientRect.right - 335, 15, 85, 23);
+    if (notificationButton_.IsWindow()) notificationButton_.MoveWindow(clientRect.right - 240, 13, 122, 32);
     if (globalQueueButton_.IsWindow()) globalQueueButton_.MoveWindow(clientRect.right - 108, 13, 80, 32);
 
     const int contentLeft = sidebarVisible_ ? kSidebarWidth : 0;

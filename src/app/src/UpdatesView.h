@@ -57,8 +57,8 @@ constexpr UINT kSyncListMessage = WM_APP + 49;
 // visible proof in the status line that the copy actually happened, without needing the log file.
 constexpr UINT kSonyLinkCopiedMessage = WM_APP + 50;
 
-// Posted by PatchAutoClicker after it clicks a patch (wParam 0) or after the site's captcha check
-// rejects that automated click (wParam 1) - lParam unused either way.
+// Posted by PatchAutoClicker after it clicks a patch (wParam 0) or reports an outcome (wParam 1-4);
+// lParam is an owned std::wstring* holding the affected title ID.
 constexpr UINT kPatchAutoClickMessage = WM_APP + 51;
 
 struct RowUpdate {
@@ -79,9 +79,9 @@ struct LinksJobOutcome {
 
     // Set when the job was "Add links from ..." rather than the public list download.
     bool imported = false;
-    // ...and when it came from a collection session (More > Sony update links > Collect links), which carries on by itself.
+    // ...and when it came from a collection session (the updates grid context menu > Sony update links > Collect links), which carries on by itself.
     bool guided = false;
-    gth::network::SonyLinkImportResult import;
+    gth::network::SonyLinkImportResult importResult;
 };
 
 // Everything a finished Sony sync job has to tell the UI.
@@ -102,6 +102,55 @@ struct SyncJobOutcome {
     std::chrono::seconds took{0};
 };
 
+class UpdatesView;
+
+// A compact, keyboard-focusable card canvas for the Updates page. The hidden list view remains
+// the selection model used by the existing commands; this surface only changes presentation and
+// routes clicks/keys back to that model.
+class UpdatesBoardWindow : public CWindowImpl<UpdatesBoardWindow> {
+public:
+    DECLARE_WND_CLASS(L"GthUpdatesBoardWindow")
+
+    BEGIN_MSG_MAP(UpdatesBoardWindow)
+        MESSAGE_HANDLER(WM_PAINT, OnPaint)
+        MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBkgnd)
+        MESSAGE_HANDLER(WM_SIZE, OnSize)
+        MESSAGE_HANDLER(WM_VSCROLL, OnVScroll)
+        MESSAGE_HANDLER(WM_MOUSEWHEEL, OnMouseWheel)
+        MESSAGE_HANDLER(WM_CONTEXTMENU, OnContextMenu)
+        MESSAGE_HANDLER(WM_LBUTTONDOWN, OnLButtonDown)
+        MESSAGE_HANDLER(WM_LBUTTONDBLCLK, OnLButtonDoubleClick)
+        MESSAGE_HANDLER(WM_KEYDOWN, OnKeyDown)
+        MESSAGE_HANDLER(WM_SETFOCUS, OnSetFocus)
+    END_MSG_MAP()
+
+    void init(UpdatesView& owner) { owner_ = &owner; }
+    void setContentExtent(int width, int height);
+    void refresh() { Invalidate(FALSE); }
+    int verticalOffset() const { return verticalOffset_; }
+
+private:
+    LRESULT OnPaint(UINT, WPARAM, LPARAM, BOOL&);
+    LRESULT OnEraseBkgnd(UINT, WPARAM wParam, LPARAM, BOOL&);
+    LRESULT OnSize(UINT, WPARAM, LPARAM, BOOL&);
+    LRESULT OnVScroll(UINT, WPARAM, LPARAM, BOOL&);
+    LRESULT OnMouseWheel(UINT, WPARAM, LPARAM, BOOL&);
+    LRESULT OnContextMenu(UINT, WPARAM, LPARAM, BOOL&);
+    LRESULT OnLButtonDown(UINT, WPARAM, LPARAM, BOOL&);
+    LRESULT OnLButtonDoubleClick(UINT, WPARAM, LPARAM, BOOL&);
+    LRESULT OnKeyDown(UINT, WPARAM, LPARAM, BOOL&);
+    LRESULT OnSetFocus(UINT, WPARAM, LPARAM, BOOL&);
+
+    void updateScrollBar();
+    void scrollTo(int position);
+    int maxVertical() const;
+
+    UpdatesView* owner_ = nullptr;
+    int contentWidth_ = 0;
+    int contentHeight_ = 0;
+    int verticalOffset_ = 0;
+};
+
 // The Updates tab: everything that keeps the archive current - the Sony check,
 // syncing games with Sony, the automation switches, the links Sony needs, and
 // the tools for saying which version a game is.
@@ -116,6 +165,7 @@ public:
         MESSAGE_HANDLER(WM_TIMER, OnTimer)
         MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBkgnd)
         MESSAGE_HANDLER(WM_CTLCOLORSTATIC, OnCtlColorStatic)
+        MESSAGE_HANDLER(WM_CTLCOLOREDIT, OnCtlColorEdit)
         MESSAGE_HANDLER(kUpdateCheckDoneMessage, OnUpdateCheckDone)
         MESSAGE_HANDLER(kSyncProgressMessage, OnSyncProgress)
         MESSAGE_HANDLER(kSyncDoneMessage, OnSyncDone)
@@ -137,7 +187,9 @@ public:
         COMMAND_ID_HANDLER(IDC_UPDATES_SONY_LINKS_BUTTON, OnSonyLinksClick)
         COMMAND_ID_HANDLER(IDC_UPDATES_SKIP_GAME_BUTTON, OnSkipGameClick)
         COMMAND_ID_HANDLER(IDC_UPDATES_GUIDE_BUTTON, OnGuideClick)
-        COMMAND_ID_HANDLER(IDC_UPDATES_MORE_BUTTON, OnMoreClick)
+        COMMAND_ID_HANDLER(IDC_UPDATES_AUTOMATION_PANEL_BUTTON, OnAutomationPanelClick)
+        COMMAND_ID_HANDLER(IDC_UPDATES_SELECTED_GAME_PANEL_BUTTON, OnSelectedGamePanelClick)
+        COMMAND_HANDLER(IDC_UPDATES_FILTER_EDIT, EN_CHANGE, OnFilterChanged)
         COMMAND_ID_HANDLER(IDC_UPDATES_AUTO_CHECK_CHECKBOX, OnAutomationSettingClicked)
         COMMAND_ID_HANDLER(IDC_UPDATES_AUTO_METADATA_CHECKBOX, OnAutomationSettingClicked)
         COMMAND_ID_HANDLER(IDC_UPDATES_AUTO_UPDATES_CHECKBOX, OnAutomationSettingClicked)
@@ -158,11 +210,16 @@ public:
         sonyLinksPath_ = std::move(sonyLinksPath);
         reportPath_ = sonyLinksPath_.parent_path() / "sony-automation-log.txt";
         downloadHistoryPath_ = sonyLinksPath_.parent_path() / "download-history.tsv";
+        collectLinksLogPath_ = sonyLinksPath_.parent_path() / "GTH-Prosperopatches-links.txt";
         automationStore_.emplace(std::move(sonyAutomationPath));
         automationSettings_ = automationStore_->load();
         shared_ = &shared;
         posterCache_ = &posterCache;
         posterService_ = &posterService;
+    }
+
+    void setNotificationCallback(std::function<void(int)> callback) {
+        notificationCallback_ = std::move(callback);
     }
 
     void refresh();
@@ -174,6 +231,7 @@ private:
     LRESULT OnTimer(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
     LRESULT OnEraseBkgnd(UINT, WPARAM wParam, LPARAM, BOOL&) { return HandleEraseBkgndWithContentBg(m_hWnd, wParam); }
     LRESULT OnCtlColorStatic(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
+    LRESULT OnCtlColorEdit(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
     LRESULT OnCheckUpdatesClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnUpdateCheckDone(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
     LRESULT OnSetVersionClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
@@ -196,11 +254,25 @@ private:
     LRESULT OnLinksProgress(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
     LRESULT OnSkipGameClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnGuideClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
-    LRESULT OnMoreClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnAutomationPanelClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnSelectedGamePanelClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnFilterChanged(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnListSelectionChanged(int idCtrl, LPNMHDR pnmh, BOOL& bHandled);
 
+    friend class UpdatesBoardWindow;
+    int boardCardWidth() const;
+    int boardCardHeight() const;
+    void updateBoardExtent();
+    void paintGameBoard(HDC hdc, const RECT& clientRect, int verticalOffset);
+    int hitTestGameBoard(POINT point, int verticalOffset) const;
+    void onGameBoardClick(int index, bool activate);
+    void onGameBoardKeyDown(UINT key);
+    void showToolsMenu(POINT screenPoint);
+    bool filterMatches(const gth::application::GameLibraryEntry& entry) const;
+    std::wstring filterText() const;
+
     // The list entry behind the selected row, or nullptr when nothing is selected.
-    const gth::application::GameLibraryEntry* selectedEntry() const;
+    const gth::application::GameLibraryEntry* selectedEntry();
     void selectVariant(const std::string& gameVariantId);
     void updateVersionControls();
     void applyVersionToSelected(const std::string& version);
@@ -219,6 +291,8 @@ private:
     bool startSync(const std::string& gameVariantId, gth::application::SyncMode mode, bool automatic,
                    bool checkAfter = true);
     void applyAutomationSettingsToControls();
+    void updateAutomationSummary();
+    void layoutControls();
     // Reads the Sony version link out of every "_sc.pkg" metadata piece already in the archive (no network) and
     // saves the ones the app didn't have. Safe on a worker thread. Returns how many links were learned.
     size_t learnLinksFromArchive();
@@ -237,6 +311,7 @@ private:
     void startCollecting();
     void collectTick();
     void collectNext(const std::wstring& lead = {});
+    void appendCollectedLinksToDesktop(const std::vector<std::string>& titleIds);
     // `completed`: the session ran through every game (rather than being stopped or failing).
     void finishCollecting(const std::wstring& how, bool completed = false);
     // After "Update All Games" leaves games with no Sony link: offers the guided collection.
@@ -272,27 +347,31 @@ private:
     std::filesystem::path sonyLinksPath_;
     std::filesystem::path reportPath_;  // what each run did, for reading later
     std::filesystem::path downloadHistoryPath_;  // per-game download stats, for the Downloads tab
+    std::filesystem::path collectLinksLogPath_;  // Desktop copy of links learned from Prosperopatches
     std::optional<gth::application::SonyAutomationSettingsStore> automationStore_;
     gth::application::SonyAutomationSettings automationSettings_;
     SharedArchiveState* shared_ = nullptr;
     PosterCache* posterCache_ = nullptr;
     gth::application::IGamePosterService* posterService_ = nullptr;
     CImageList posterImageList_;
+    std::vector<HBITMAP> posterTiles_;
 
     // "Check Sony for Updates": two requests per game against Sony's servers,
     // so it runs off the UI thread, and its result comes back as a message.
-    std::thread updateThread_;
+    std::jthread updateThread_;
     std::atomic<bool> updateInProgress_{false};
     std::atomic<int> checkLearnedLinks_{0};  // links the running check read out of files in the archive first
+    int lastNotifiedUpdateCount_ = 0;
+    std::function<void(int)> notificationCallback_;
 
     // A Sony sync (adding metadata / updating packages): can run for a long
     // time, reports progress, and can be cancelled.
-    std::thread syncThread_;
+    std::jthread syncThread_;
     std::atomic<bool> syncInProgress_{false};
     std::atomic<bool> syncCancel_{false};
 
     // Downloading the public Sony link list, or reading Sony addresses into links.
-    std::thread linksThread_;
+    std::jthread linksThread_;
     std::atomic<bool> linksInProgress_{false};
     std::atomic<bool> linksCancel_{false};
 
@@ -350,8 +429,12 @@ private:
     ModernButton syncSelectedButton_;
     ModernButton downloadAllButton_;
     ModernButton cancelSyncButton_;
-    ModernButton moreButton_;  // Sony links, import, tracker page, captcha check, guide
-    CStatic automaticCaption_;
+    ModernButton automationPanelButton_;
+    ModernButton selectedGamePanelButton_;
+    CStatic automationSummaryLabel_;
+    CStatic selectedGameSummaryLabel_;
+    bool automationExpanded_ = false;
+    bool selectedGameToolsExpanded_ = false;
 
     ModernCheckBox autoCheckBox_;
     ModernCheckBox autoMetadataBox_;
@@ -365,5 +448,7 @@ private:
     ModernButton skipGameButton_;  // only shown while collecting links
 
     CStatic statusLabel_;
+    CEdit filterEdit_;
     CListViewCtrl listView_;
+    UpdatesBoardWindow board_;
 };

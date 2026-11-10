@@ -2,9 +2,14 @@
 
 #include <commdlg.h>
 #include <shellapi.h>
+#include <shlobj.h>
 
 #include <algorithm>
+#include <array>
+#include <bit>
+#include <cwctype>
 #include <fstream>
+#include <format>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -14,6 +19,7 @@
 #include "gth/core/enums/GameVariantStatus.h"
 #include "gth/logging/Logging.h"
 #include "gth/network/SonyUpdateService.h"
+#include "UiMessageOwnership.h"
 
 #pragma comment(lib, "comdlg32.lib")
 #pragma comment(lib, "shell32.lib")
@@ -21,19 +27,23 @@
 namespace {
 constexpr int kMargin = 24;
 
-// Header, top to bottom: the main buttons, the three automation switches, the
-// version tools, then the status text; the list fills what is left.
 constexpr int kRowHeight = 28;
 constexpr int kMainRowTop = 24;
-constexpr int kSwitchRowTop = kMainRowTop + kRowHeight + 10;
-constexpr int kVersionRowTop = kSwitchRowTop + kRowHeight + 6;
-constexpr int kStatusTop = kVersionRowTop + kRowHeight + 8;
-constexpr int kStatusHeight = 88;  // five lines: the note about a finished run can be long
-constexpr int kListTop = kStatusTop + kStatusHeight + 8;
+constexpr int kStatusHeight = 32;
+constexpr int kBoardTop = 236;
+constexpr int kBoardSummaryHeight = 76;
+constexpr int kBoardCardWidth = 274;
+constexpr int kBoardCardHeight = 324;
+constexpr int kBoardSpacing = 16;
 
 // Once a minute: asks whether the Sony automation is due (see IsSonyAutomationDue).
 constexpr UINT_PTR kAutomationTimerId = 2;
 constexpr UINT kAutomationTickMs = 60 * 1000;
+
+// Keep the library's update status fresh without hammering Sony. The check is
+// read-only and only starts while no other archive job is using the shared slot.
+constexpr UINT_PTR kUpdatePollTimerId = 5;
+constexpr UINT kUpdatePollTickMs = 15 * 60 * 1000;
 
 // While collecting Sony links: looks for a new Sony address on the clipboard.
 constexpr UINT_PTR kCollectTimerId = 3;
@@ -56,29 +66,103 @@ constexpr std::chrono::seconds kCollectStallThreshold{30};
 constexpr const char* kPublicLinkListUrl = "https://raw.githubusercontent.com/1jtp8sobiu/ps5-pkg/master/PS5_XML.tsv";
 
 std::wstring formatSize(long long bytes) {
-    wchar_t buffer[48];
+    std::array<wchar_t, 48> buffer{};
+    const double size = static_cast<double>(bytes);
     if (bytes >= 1024LL * 1024 * 1024) {
-        swprintf_s(buffer, L"%.2f GB", bytes / 1024.0 / 1024.0 / 1024.0);
+        swprintf_s(buffer.data(), buffer.size(), L"%.2f GB", size / 1024.0 / 1024.0 / 1024.0);
     } else {
-        swprintf_s(buffer, L"%.1f MB", bytes / 1024.0 / 1024.0);
+        swprintf_s(buffer.data(), buffer.size(), L"%.1f MB", size / 1024.0 / 1024.0);
     }
-    return buffer;
+    return buffer.data();
+}
+
+std::filesystem::path desktopDirectory() {
+    PWSTR raw = nullptr;
+    if (FAILED(::SHGetKnownFolderPath(FOLDERID_Desktop, KF_FLAG_DEFAULT, nullptr, &raw)) || !raw) return {};
+    std::filesystem::path result(raw);
+    ::CoTaskMemFree(raw);
+    return result;
 }
 
 // The list's own text for a game's answer from Sony.
 std::wstring updateStateText(const gth::application::UpdateCheckEntry& entry) {
-    using gth::application::UpdateState;
-    const wchar_t* label = L"";
+    using enum gth::application::UpdateState;
+    const wchar_t* label;
     switch (entry.state) {
-        case UpdateState::UpToDate: label = L"Up to date"; break;
-        case UpdateState::UpdateAvailable: label = L"Update available"; break;
-        case UpdateState::InstalledVersionUnknown: label = L"Version unknown"; break;
-        case UpdateState::NoSonyData: label = L"No Sony link"; break;
-        case UpdateState::CheckFailed: label = L"Check failed"; break;
+        case UpToDate: label = L"Up to date"; break;
+        case UpdateAvailable: label = L"Update available"; break;
+        case InstalledVersionUnknown: label = L"Version unknown"; break;
+        case NoSonyData: label = L"No Sony link"; break;
+        case CheckFailed: label = L"Check failed"; break;
+        default: label = L""; break;
     }
     std::wstring text = label;
     if (!entry.detail.empty()) text += L" - " + Utf8ToWide(entry.detail);
     return text;
+}
+
+COLORREF updateStateColor(gth::application::UpdateState state) {
+    using enum gth::application::UpdateState;
+    switch (state) {
+        case UpdateAvailable: return RGB(220, 148, 12);
+        case UpToDate: return theme::Success();
+        case CheckFailed: return theme::Danger();
+        case InstalledVersionUnknown:
+        case NoSonyData: return theme::TextSecondary();
+        default: return theme::TextSecondary();
+    }
+}
+
+std::wstring updateStateLabel(gth::application::UpdateState state) {
+    using enum gth::application::UpdateState;
+    switch (state) {
+        case UpdateAvailable: return L"Update";
+        case UpToDate: return L"Current";
+        case InstalledVersionUnknown: return L"Unknown";
+        case NoSonyData: return L"No link";
+        case CheckFailed: return L"Failed";
+        default: return L"Ready";
+    }
+}
+
+std::wstring shortText(std::wstring text, size_t maxLength) {
+    if (text.size() <= maxLength) return text;
+    if (maxLength < 4) return text.substr(0, maxLength);
+    text.resize(maxLength - 3);
+    text += L"...";
+    return text;
+}
+
+void drawBitmapCover(HDC hdc, HBITMAP bitmap, const RECT& target) {
+    if (!bitmap) return;
+    BITMAP source{};
+    if (::GetObject(bitmap, sizeof(source), &source) != sizeof(source)) return;
+
+    HDC sourceDc = ::CreateCompatibleDC(hdc);
+    if (!sourceDc) return;
+    HGDIOBJ oldBitmap = ::SelectObject(sourceDc, bitmap);
+    const int oldMode = ::SetStretchBltMode(hdc, HALFTONE);
+    ::SetBrushOrgEx(hdc, 0, 0, nullptr);
+    ::StretchBlt(hdc, target.left, target.top, target.right - target.left, target.bottom - target.top,
+                 sourceDc, 0, 0, source.bmWidth, source.bmHeight, SRCCOPY);
+    ::SetStretchBltMode(hdc, oldMode);
+    ::SelectObject(sourceDc, oldBitmap);
+    ::DeleteDC(sourceDc);
+}
+
+void drawBadge(HDC hdc, const std::wstring& text, const RECT& bounds, COLORREF fill, COLORREF textColor,
+               HFONT font) {
+    theme::FillRoundRect(hdc, bounds, 8, fill, fill);
+    HGDIOBJ oldFont = ::SelectObject(hdc, font);
+    const int oldMode = ::SetBkMode(hdc, TRANSPARENT);
+    const COLORREF oldColor = ::SetTextColor(hdc, textColor);
+    RECT textRect = bounds;
+    textRect.left += 8;
+    textRect.right -= 8;
+    ::DrawTextW(hdc, text.c_str(), -1, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    ::SetTextColor(hdc, oldColor);
+    ::SetBkMode(hdc, oldMode);
+    ::SelectObject(hdc, oldFont);
 }
 
 // The busy cursor for the length of one UI-thread operation.
@@ -93,7 +177,13 @@ std::string readListFile(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
     std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     if (bytes.size() >= 2 && static_cast<unsigned char>(bytes[0]) == 0xFF && static_cast<unsigned char>(bytes[1]) == 0xFE) {
-        const std::wstring wide(reinterpret_cast<const wchar_t*>(bytes.data() + 2), (bytes.size() - 2) / 2);
+        std::wstring wide;
+        wide.reserve((bytes.size() - 2) / 2);
+        for (size_t offset = 2; offset + 1 < bytes.size(); offset += 2) {
+            const auto lowByte = static_cast<unsigned char>(bytes[offset]);
+            const auto highByte = static_cast<unsigned char>(bytes[offset + 1]);
+            wide.push_back(static_cast<wchar_t>(lowByte | (highByte << 8)));
+        }
         return WideToUtf8(wide);
     }
     if (bytes.size() >= 3 && static_cast<unsigned char>(bytes[0]) == 0xEF && static_cast<unsigned char>(bytes[1]) == 0xBB &&
@@ -119,80 +209,214 @@ std::optional<std::string> readClipboardText(HWND owner) {
 }
 }  // namespace
 
+int UpdatesBoardWindow::maxVertical() const {
+    CRect client;
+    GetClientRect(&client);
+    return std::max(0, contentHeight_ - client.Height());
+}
+
+void UpdatesBoardWindow::updateScrollBar() {
+    if (!IsWindow()) return;
+    const int maximum = std::max(0, contentHeight_ - 1);
+    const int page = std::max(1, static_cast<int>([&] {
+        CRect client;
+        GetClientRect(&client);
+        return client.Height();
+    }()));
+    verticalOffset_ = std::clamp(verticalOffset_, 0, maxVertical());
+
+    SCROLLINFO info{sizeof(SCROLLINFO), SIF_RANGE | SIF_PAGE | SIF_POS};
+    info.nMin = 0;
+    info.nMax = maximum;
+    info.nPage = static_cast<UINT>(page);
+    info.nPos = verticalOffset_;
+    ::SetScrollInfo(m_hWnd, SB_VERT, &info, TRUE);
+    ::ShowScrollBar(m_hWnd, SB_VERT, maxVertical() > 0 ? TRUE : FALSE);
+}
+
+void UpdatesBoardWindow::setContentExtent(int width, int height) {
+    contentWidth_ = std::max(0, width);
+    contentHeight_ = std::max(0, height);
+    updateScrollBar();
+    Invalidate(FALSE);
+}
+
+void UpdatesBoardWindow::scrollTo(int position) {
+    const int clamped = std::clamp(position, 0, maxVertical());
+    if (clamped == verticalOffset_) return;
+    verticalOffset_ = clamped;
+    updateScrollBar();
+    Invalidate(FALSE);
+}
+
+LRESULT UpdatesBoardWindow::OnPaint(UINT, WPARAM, LPARAM, BOOL&) {
+    PAINTSTRUCT paint{};
+    HDC hdc = ::BeginPaint(m_hWnd, &paint);
+    if (owner_) {
+        RECT client{};
+        ::GetClientRect(m_hWnd, &client);
+        owner_->paintGameBoard(hdc, client, verticalOffset_);
+    } else {
+        ::FillRect(hdc, &paint.rcPaint, theme::ContentBgBrush());
+    }
+    ::EndPaint(m_hWnd, &paint);
+    return 0;
+}
+
+LRESULT UpdatesBoardWindow::OnEraseBkgnd(UINT, WPARAM wParam, LPARAM, BOOL&) {
+    HDC hdc = std::bit_cast<HDC>(wParam);
+    RECT client{};
+    ::GetClientRect(m_hWnd, &client);
+    ::FillRect(hdc, &client, theme::ContentBgBrush());
+    return 1;
+}
+
+LRESULT UpdatesBoardWindow::OnSize(UINT, WPARAM, LPARAM, BOOL&) {
+    updateScrollBar();
+    Invalidate(FALSE);
+    return 0;
+}
+
+LRESULT UpdatesBoardWindow::OnVScroll(UINT, WPARAM wParam, LPARAM, BOOL&) {
+    SCROLLINFO info{sizeof(SCROLLINFO), SIF_ALL};
+    ::GetScrollInfo(m_hWnd, SB_VERT, &info);
+    int next = verticalOffset_;
+    switch (LOWORD(wParam)) {
+        case SB_TOP: next = 0; break;
+        case SB_BOTTOM: next = maxVertical(); break;
+        case SB_LINEUP: next -= 36; break;
+        case SB_LINEDOWN: next += 36; break;
+        case SB_PAGEUP: next -= static_cast<int>(info.nPage); break;
+        case SB_PAGEDOWN: next += static_cast<int>(info.nPage); break;
+        case SB_THUMBTRACK:
+        case SB_THUMBPOSITION: next = info.nTrackPos; break;
+        default: return 0;
+    }
+    scrollTo(next);
+    return 0;
+}
+
+LRESULT UpdatesBoardWindow::OnMouseWheel(UINT, WPARAM wParam, LPARAM, BOOL&) {
+    const int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+    scrollTo(verticalOffset_ - (delta / WHEEL_DELTA) * 72);
+    return 0;
+}
+
+LRESULT UpdatesBoardWindow::OnContextMenu(UINT, WPARAM, LPARAM lParam, BOOL&) {
+    if (!owner_) return 0;
+    POINT point{static_cast<short>(LOWORD(lParam)), static_cast<short>(HIWORD(lParam))};
+    if (point.x == -1 && point.y == -1) {
+        RECT rect{};
+        ::GetWindowRect(m_hWnd, &rect);
+        point = {rect.left + 16, rect.top + 16};
+    }
+    owner_->showToolsMenu(point);
+    return 0;
+}
+
+LRESULT UpdatesBoardWindow::OnLButtonDown(UINT, WPARAM, LPARAM lParam, BOOL&) {
+    SetFocus();
+    POINT point{static_cast<short>(LOWORD(lParam)), static_cast<short>(HIWORD(lParam))};
+    if (owner_) owner_->onGameBoardClick(owner_->hitTestGameBoard(point, verticalOffset_), false);
+    return 0;
+}
+
+LRESULT UpdatesBoardWindow::OnLButtonDoubleClick(UINT, WPARAM, LPARAM lParam, BOOL&) {
+    SetFocus();
+    POINT point{static_cast<short>(LOWORD(lParam)), static_cast<short>(HIWORD(lParam))};
+    if (owner_) owner_->onGameBoardClick(owner_->hitTestGameBoard(point, verticalOffset_), true);
+    return 0;
+}
+
+LRESULT UpdatesBoardWindow::OnKeyDown(UINT, WPARAM wParam, LPARAM, BOOL&) {
+    if (owner_) owner_->onGameBoardKeyDown(static_cast<UINT>(wParam));
+    return 0;
+}
+
+LRESULT UpdatesBoardWindow::OnSetFocus(UINT, WPARAM, LPARAM, BOOL&) {
+    Invalidate(FALSE);
+    return 0;
+}
+
 LRESULT UpdatesView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
-    CRect titleRect(kMargin, kMainRowTop - 2, kMargin + 170, kMainRowTop + 36);
-    titleLabel_.Create(m_hWnd, titleRect, L"Updates", WS_CHILD | WS_VISIBLE);
+    CRect titleRect(kMargin, kMainRowTop - 2, kMargin + 260, kMainRowTop + 36);
+    titleLabel_.Create(m_hWnd, titleRect, L"Game Updates & Library", WS_CHILD | WS_VISIBLE);
     titleLabel_.SetFont(theme::TitleFont());
 
-    // Row 1: the actions.
-    int x = kMargin + 190;
-    const auto placeButton = [&](ModernButton& button, int rowTop, const wchar_t* text, int width, UINT id,
-                                 ModernButton::Kind kind) {
-        CRect rect(x, rowTop, x + width, rowTop + kRowHeight);
-        button.Create(m_hWnd, rect, text, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0, id);
+    const auto makeButton = [&](ModernButton& button, const wchar_t* text, UINT id,
+                                ModernButton::Kind kind, bool visible = true) {
+        CRect rect(0, 0, 120, kRowHeight);
+        button.Create(m_hWnd, rect, text,
+                      WS_CHILD | (visible ? WS_VISIBLE : 0) | WS_TABSTOP | BS_PUSHBUTTON, 0, id);
         button.SetFont(theme::BodyFont());
         button.setKind(kind);
-        x += width + 8;
     };
-    placeButton(downloadAllButton_, kMainRowTop, L"Update All Games", 176, IDC_UPDATES_DOWNLOAD_ALL_BUTTON,
-                ModernButton::Kind::Primary);
-    placeButton(checkUpdatesButton_, kMainRowTop, L"Check Sony for Updates", 176, IDC_UPDATES_CHECK_SONY_BUTTON,
-                ModernButton::Kind::Secondary);
-    placeButton(cancelSyncButton_, kMainRowTop, L"Cancel", 70, IDC_UPDATES_CANCEL_SYNC_BUTTON, ModernButton::Kind::Danger);
-    placeButton(moreButton_, kMainRowTop, L"More \x25BE", 84, IDC_UPDATES_MORE_BUTTON, ModernButton::Kind::Subtle);
+    makeButton(downloadAllButton_, L"Update all games", IDC_UPDATES_DOWNLOAD_ALL_BUTTON,
+               ModernButton::Kind::Primary);
+    makeButton(checkUpdatesButton_, L"Check for updates", IDC_UPDATES_CHECK_SONY_BUTTON,
+               ModernButton::Kind::Secondary);
+    makeButton(cancelSyncButton_, L"Cancel", IDC_UPDATES_CANCEL_SYNC_BUTTON, ModernButton::Kind::Danger, false);
+    makeButton(automationPanelButton_, L"Automation settings  \x25B8", IDC_UPDATES_AUTOMATION_PANEL_BUTTON,
+               ModernButton::Kind::Subtle);
+    makeButton(selectedGamePanelButton_, L"Selected game  \x25B8",
+               IDC_UPDATES_SELECTED_GAME_PANEL_BUTTON, ModernButton::Kind::Subtle);
+    CRect controlRect(0, 0, 500, 22);
+    automationSummaryLabel_.Create(m_hWnd, controlRect, L"", WS_CHILD | WS_VISIBLE);
+    automationSummaryLabel_.SetFont(theme::BodyFont());
+    controlRect.SetRect(0, 0, 600, 22);
+    selectedGameSummaryLabel_.Create(m_hWnd, controlRect, L"", WS_CHILD | WS_VISIBLE);
+    selectedGameSummaryLabel_.SetFont(theme::BodyFont());
 
-    // Row 2: what runs by itself.
-    x = kMargin;
-    CRect automaticRect(x, kSwitchRowTop + 5, x + 118, kSwitchRowTop + kRowHeight);
-    automaticCaption_.Create(m_hWnd, automaticRect, L"Run automatically:", WS_CHILD | WS_VISIBLE);
-    automaticCaption_.SetFont(theme::BodyFont());
-    x += 122;
-    const auto placeCheckBox = [&](ModernCheckBox& box, const wchar_t* text, int width, UINT id) {
-        CRect rect(x, kSwitchRowTop + 2, x + width, kSwitchRowTop + kRowHeight - 2);
-        box.Create(m_hWnd, rect, text, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 0, id);
+    const auto makeCheckBox = [&](ModernCheckBox& box, const wchar_t* text, UINT id) {
+        CRect rect(0, 0, 260, 24);
+        box.Create(m_hWnd, rect, text, WS_CHILD | WS_TABSTOP | BS_AUTOCHECKBOX, 0, id);
         box.SetFont(theme::BodyFont());
-        x += width + 8;
     };
-    placeCheckBox(autoCheckBox_, L"Check for updates", 150, IDC_UPDATES_AUTO_CHECK_CHECKBOX);
-    placeCheckBox(autoMetadataBox_, L"Add missing metadata (small)", 210, IDC_UPDATES_AUTO_METADATA_CHECKBOX);
-    placeCheckBox(autoUpdatesBox_, L"Download updates (many GB)", 200, IDC_UPDATES_AUTO_UPDATES_CHECKBOX);
-    placeCheckBox(autoScanBox_, L"Find new games first", 170, IDC_UPDATES_AUTO_SCAN_CHECKBOX);
+    makeCheckBox(autoCheckBox_, L"Check for updates", IDC_UPDATES_AUTO_CHECK_CHECKBOX);
+    makeCheckBox(autoMetadataBox_, L"Add missing metadata", IDC_UPDATES_AUTO_METADATA_CHECKBOX);
+    makeCheckBox(autoUpdatesBox_, L"Download updates (may use many GB)", IDC_UPDATES_AUTO_UPDATES_CHECKBOX);
+    makeCheckBox(autoScanBox_, L"Scan for new games first", IDC_UPDATES_AUTO_SCAN_CHECKBOX);
     applyAutomationSettingsToControls();
 
-    // Row 3: everything that acts on the game selected in the list.
-    x = kMargin;
-    CRect captionRect(x, kVersionRowTop + 5, x + 100, kVersionRowTop + kRowHeight);
-    versionCaption_.Create(m_hWnd, captionRect, L"Selected game:", WS_CHILD | WS_VISIBLE);
+    controlRect.SetRect(0, 0, 100, 22);
+    versionCaption_.Create(m_hWnd, controlRect, L"Installed version", WS_CHILD);
     versionCaption_.SetFont(theme::BodyFont());
-    x += 104;
-
-    CRect editRect(x, kVersionRowTop, x + 110, kVersionRowTop + kRowHeight);
-    versionEdit_.Create(m_hWnd, editRect, L"", WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, 0,
+    controlRect.SetRect(0, 0, 110, 24);
+    versionEdit_.Create(m_hWnd, controlRect, L"", WS_CHILD | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, 0,
                         IDC_UPDATES_VERSION_EDIT);
     versionEdit_.SetFont(theme::BodyFont());
-    versionEdit_.SendMessage(EM_SETCUEBANNER, FALSE, reinterpret_cast<LPARAM>(L"01.300.000"));
-    x += 118;
-
-    placeButton(setVersionButton_, kVersionRowTop, L"Set", 56, IDC_UPDATES_SET_VERSION_BUTTON, ModernButton::Kind::Secondary);
-    placeButton(resetVersionButton_, kVersionRowTop, L"Reset", 64, IDC_UPDATES_RESET_VERSION_BUTTON,
-                ModernButton::Kind::Subtle);
-    placeButton(syncSelectedButton_, kVersionRowTop, L"Sync with Sony", 130, IDC_UPDATES_SYNC_SELECTED_BUTTON,
-                ModernButton::Kind::Secondary);
-    placeButton(skipGameButton_, kVersionRowTop, L"Skip Game", 100, IDC_UPDATES_SKIP_GAME_BUTTON,
-                ModernButton::Kind::Secondary);
+    versionEdit_.SendMessage(EM_SETCUEBANNER, FALSE,
+                             std::bit_cast<LPARAM>(static_cast<const wchar_t*>(L"01.300.000")));
+    makeButton(setVersionButton_, L"Set version", IDC_UPDATES_SET_VERSION_BUTTON, ModernButton::Kind::Secondary,
+               false);
+    makeButton(resetVersionButton_, L"Reset", IDC_UPDATES_RESET_VERSION_BUTTON, ModernButton::Kind::Subtle,
+               false);
+    makeButton(syncSelectedButton_, L"Sync with Sony", IDC_UPDATES_SYNC_SELECTED_BUTTON,
+               ModernButton::Kind::Secondary, false);
+    makeButton(skipGameButton_, L"Skip game", IDC_UPDATES_SKIP_GAME_BUTTON,
+               ModernButton::Kind::Secondary, false);
     skipGameButton_.ShowWindow(SW_HIDE);  // only while collecting links
 
-    CRect statusRect(kMargin, kStatusTop, kMargin + 900, kStatusTop + kStatusHeight);
     // What the last run did is worth seeing the moment the tab opens.
     const std::string lastRun = gth::application::LastSonyRunSummary(reportPath_);
-    const std::wstring opening = lastRun.empty() ? std::wstring(L"Press Guide for a short walkthrough.")
-                                                 : L"Last run - " + Utf8ToWide(lastRun);
-    statusLabel_.Create(m_hWnd, statusRect, opening.c_str(), WS_CHILD | WS_VISIBLE);
+    const std::wstring opening = lastRun.empty()
+                                     ? std::wstring(L"Ready")
+                                     : std::format(L"Last run: {}", shortText(Utf8ToWide(lastRun), 96));
+    controlRect.SetRect(0, 0, 900, kStatusHeight);
+    statusLabel_.Create(m_hWnd, controlRect, opening.c_str(), WS_CHILD | WS_VISIBLE);
     statusLabel_.SetFont(theme::BodyFont());
+
+    CRect filterRect(0, 0, 520, 28);
+    filterEdit_.Create(m_hWnd, filterRect, L"",
+                       WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, 0,
+                       IDC_UPDATES_FILTER_EDIT);
+    filterEdit_.SetFont(theme::BodyFont());
+    filterEdit_.SendMessage(EM_SETCUEBANNER, FALSE,
+                            std::bit_cast<LPARAM>(static_cast<const wchar_t*>(L"Filter games...")));
 
     CRect clientRect;
     GetClientRect(&clientRect);
-    CRect listRect(kMargin, kListTop, clientRect.right - kMargin, clientRect.bottom - kMargin);
+    CRect listRect(0, 0, 1, 1);
     // LVS_ICON: a poster grid (box art on top, its label wrapped beneath), matching the Games
     // tab and the Sony storefronts both are modeled on - see composeLabel() for what the label's
     // three lines show (title, version/size, and this game's live status while a job is running).
@@ -202,43 +426,149 @@ LRESULT UpdatesView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     listView_.SetFont(theme::BodyFont());
     theme::ApplyListViewTheme(listView_);
     listView_.SetIconSpacing(PosterCache::kTileWidth + 24, PosterCache::kTileHeight + 48);
+    listView_.ShowWindow(SW_HIDE);
+
+    board_.init(*this);
+    CRect boardRect(kMargin, kBoardTop, clientRect.right - kMargin, clientRect.bottom - kMargin);
+    board_.Create(m_hWnd, boardRect, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL, WS_EX_CLIENTEDGE,
+                  IDC_UPDATES_BOARD);
     if (posterCache_) posterCache_->subscribe(m_hWnd);
 
+    layoutControls();
     refresh();
     setBusy(false);  // sets every button's enabled state, including Cancel (off until a sync runs)
     SetTimer(kAutomationTimerId, kAutomationTickMs);
+    SetTimer(kUpdatePollTimerId, kUpdatePollTickMs);
     return 0;
 }
 
 LRESULT UpdatesView::OnDestroy(UINT, WPARAM, LPARAM, BOOL& bHandled) {
     KillTimer(kAutomationTimerId);
+    KillTimer(kUpdatePollTimerId);
     KillTimer(kCollectTimerId);
     KillTimer(kCollectWatchdogTimerId);
     syncCancel_.store(true);  // a sync in flight stops at its next check instead of holding shutdown up
     linksCancel_.store(true);
+    patchAutoClicker_.Stop();
     // Joining here briefly delays shutdown rather than risking a detached
     // thread touching this object's members after it's destroyed.
     if (updateThread_.joinable()) updateThread_.join();
     if (syncThread_.joinable()) syncThread_.join();
     if (linksThread_.joinable()) linksThread_.join();
+    MSG message{};
+    while (::PeekMessageW(&message, m_hWnd, kUpdateCheckDoneMessage, kPatchAutoClickMessage, PM_REMOVE)) {
+        switch (message.message) {
+            case kUpdateCheckDoneMessage:
+                gth::app::detail::takeOwnedMessage<gth::application::UpdateCheckSummary>(message.lParam);
+                break;
+            case kSyncProgressMessage:
+            case kLinksProgressMessage:
+            case kPatchAutoClickMessage:
+                gth::app::detail::takeOwnedMessage<std::wstring>(message.lParam);
+                break;
+            case kSyncDoneMessage: gth::app::detail::takeOwnedMessage<SyncJobOutcome>(message.lParam); break;
+            case kLinksDoneMessage: gth::app::detail::takeOwnedMessage<LinksJobOutcome>(message.lParam); break;
+            case kSyncRowMessage: gth::app::detail::takeOwnedMessage<RowUpdate>(message.lParam); break;
+            default: break;
+        }
+    }
     bHandled = FALSE;
     return 0;
 }
 
 LRESULT UpdatesView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {
-    const int width = LOWORD(lParam);
-    const int height = HIWORD(lParam);
-    if (statusLabel_.IsWindow()) {
-        statusLabel_.MoveWindow(kMargin, kStatusTop, std::max(200, width - 2 * kMargin), kStatusHeight);
+    layoutControls();
+    return 0;
+}
+
+void UpdatesView::layoutControls() {
+    if (!board_.IsWindow()) return;
+    CRect client;
+    GetClientRect(&client);
+    const int width = std::max(500, static_cast<int>(client.right) - 2 * kMargin);
+    auto show = [](auto& control, bool visible) {
+        if (control.IsWindow()) control.ShowWindow(visible ? SW_SHOW : SW_HIDE);
+    };
+    auto move = [](auto& control, int x, int y, int w, int h) {
+        if (control.IsWindow()) control.MoveWindow(x, y, std::max(0, w), h, FALSE);
+    };
+
+    int x = kMargin + 180;
+    move(downloadAllButton_, x, kMainRowTop, 158, kRowHeight); x += 166;
+    move(checkUpdatesButton_, x, kMainRowTop, 150, kRowHeight); x += 158;
+    const bool cancelVisible = syncInProgress_.load() || linksInProgress_.load() || collecting_;
+    show(cancelSyncButton_, cancelVisible);
+    if (cancelVisible) { move(cancelSyncButton_, x, kMainRowTop, 72, kRowHeight); x += 80; }
+
+    automationPanelButton_.SetWindowText(automationExpanded_ ? L"Automation settings  \x25BE"
+                                                            : L"Automation settings  \x25B8");
+    selectedGamePanelButton_.SetWindowText(selectedGameToolsExpanded_ ? L"Selected game  \x25BE"
+                                                                       : L"Selected game  \x25B8");
+    move(automationPanelButton_, kMargin, 66, 190, kRowHeight);
+    move(automationSummaryLabel_, kMargin + 202, 70, std::max(160, width - 202), 22);
+    move(selectedGamePanelButton_, kMargin, 102, 190, kRowHeight);
+    move(selectedGameSummaryLabel_, kMargin + 202, 106, std::max(160, width - 202), 22);
+
+    int contentTop = 136;
+    show(autoCheckBox_, automationExpanded_); show(autoMetadataBox_, automationExpanded_);
+    show(autoUpdatesBox_, automationExpanded_); show(autoScanBox_, automationExpanded_);
+    if (automationExpanded_) {
+        const int half = std::max(220, (width - 16) / 2);
+        move(autoCheckBox_, kMargin, contentTop, half, 24);
+        move(autoMetadataBox_, kMargin + half + 16, contentTop, half, 24);
+        move(autoUpdatesBox_, kMargin, contentTop + 30, half, 24);
+        move(autoScanBox_, kMargin + half + 16, contentTop + 30, half, 24);
+        contentTop += 62;
     }
-    if (listView_.IsWindow()) {
-        listView_.MoveWindow(kMargin, kListTop, std::max(100, width - 2 * kMargin),
-                              std::max(100, height - kListTop - kMargin));
+
+    const bool showSelectedTools = selectedGameToolsExpanded_;
+    show(versionCaption_, showSelectedTools); show(versionEdit_, showSelectedTools);
+    show(setVersionButton_, showSelectedTools); show(resetVersionButton_, showSelectedTools);
+    show(syncSelectedButton_, showSelectedTools); show(skipGameButton_, showSelectedTools && collecting_);
+    if (showSelectedTools) {
+        int tx = kMargin;
+        move(versionCaption_, tx, contentTop + 5, 116, 22); tx += 124;
+        move(versionEdit_, tx, contentTop, 112, 26); tx += 120;
+        move(setVersionButton_, tx, contentTop - 1, 92, kRowHeight); tx += 100;
+        move(resetVersionButton_, tx, contentTop - 1, 70, kRowHeight); tx += 78;
+        move(syncSelectedButton_, tx, contentTop - 1, 130, kRowHeight); tx += 138;
+        move(skipGameButton_, tx, contentTop - 1, 95, kRowHeight);
+        contentTop += 36;
     }
+
+    move(filterEdit_, kMargin, contentTop, std::min(520, width), 28);
+    contentTop += 36;
+
+    const int statusTop = contentTop;
+    const int statusHeight = std::min(kStatusHeight, std::max(30, static_cast<int>(client.bottom) / 8));
+    move(statusLabel_, kMargin, statusTop, width, statusHeight);
+    const int boardTop = statusTop + statusHeight + 10;
+    move(board_, kMargin, boardTop, width,
+         std::max(160, static_cast<int>(client.bottom) - boardTop - kMargin));
+    listView_.ShowWindow(SW_HIDE);
+    updateBoardExtent();
+}
+
+LRESULT UpdatesView::OnAutomationPanelClick(WORD, WORD, HWND, BOOL&) {
+    automationExpanded_ = !automationExpanded_;
+    layoutControls();
+    return 0;
+}
+
+LRESULT UpdatesView::OnSelectedGamePanelClick(WORD, WORD, HWND, BOOL&) {
+    selectedGameToolsExpanded_ = !selectedGameToolsExpanded_;
+    layoutControls();
     return 0;
 }
 
 LRESULT UpdatesView::OnCtlColorStatic(UINT, WPARAM wParam, LPARAM, BOOL&) { return HandleCtlColorStatic(wParam); }
+
+LRESULT UpdatesView::OnCtlColorEdit(UINT, WPARAM wParam, LPARAM, BOOL&) { return HandleCtlColorEdit(wParam); }
+
+LRESULT UpdatesView::OnFilterChanged(WORD, WORD, HWND, BOOL&) {
+    refresh();
+    return 0;
+}
 
 bool UpdatesView::anythingRunning() const { return shared_ != nullptr && shared_->jobRunning(); }
 
@@ -250,6 +580,7 @@ void UpdatesView::setBusy(bool busy) {
     cancelSyncButton_.EnableWindow(syncInProgress_.load() || linksInProgress_.load() || collecting_ ? TRUE : FALSE);
     if (skipGameButton_.IsWindow()) skipGameButton_.EnableWindow(collecting_ ? TRUE : FALSE);
     updateVersionControls();
+    layoutControls();
 }
 
 void UpdatesView::updateVersionControls() {
@@ -261,10 +592,217 @@ void UpdatesView::updateVersionControls() {
     syncSelectedButton_.EnableWindow(enabled);
     versionEdit_.EnableWindow(entry != nullptr ? TRUE : FALSE);
     versionEdit_.SetWindowText(entry ? Utf8ToWide(entry->currentVersion).c_str() : L"");
+    selectedGameSummaryLabel_.SetWindowText(entry ? shortText(Utf8ToWide(entry->title), 48).c_str()
+                                                    : L"Select a card");
+}
+
+std::wstring UpdatesView::filterText() const {
+    if (!filterEdit_.IsWindow()) return {};
+    const int length = filterEdit_.GetWindowTextLength();
+    if (length <= 0) return {};
+    std::wstring text(static_cast<size_t>(length) + 1, L'\0');
+    filterEdit_.GetWindowText(text.data(), length + 1);
+    text.resize(static_cast<size_t>(length));
+    std::transform(text.begin(), text.end(), text.begin(), [](wchar_t c) { return std::towlower(c); });
+    return text;
+}
+
+bool UpdatesView::filterMatches(const gth::application::GameLibraryEntry& entry) const {
+    const std::wstring needle = filterText();
+    if (needle.empty()) return true;
+    std::wstring haystack = Utf8ToWide(entry.title) + L" " + Utf8ToWide(entry.titleId) + L" " +
+                            Utf8ToWide(entry.platform) + L" " + Utf8ToWide(entry.region) + L" " +
+                            Utf8ToWide(entry.currentVersion);
+    std::transform(haystack.begin(), haystack.end(), haystack.begin(), [](wchar_t c) { return std::towlower(c); });
+    return haystack.find(needle) != std::wstring::npos;
+}
+
+int UpdatesView::boardCardWidth() const { return kBoardCardWidth; }
+
+int UpdatesView::boardCardHeight() const { return kBoardCardHeight; }
+
+void UpdatesView::updateBoardExtent() {
+    if (!board_.IsWindow()) return;
+    CRect client;
+    board_.GetClientRect(&client);
+    const int columns = std::max(1, (client.Width() + kBoardSpacing) / (boardCardWidth() + kBoardSpacing));
+    const int rows = entries_.empty() ? 0 : static_cast<int>((entries_.size() + static_cast<size_t>(columns) - 1) /
+                                                               static_cast<size_t>(columns));
+    const int contentHeight = kBoardSummaryHeight + kBoardSpacing +
+                              rows * (boardCardHeight() + kBoardSpacing) + kBoardSpacing;
+    board_.setContentExtent(client.Width(), contentHeight);
+}
+
+void UpdatesView::paintGameBoard(HDC hdc, const RECT& clientRect, int verticalOffset) {
+    ::FillRect(hdc, &clientRect, theme::ContentBgBrush());
+    const int width = boardCardWidth();
+    const int clientWidth = static_cast<int>(clientRect.right - clientRect.left);
+    const int columns = std::max(1, (clientWidth + kBoardSpacing) / (width + kBoardSpacing));
+
+    auto drawText = [&](const std::wstring& text, int x, int y, int w, int h, HFONT font, COLORREF color,
+                        UINT format) {
+        RECT rect{x, y, x + std::max(0, w), y + h};
+        HGDIOBJ oldFont = ::SelectObject(hdc, font);
+        const int oldMode = ::SetBkMode(hdc, TRANSPARENT);
+        const COLORREF oldColor = ::SetTextColor(hdc, color);
+        ::DrawTextW(hdc, text.c_str(), -1, &rect, format | DT_NOPREFIX | DT_END_ELLIPSIS);
+        ::SetTextColor(hdc, oldColor);
+        ::SetBkMode(hdc, oldMode);
+        ::SelectObject(hdc, oldFont);
+    };
+
+    int updates = 0;
+    int current = 0;
+    int unknown = 0;
+    int failed = 0;
+    for (const auto& entry : entries_) {
+        const auto found = shared_->updateByVariant.find(entry.gameVariantId);
+        if (found == shared_->updateByVariant.end()) {
+            ++unknown;
+            continue;
+        }
+        using enum gth::application::UpdateState;
+        switch (found->second.state) {
+            case UpdateAvailable: ++updates; break;
+            case UpToDate: ++current; break;
+            case CheckFailed: ++failed; break;
+            default: ++unknown; break;
+        }
+    }
+
+    CRect summary(kBoardSpacing, 10 - verticalOffset,
+                  clientRect.right - clientRect.left - kBoardSpacing, kBoardSummaryHeight - verticalOffset);
+    theme::FillRoundRect(hdc, summary, 10, theme::SidebarBg(), theme::Border());
+    drawText(L"LIBRARY", summary.left + 16, summary.top + 10, 120, 18, theme::SmallFont(),
+             theme::TextSecondary(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    drawText(std::format(L"{} games", entries_.size()), summary.left + 16, summary.top + 30, 160, 26,
+             theme::BodyFontBold(), theme::TextPrimary(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    drawText(std::format(L"{} updates  ·  {} current  ·  {} queued", updates, current,
+                         shared_->queuedDownloads.size() + shared_->liveDownloads.size()),
+             summary.left + 230, summary.top + 20,
+             std::max(180, static_cast<int>(summary.Width()) - 250), 22, theme::SmallFont(),
+             updates > 0 ? updateStateColor(gth::application::UpdateState::UpdateAvailable) : theme::TextSecondary(),
+             DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    drawText(failed > 0 ? std::format(L"{} failed", failed) : L"",
+             summary.right - 310, summary.top + 46, 294, 18, theme::SmallFont(),
+             failed > 0 ? theme::Danger() : theme::Success(), DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+
+    for (size_t index = 0; index < entries_.size(); ++index) {
+        const int row = static_cast<int>(index / static_cast<size_t>(columns));
+        const int column = static_cast<int>(index % static_cast<size_t>(columns));
+        const int x = kBoardSpacing + column * (width + kBoardSpacing);
+        const int y = kBoardSummaryHeight + kBoardSpacing + row * (boardCardHeight() + kBoardSpacing) - verticalOffset;
+        CRect card(x, y, x + width, y + boardCardHeight());
+        const bool selected = listView_.GetSelectedIndex() == static_cast<int>(index);
+        theme::FillRoundRect(hdc, card, 10, theme::SidebarBg(), selected ? theme::Accent() : theme::Border());
+
+        CRect art(card.left, card.top, card.right, card.top + 132);
+        if (index < posterTiles_.size()) {
+            drawBitmapCover(hdc, posterTiles_[index], art);
+        } else {
+            HBRUSH placeholder = ::CreateSolidBrush(theme::HoverBg());
+            ::FillRect(hdc, &art, placeholder);
+            ::DeleteObject(placeholder);
+        }
+
+        const auto& entry = entries_[index];
+        const auto found = shared_->updateByVariant.find(entry.gameVariantId);
+        const auto state = found == shared_->updateByVariant.end()
+                               ? gth::application::UpdateState::InstalledVersionUnknown
+                               : found->second.state;
+        const std::wstring stateLabel = updateStateLabel(state);
+        drawBadge(hdc, Utf8ToWide(entry.platform.empty() ? "PS" : entry.platform),
+                  CRect(art.left + 10, art.top + 10, art.left + 68, art.top + 32), theme::HoverBg(),
+                  theme::TextPrimary(), theme::SmallFont());
+        drawBadge(hdc, shortText(stateLabel, 23),
+                  CRect(art.right - 126, art.top + 10, art.right - 10, art.top + 32),
+                  updateStateColor(state), theme::TextOnAccent(), theme::SmallFont());
+
+        const int left = card.left + 14;
+        const int inner = card.Width() - 28;
+        drawText(shortText(Utf8ToWide(entry.title), 34), left, card.top + 144, inner, 38, theme::BodyFontBold(),
+                 theme::TextPrimary(), DT_LEFT | DT_WORDBREAK);
+        drawText(L"ID       " + shortText(Utf8ToWide(entry.titleId), 18), left, card.top + 188, inner, 16,
+                 theme::SmallFont(), theme::TextSecondary(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        const std::wstring version = entry.currentVersion.empty() ? L"Not detected" : Utf8ToWide(entry.currentVersion);
+        drawText(L"Version  " + shortText(version, 18), left, card.top + 210, inner, 16, theme::SmallFont(),
+                 theme::TextSecondary(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+        const COLORREF actionColor = state == gth::application::UpdateState::UpdateAvailable
+                                         ? RGB(208, 137, 0)
+                                         : theme::HoverBg();
+        CRect action(card.left + 12, card.bottom - 44, card.right - 12, card.bottom - 12);
+        theme::FillRoundRect(hdc, action, 7, actionColor, actionColor);
+        const std::wstring actionLabel = state == gth::application::UpdateState::UpdateAvailable
+                                             ? L"Update now"
+                                             : (state == gth::application::UpdateState::UpToDate ? L"Verify files"
+                                                                                                  : L"View details");
+        drawText(actionLabel, action.left, action.top, action.Width(), action.Height(), theme::BodyFontBold(),
+                 state == gth::application::UpdateState::UpdateAvailable ? RGB(32, 24, 8) : theme::TextPrimary(),
+                 DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    }
+
+    if (GetFocus() == board_.m_hWnd) {
+        RECT focusRect = clientRect;
+        ::InflateRect(&focusRect, -2, -2);
+        HBRUSH brush = ::CreateSolidBrush(theme::Accent());
+        ::FrameRect(hdc, &focusRect, brush);
+        ::DeleteObject(brush);
+    }
+}
+
+int UpdatesView::hitTestGameBoard(POINT point, int verticalOffset) const {
+    if (point.x < kBoardSpacing) return -1;
+    CRect client;
+    board_.GetClientRect(&client);
+    const int width = boardCardWidth();
+    const int columns = std::max(1, (client.Width() + kBoardSpacing) / (width + kBoardSpacing));
+    const int column = (point.x - kBoardSpacing) / (width + kBoardSpacing);
+    const int withinX = (point.x - kBoardSpacing) % (width + kBoardSpacing);
+    if (column < 0 || column >= columns || withinX >= width) return -1;
+    const int contentY = point.y + verticalOffset;
+    if (contentY < kBoardSummaryHeight + kBoardSpacing) return -1;
+    const int row = (contentY - kBoardSummaryHeight - kBoardSpacing) / (boardCardHeight() + kBoardSpacing);
+    const int withinY = (contentY - kBoardSummaryHeight - kBoardSpacing) % (boardCardHeight() + kBoardSpacing);
+    if (withinY >= boardCardHeight()) return -1;
+    const size_t index = static_cast<size_t>(row * columns + column);
+    return index < entries_.size() ? static_cast<int>(index) : -1;
+}
+
+void UpdatesView::onGameBoardClick(int index, bool activate) {
+    if (index < 0 || static_cast<size_t>(index) >= entries_.size()) return;
+    selectVariant(entries_[static_cast<size_t>(index)].gameVariantId);
+    updateVersionControls();
+    board_.refresh();
+    if (activate) {
+        BOOL handled = TRUE;
+        OnSyncSelectedClick(0, IDC_UPDATES_SYNC_SELECTED_BUTTON, nullptr, handled);
+    }
+}
+
+void UpdatesView::onGameBoardKeyDown(UINT key) {
+    int selected = listView_.GetSelectedIndex();
+    if (selected < 0 && !entries_.empty()) selected = 0;
+    if (selected < 0) return;
+    CRect client;
+    board_.GetClientRect(&client);
+    const int columns = std::max(1, (client.Width() + kBoardSpacing) / (boardCardWidth() + kBoardSpacing));
+    int next = selected;
+    switch (key) {
+        case VK_LEFT: next = selected - 1; break;
+        case VK_RIGHT: next = selected + 1; break;
+        case VK_UP: next = selected - columns; break;
+        case VK_DOWN: next = selected + columns; break;
+        case VK_HOME: next = 0; break;
+        case VK_END: next = static_cast<int>(entries_.size()) - 1; break;
+        case VK_RETURN: onGameBoardClick(selected, true); return;
+        default: return;
+    }
+    if (next >= 0 && static_cast<size_t>(next) < entries_.size()) onGameBoardClick(next, false);
 }
 
 void UpdatesView::refresh() {
-    if (!library_ || !listView_.IsWindow()) return;
+    if (!library_ || !board_.IsWindow() || !listView_.IsWindow()) return;
 
     // Keep the same game selected across a refresh (setting a version
     // refreshes the list, and losing your place every time would be maddening).
@@ -276,11 +814,15 @@ void UpdatesView::refresh() {
     listView_.DeleteAllItems();
     rowsByTitle_.clear();
 
-    // Only games whose files are there: a game that has gone missing can't be updated.
+    // Only games whose files are there: a game that has gone missing can't be updated. The board's
+    // filter is presentation-only and never changes the library or update service data.
     entries_.clear();
     for (auto& entry : library_->getAllEntries()) {
-        if (entry.variantStatus == gth::core::GameVariantStatus::Active) entries_.push_back(std::move(entry));
+        if (entry.variantStatus == gth::core::GameVariantStatus::Active && filterMatches(entry))
+            entries_.push_back(std::move(entry));
     }
+    posterTiles_.clear();
+    posterTiles_.reserve(entries_.size());
 
     // Rebuilt from scratch every refresh - see GamesView::refresh()'s identical comment on why
     // that's cheap even for a large library.
@@ -296,10 +838,12 @@ void UpdatesView::refresh() {
     for (const auto& entry : entries_) {
         if (!entry.titleId.empty()) rowsByTitle_[entry.titleId].push_back(row);
 
-        const int imageIndex = posterCache_
-            ? posterImageList_.Add(posterCache_->posterFor(entry.titleId, entry.title, entry.platform,
-                                                            posterService_, entry.gameVariantId))
-            : -1;
+        const HBITMAP poster = posterCache_
+                                   ? posterCache_->posterFor(entry.titleId, entry.title, entry.platform,
+                                                             posterService_, entry.gameVariantId)
+                                   : nullptr;
+        posterTiles_.push_back(poster);
+        const int imageIndex = poster ? posterImageList_.Add(poster) : -1;
         listView_.InsertItem(row, composeLabel(entry).c_str(), imageIndex);
         row++;
     }
@@ -310,6 +854,8 @@ void UpdatesView::refresh() {
     if (!keepSelected.empty()) selectVariant(keepSelected);
     updateVersionControls();
     setBusy(anythingRunning());  // a job started on the Games tab keeps these buttons off too
+    updateBoardExtent();
+    board_.refresh();
 }
 
 std::wstring UpdatesView::composeLabel(const gth::application::GameLibraryEntry& entry) const {
@@ -318,7 +864,7 @@ std::wstring UpdatesView::composeLabel(const gth::application::GameLibraryEntry&
     // to statusLabel_ in full, unchanged - see OnPatchAutoClick/OnSyncRow). A running job's own
     // words win over the update-check verdict, same priority order the old "Update" column had.
     if (const auto live = liveRows_.find(entry.titleId); live != liveRows_.end()) {
-        return Utf8ToWide(entry.title) + L"\r\n" + live->second;
+        return std::format(L"{}\r\n{}", Utf8ToWide(entry.title), live->second);
     }
 
     const auto update = shared_->updateByVariant.find(entry.gameVariantId);
@@ -331,7 +877,7 @@ std::wstring UpdatesView::composeLabel(const gth::application::GameLibraryEntry&
         line2 = L"-";
     }
 
-    return Utf8ToWide(entry.title) + L"\r\n" + line2;
+    return std::format(L"{}\r\n{}", Utf8ToWide(entry.title), line2);
 }
 
 LRESULT UpdatesView::OnTimer(UINT, WPARAM wParam, LPARAM, BOOL&) {
@@ -374,6 +920,12 @@ LRESULT UpdatesView::OnTimer(UINT, WPARAM wParam, LPARAM, BOOL&) {
         }
         return 0;
     }
+    if (wParam == kUpdatePollTimerId) {
+        if (!updateChecker_ || updateInProgress_.load() || collecting_ || anythingRunning()) return 0;
+        BOOL handled = FALSE;
+        OnCheckUpdatesClick(0, IDC_UPDATES_CHECK_SONY_BUTTON, nullptr, handled);
+        return 0;
+    }
     if (wParam != kAutomationTimerId) return 0;
     if (collecting_ || !packageSync_ || anythingRunning()) return 0;
 
@@ -393,14 +945,14 @@ LRESULT UpdatesView::OnGuideClick(WORD, WORD, HWND, BOOL&) {
     const std::wstring guide =
         L"HOW THE UPDATE TOOLS WORK\r\n\r\n"
         L"1. Scan first (Games tab > Scan All Storages), so the app knows your games.\r\n\r\n"
-        L"2. More > Sony update links > Download the public Sony link list. A PS5 game can only be checked once the app has a "
+        L"2. Right-click the updates grid and choose Sony update links > Download the public Sony link list. A PS5 game can only be checked once the app has a "
         L"Sony \"version-file link\" for it; the public list has many older titles.\r\n\r\n"
         L"3. Check Sony for Updates. Each game gets a status:\r\n"
         L"    Up to date - it matches Sony's latest package.\r\n"
         L"    Update available - your files are older than Sony's latest.\r\n"
         L"    Version unknown - Sony's latest is known, but not which version you have.\r\n"
         L"    No Sony link - the app has no link for this game yet (step 4).\r\n\r\n"
-        L"4. For games with no link: More > Sony update links > Collect links from prosperopatches.com. The app opens the first "
+        L"4. For games with no link: right-click the updates grid and choose Sony update links > Collect links from prosperopatches.com. The app opens the first "
         L"few link-less games' pages in your browser at once; whichever page is in front has its newest patch opened "
         L"automatically and its link copied for you - solve that page's captcha if it shows one, everything else happens "
         L"by itself. It reads the first 64 KB of that small Sony file, takes the "
@@ -431,9 +983,9 @@ LRESULT UpdatesView::OnGuideClick(WORD, WORD, HWND, BOOL&) {
     return 0;
 }
 
-const gth::application::GameLibraryEntry* UpdatesView::selectedEntry() const {
+const gth::application::GameLibraryEntry* UpdatesView::selectedEntry() {
     if (!listView_.IsWindow()) return nullptr;
-    const int row = const_cast<CListViewCtrl&>(listView_).GetSelectedIndex();
+    const int row = listView_.GetSelectedIndex();
     if (row < 0 || static_cast<size_t>(row) >= entries_.size()) return nullptr;
     return &entries_[static_cast<size_t>(row)];
 }
@@ -449,9 +1001,11 @@ void UpdatesView::selectVariant(const std::string& gameVariantId) {
 }
 
 LRESULT UpdatesView::OnListSelectionChanged(int, LPNMHDR pnmh, BOOL& bHandled) {
-    const auto* change = reinterpret_cast<LPNMLISTVIEW>(pnmh);
+    // NMLISTVIEW::hdr is its first member, so the notification header and full record share an address.
+    const auto* change = std::bit_cast<LPNMLISTVIEW>(pnmh);
     if ((change->uChanged & LVIF_STATE) != 0 && ((change->uNewState ^ change->uOldState) & LVIS_SELECTED) != 0) {
         updateVersionControls();
+        board_.refresh();
     }
     bHandled = TRUE;
     return 0;
@@ -465,28 +1019,32 @@ LRESULT UpdatesView::OnCheckUpdatesClick(WORD, WORD, HWND, BOOL&) {
     setBusy(true);
     statusLabel_.SetWindowText(L"Asking Sony about every game in the library - this can take a minute or two...");
 
-    updateThread_ = std::thread([this, hwnd = m_hWnd] {
+    updateThread_ = std::jthread([this, hwnd = m_hWnd] {
         checkLearnedLinks_.store(static_cast<int>(learnLinksFromArchive()));
-        auto* summary = new gth::application::UpdateCheckSummary(updateChecker_->checkAll());
-        ::PostMessageW(hwnd, kUpdateCheckDoneMessage, 0, reinterpret_cast<LPARAM>(summary));
+        auto summary = std::make_unique<gth::application::UpdateCheckSummary>(updateChecker_->checkAll());
+        gth::app::detail::postOwnedMessage(hwnd, kUpdateCheckDoneMessage, std::move(summary));
     });
     return 0;
 }
 
 LRESULT UpdatesView::OnUpdateCheckDone(UINT, WPARAM, LPARAM lParam, BOOL&) {
-    std::unique_ptr<gth::application::UpdateCheckSummary> summary(
-        reinterpret_cast<gth::application::UpdateCheckSummary*>(lParam));
+    auto summary = gth::app::detail::takeOwnedMessage<gth::application::UpdateCheckSummary>(lParam);
     updateInProgress_.store(false);
     shared_->endJob();
 
     shared_->updateByVariant.clear();
     for (const auto& entry : summary->entries) shared_->updateByVariant[entry.gameVariantId] = entry;
+    if (summary->updatesAvailable != lastNotifiedUpdateCount_) {
+        lastNotifiedUpdateCount_ = summary->updatesAvailable;
+        if (notificationCallback_) notificationCallback_(summary->updatesAvailable);
+    }
     setBusy(false);
     refresh();
 
     std::wstring status = describeCheck(*summary, sonyLinksPath_);
     if (const int learned = checkLearnedLinks_.exchange(0); learned > 0) {
-        status = L"Read " + std::to_wstring(learned) + L" Sony link(s) out of metadata pieces already in the archive.\r\n" + status;
+        status = std::format(L"Read {} Sony link(s) out of metadata pieces already in the archive.\r\n{}", learned,
+                             status);
     }
     statusLabel_.SetWindowText(status.c_str());
 
@@ -510,17 +1068,17 @@ size_t UpdatesView::learnLinksFromArchive() {
 
 std::wstring UpdatesView::describeCheck(const gth::application::UpdateCheckSummary& summary,
                                       const std::filesystem::path& sonyLinksPath) {
-    wchar_t line[320];
-    swprintf_s(line, L"Sony check of %d game(s): %d up to date, %d with an update available, %d version unknown, "
+    std::array<wchar_t, 320> line{};
+    swprintf_s(line.data(), line.size(), L"Sony check of %d game(s): %d up to date, %d with an update available, %d version unknown, "
                      L"%d without a Sony link, %d failed.",
                static_cast<int>(summary.entries.size()), summary.upToDate, summary.updatesAvailable,
                summary.installedUnknown, summary.noSonyData, summary.failed);
-    std::wstring status = line;
+    std::wstring status = line.data();
     if (summary.noSonyData > 0) {
-        status += L"\r\n" + std::to_wstring(summary.noSonyData) +
-                  L" PS5 game(s) have no Sony link yet: More > Sony update links > Add links from the clipboard (copy each game's "
-                  L"SC link from its prosperopatches.com page - see Guide), or download the public list (links are "
-                  L"kept in " + sonyLinksPath.wstring() + L").";
+        status += std::format(
+            L"\r\n{} PS5 game(s) have no Sony link yet: right-click the updates grid and choose Sony update links > Add links from the clipboard (copy each game's "
+            L"SC link from its prosperopatches.com page - see Guide), or download the public list (links are kept in {}).",
+            summary.noSonyData, sonyLinksPath.wstring());
     }
     if (summary.failed > 0) status += L"\r\nFirst failure: " + Utf8ToWide(summary.firstFailure);
     return status;
@@ -532,6 +1090,14 @@ void UpdatesView::applyAutomationSettingsToControls() {
     autoMetadataBox_.SetCheck(automationSettings_.addMissingMetadata ? BST_CHECKED : BST_UNCHECKED);
     autoUpdatesBox_.SetCheck(automationSettings_.downloadUpdates ? BST_CHECKED : BST_UNCHECKED);
     autoScanBox_.SetCheck(automationSettings_.scanForNewGames ? BST_CHECKED : BST_UNCHECKED);
+    updateAutomationSummary();
+}
+
+void UpdatesView::updateAutomationSummary() {
+    if (!automationSummaryLabel_.IsWindow()) return;
+    const bool enabled = automationSettings_.checkForUpdates || automationSettings_.addMissingMetadata ||
+                         automationSettings_.downloadUpdates || automationSettings_.scanForNewGames;
+    automationSummaryLabel_.SetWindowText(enabled ? L"Auto-sync on" : L"Auto-sync off");
 }
 
 LRESULT UpdatesView::OnAutomationSettingClicked(WORD, WORD id, HWND, BOOL&) {
@@ -550,8 +1116,10 @@ LRESULT UpdatesView::OnAutomationSettingClicked(WORD, WORD id, HWND, BOOL&) {
     automationSettings_.addMissingMetadata = autoMetadataBox_.GetCheck() == BST_CHECKED;
     automationSettings_.downloadUpdates = autoUpdatesBox_.GetCheck() == BST_CHECKED;
     automationSettings_.scanForNewGames = autoScanBox_.GetCheck() == BST_CHECKED;
+    updateAutomationSummary();
     if (automationStore_ && !automationStore_->save(automationSettings_)) {
-        statusLabel_.SetWindowText((L"Couldn't save the automation settings to " + automationStore_->path().wstring()).c_str());
+        statusLabel_.SetWindowText(std::format(L"Couldn't save the automation settings to {}",
+                                               automationStore_->path().wstring()).c_str());
     }
     return 0;
 }
@@ -560,11 +1128,11 @@ LRESULT UpdatesView::OnSyncSelectedClick(WORD, WORD, HWND, BOOL&) {
     const auto* entry = selectedEntry();
     if (!entry || !packageSync_ || anythingRunning()) return 0;
 
-    const std::wstring question =
-        L"Sync \"" + Utf8ToWide(entry->title) + L"\" with Sony?\r\n\r\n"
+    const std::wstring question = std::format(
+        L"Sync \"{}\" with Sony?\r\n\r\n"
         L"This adds the small metadata piece the game is missing. If the game is out of date, it also downloads the pieces "
         L"that changed (can be many GB) and replaces them - each one only after it matches Sony's checksum, and nothing in "
-        L"the archive is touched until then.";
+        L"the archive is touched until then.", Utf8ToWide(entry->title));
     if (::MessageBoxW(m_hWnd, question.c_str(), L"Sync with Sony", MB_OKCANCEL | MB_ICONQUESTION) != IDOK) return 0;
 
     startSync(entry->gameVariantId, gth::application::SyncMode::Full, /*automatic=*/false);
@@ -582,8 +1150,8 @@ LRESULT UpdatesView::OnDownloadAllClick(WORD, WORD, HWND, BOOL&) {
         L"be many GB and take hours. Each file is checked against Sony's checksum before it touches your archive, a "
         L"game that fails because of the network is tried again at the end, and you can press Cancel at any time - "
         L"what is already downloaded is kept and continues next time.\r\n\r\n"
-        L"Games the app has no Sony link for can't be asked about; when the line is done it offers to collect those "
-        L"links, and then carries on updating by itself.\r\n\r\n"
+        L"For PS5 games without a Sony link, it automatically opens Prosperopatches, collects the links you confirm, saves "
+        L"them to a Desktop text file, and continues with one game at a time.\r\n\r\n"
         L"Keep the app open; it stops Windows from going to sleep on its own while it works.",
         L"Update All Games", MB_OKCANCEL | MB_ICONQUESTION);
     if (answer != IDOK) return 0;
@@ -631,7 +1199,7 @@ bool UpdatesView::startSync(const std::string& gameVariantId, gth::application::
     // packages enter the library and the next update check can see them.
     const bool lookForNewGames = gameVariantId.empty() && automationSettings_.scanForNewGames;
 
-    syncThread_ = std::thread([this, hwnd = m_hWnd, gameVariantId, mode, automatic, checkAfter, settings = automationSettings_,
+    syncThread_ = std::jthread([this, hwnd = m_hWnd, gameVariantId, mode, automatic, checkAfter, settings = automationSettings_,
                                titles = std::move(titles), lookForNewGames] {
         // A long download line must not be interrupted by Windows going to sleep on its own.
         struct KeepAwake {
@@ -640,7 +1208,7 @@ bool UpdatesView::startSync(const std::string& gameVariantId, gth::application::
         } keepAwake;
 
         const auto began = std::chrono::steady_clock::now();
-        auto* outcome = new SyncJobOutcome;
+        auto outcome = std::make_unique<SyncJobOutcome>();
         outcome->automatic = automatic;
         outcome->startedAt = std::time(nullptr);
 
@@ -650,10 +1218,10 @@ bool UpdatesView::startSync(const std::string& gameVariantId, gth::application::
             return Utf8ToWide(found != names.end() && !found->second.empty() ? found->second : titleId);
         };
         const auto post = [&](const std::wstring& text) {
-            ::PostMessageW(hwnd, kSyncProgressMessage, 0, reinterpret_cast<LPARAM>(new std::wstring(text)));
+            gth::app::detail::postOwnedMessage(hwnd, kSyncProgressMessage, std::make_unique<std::wstring>(text));
         };
         const auto postRow = [&](const std::string& titleId, const std::wstring& text) {
-            ::PostMessageW(hwnd, kSyncRowMessage, 0, reinterpret_cast<LPARAM>(new RowUpdate{titleId, text}));
+            gth::app::detail::postOwnedMessage(hwnd, kSyncRowMessage, std::make_unique<RowUpdate>(RowUpdate{titleId, text}));
         };
 
         // One row per game in the Downloads tab's history - real per-game numbers, not just this
@@ -698,11 +1266,13 @@ bool UpdatesView::startSync(const std::string& gameVariantId, gth::application::
             for (const auto& item : line) {
                 total += item.bytesToDownload;
                 postRow(item.titleId, item.kind == gth::application::SyncKind::CompleteMetadata
-                                          ? L"Queued - adds the small metadata piece (" + formatSize(item.bytesToDownload) + L")"
-                                          : L"Queued - at least " + formatSize(item.bytesToDownload) + L" to download");
+                                          ? std::format(L"Queued - adds the small metadata piece ({})",
+                                                        formatSize(item.bytesToDownload))
+                                          : std::format(L"Queued - at least {} to download",
+                                                        formatSize(item.bytesToDownload)));
             }
-            post(L"The line has " + std::to_wstring(line.size()) + L" game(s), at least " + formatSize(total) +
-                 L" to download. Starting...");
+            post(std::format(L"The line has {} game(s), at least {} to download. Starting...", line.size(),
+                             formatSize(total)));
         };
 
         auto lastPost = std::chrono::steady_clock::now() - std::chrono::seconds(1);
@@ -717,14 +1287,15 @@ bool UpdatesView::startSync(const std::string& gameVariantId, gth::application::
             if (const auto colon = step.find(L':'); colon != std::wstring::npos) step.resize(colon);  // drop the file name
             std::wstring amount;
             if (progress.bytesTotal > 0) {
-                wchar_t percent[24];
-                swprintf_s(percent, L"  %d%%  ", static_cast<int>(100.0 * progress.bytesDone / progress.bytesTotal));
-                amount = percent + formatSize(progress.bytesDone) + L" of " + formatSize(progress.bytesTotal);
+                std::array<wchar_t, 24> percent{};
+                swprintf_s(percent.data(), percent.size(), L"  %d%%  ",
+                           static_cast<int>(100.0 * progress.bytesDone / progress.bytesTotal));
+                amount = percent.data() + formatSize(progress.bytesDone) + L" of " + formatSize(progress.bytesTotal);
             }
             if (progress.gameCount > 0) {
                 gameStarted.try_emplace(progress.titleId, std::chrono::steady_clock::now());
-                post(L"[" + std::to_wstring(progress.gameIndex) + L"/" + std::to_wstring(progress.gameCount) + L"] " +
-                     nameOf(progress.titleId) + L": " + step + amount);
+                post(std::format(L"[{}/{}] {}: {}{}", progress.gameIndex, progress.gameCount,
+                                 nameOf(progress.titleId), step, amount));
                 postRow(progress.titleId, step + amount);
             } else {
                 post(step + amount);
@@ -734,16 +1305,19 @@ bool UpdatesView::startSync(const std::string& gameVariantId, gth::application::
         callbacks.onGameDone = [&](const gth::application::SyncGameOutcome& game) {
             const std::wstring what = Utf8ToWide(game.message);
             if (game.skippedNeedsUpdate) {
-                postRow(game.titleId, L"Not downloaded - " + what);
+                postRow(game.titleId, std::format(L"Not downloaded - {}", what));
             } else if (game.success) {
-                postRow(game.titleId, L"Done - " + what);
+                postRow(game.titleId, std::format(L"Done - {}", what));
             } else {
-                postRow(game.titleId, L"FAILED - " + what);
+                postRow(game.titleId, std::format(L"FAILED - {}", what));
             }
 
-            const auto outcome = game.skippedNeedsUpdate ? gth::application::DownloadHistoryOutcome::SkippedNeedsUpdate
-                                 : game.success           ? gth::application::DownloadHistoryOutcome::Success
-                                                           : gth::application::DownloadHistoryOutcome::Failed;
+            auto outcome = gth::application::DownloadHistoryOutcome::Failed;
+            if (game.skippedNeedsUpdate) {
+                outcome = gth::application::DownloadHistoryOutcome::SkippedNeedsUpdate;
+            } else if (game.success) {
+                outcome = gth::application::DownloadHistoryOutcome::Success;
+            }
             const auto started = gameStarted.find(game.titleId);
             recordHistory(game.titleId, game.kind, outcome, game.bytesDownloaded, game.message,
                           started != gameStarted.end() ? started->second : std::chrono::steady_clock::time_point{});
@@ -765,8 +1339,8 @@ bool UpdatesView::startSync(const std::string& gameVariantId, gth::application::
                     ++outcome->storagesUnreachable;
                     continue;
                 }
-                post(L"Looking for new games - storage " + std::to_wstring(position) + L" of " + std::to_wstring(storages.size()) +
-                     L": " + Utf8ToWide(storage.name));
+                post(std::format(L"Looking for new games - storage {} of {}: {}", position, storages.size(),
+                                 Utf8ToWide(storage.name)));
                 const auto scan = indexer_->scanStorage(storage.storageId);
                 if (scan.success) outcome->newGamesFound += scan.gamesAdded;
             }
@@ -788,10 +1362,14 @@ bool UpdatesView::startSync(const std::string& gameVariantId, gth::application::
             outcome->single = packageSync_->run(gameVariantId, mode, callbacks);
             if (outcome->single.filesDownloaded > 0 && !outcome->single.storageId.empty()) toRescan.insert(outcome->single.storageId);
 
-            const auto result = outcome->single.cancelled           ? gth::application::DownloadHistoryOutcome::Cancelled
-                                : outcome->single.skippedNeedsUpdate ? gth::application::DownloadHistoryOutcome::SkippedNeedsUpdate
-                                : outcome->single.success            ? gth::application::DownloadHistoryOutcome::Success
-                                                                      : gth::application::DownloadHistoryOutcome::Failed;
+            auto result = gth::application::DownloadHistoryOutcome::Failed;
+            if (outcome->single.cancelled) {
+                result = gth::application::DownloadHistoryOutcome::Cancelled;
+            } else if (outcome->single.skippedNeedsUpdate) {
+                result = gth::application::DownloadHistoryOutcome::SkippedNeedsUpdate;
+            } else if (outcome->single.success) {
+                result = gth::application::DownloadHistoryOutcome::Success;
+            }
             recordHistory(outcome->single.titleId, outcome->single.kind, result, outcome->single.bytesDownloaded,
                           outcome->single.message, gameBegan);
         } else if (syncGames) {
@@ -816,19 +1394,19 @@ bool UpdatesView::startSync(const std::string& gameVariantId, gth::application::
         }
 
         outcome->took = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - began);
-        ::PostMessageW(hwnd, kSyncDoneMessage, 0, reinterpret_cast<LPARAM>(outcome));
+        gth::app::detail::postOwnedMessage(hwnd, kSyncDoneMessage, std::move(outcome));
     });
     return true;
 }
 
 LRESULT UpdatesView::OnSyncProgress(UINT, WPARAM, LPARAM lParam, BOOL&) {
-    std::unique_ptr<std::wstring> text(reinterpret_cast<std::wstring*>(lParam));
+    auto text = gth::app::detail::takeOwnedMessage<std::wstring>(lParam);
     if (syncInProgress_.load()) statusLabel_.SetWindowText(text->c_str());  // a late line must not overwrite the result
     return 0;
 }
 
 LRESULT UpdatesView::OnSyncRow(UINT, WPARAM, LPARAM lParam, BOOL&) {
-    std::unique_ptr<RowUpdate> update(reinterpret_cast<RowUpdate*>(lParam));
+    auto update = gth::app::detail::takeOwnedMessage<RowUpdate>(lParam);
     if (!syncInProgress_.load()) return 0;  // the line has ended and the list has been rebuilt
 
     liveRows_[update->titleId] = update->text;
@@ -878,7 +1456,7 @@ LRESULT UpdatesView::OnSonyLinkCopied(UINT, WPARAM, LPARAM, BOOL&) {
 // generically "stuck" with no clue which game or why. A click (wParam 0) also counts as proof the
 // automation is actively making progress - see lastAutoclickProgressAt_.
 LRESULT UpdatesView::OnPatchAutoClick(UINT, WPARAM wParam, LPARAM lParam, BOOL& bHandled) {
-    std::unique_ptr<std::wstring> titleIdOwned(reinterpret_cast<std::wstring*>(lParam));
+    auto titleIdOwned = gth::app::detail::takeOwnedMessage<std::wstring>(lParam);
     if (!collecting_) return 0;
 
     if (wParam == 0) lastAutoclickProgressAt_ = std::chrono::steady_clock::now();
@@ -937,7 +1515,7 @@ LRESULT UpdatesView::OnPatchAutoClick(UINT, WPARAM wParam, LPARAM lParam, BOOL& 
 }
 
 LRESULT UpdatesView::OnSyncDone(UINT, WPARAM, LPARAM lParam, BOOL&) {
-    std::unique_ptr<SyncJobOutcome> outcome(reinterpret_cast<SyncJobOutcome*>(lParam));
+    auto outcome = gth::app::detail::takeOwnedMessage<SyncJobOutcome>(lParam);
     syncInProgress_.store(false);
     shared_->endJob();
     liveRows_.clear();
@@ -967,39 +1545,45 @@ LRESULT UpdatesView::OnSyncDone(UINT, WPARAM, LPARAM lParam, BOOL&) {
     if (outcome->checked) {
         shared_->updateByVariant.clear();
         for (const auto& entry : outcome->check.entries) shared_->updateByVariant[entry.gameVariantId] = entry;
+        if (outcome->check.updatesAvailable != lastNotifiedUpdateCount_) {
+            lastNotifiedUpdateCount_ = outcome->check.updatesAvailable;
+            if (notificationCallback_) notificationCallback_(outcome->check.updatesAvailable);
+        }
     }
     setBusy(false);
     refresh();
 
     std::wstring status;
     if (outcome->scannedForNewGames) {
-        status = L"Looked for new games: " + std::to_wstring(outcome->newGamesFound) + L" found";
+        status = std::format(L"Looked for new games: {} found", outcome->newGamesFound);
         if (outcome->storagesUnreachable > 0) {
-            status += L" (" + std::to_wstring(outcome->storagesUnreachable) + L" storage(s) weren't reachable and were left as they are)";
+            status += std::format(L" ({} storage(s) weren't reachable and were left as they are)",
+                                  outcome->storagesUnreachable);
         }
         status += L".";
     }
     if (outcome->linksLearnedFromFiles > 0) {
-        status += (status.empty() ? L"" : L" ") + std::wstring(L"Read ") + std::to_wstring(outcome->linksLearnedFromFiles) +
-                  L" Sony link(s) out of files already in the archive.";
+        status += std::format(L"{}Read {} Sony link(s) out of files already in the archive.",
+                              status.empty() ? L"" : L" ", outcome->linksLearnedFromFiles);
     }
     if (!status.empty()) status += L"\r\n";
     if (outcome->oneGame) {
         status += Utf8ToWide(outcome->single.titleId) + L": " + Utf8ToWide(outcome->single.message);
     } else if (outcome->ranSync) {
         const auto& b = outcome->batch;
-        wchar_t line[400];
-        swprintf_s(line, L"Download line %s: %d updated, %d metadata added, %d already current, %d not downloaded, %d without a "
+        std::array<wchar_t, 400> line{};
+        swprintf_s(line.data(), line.size(), L"Download line %s: %d updated, %d metadata added, %d already current, %d not downloaded, %d without a "
                          L"usable Sony link, %d failed. Downloaded %s in %d min.",
                    b.cancelled ? L"stopped" : L"finished", b.updated, b.completed, b.alreadyFine, b.needUpdate, b.unavailable,
                    b.failed, formatSize(b.bytesDownloaded).c_str(), static_cast<int>(outcome->took.count() / 60));
-        status += line;
+        status += line.data();
         if (b.recoveredOnRetry > 0) {
-            status += L" " + std::to_wstring(b.recoveredOnRetry) + L" game(s) failed at first and worked on a retry.";
+            status += std::format(L" {} game(s) failed at first and worked on a retry.", b.recoveredOnRetry);
         }
         if (b.failed > 0) {
-            status += L"\r\n" + std::to_wstring(b.failed) + L" game(s) failed (first: " + Utf8ToWide(b.firstFailure) +
-                      L"). Press Update All Games again to retry - finished files are kept and downloads resume.";
+            status += std::format(
+                L"\r\n{} game(s) failed (first: {}). Press Update All Games again to retry - finished files are kept and downloads resume.",
+                b.failed, Utf8ToWide(b.firstFailure));
         } else if (b.cancelled) {
             status += L"\r\nPress Update All Games again to carry on - finished files are kept and downloads resume.";
         }
@@ -1027,24 +1611,16 @@ LRESULT UpdatesView::OnSyncDone(UINT, WPARAM, LPARAM lParam, BOOL&) {
 }
 
 void UpdatesView::offerLinkCollection(int gamesWithoutLink) {
-    const std::wstring question =
-        std::to_wstring(gamesWithoutLink) + L" game(s) have no Sony link, so the app can't tell whether they are up to "
-        L"date.\r\n\r\n"
-        L"Collect their links now? The app opens each game's page on prosperopatches.com in your browser, opens the "
-        L"newest patch there for you and copies its link (solve the captcha if one shows up), then picks up the link "
-        L"and opens the next game. When that is done, the games that just got a link are updated automatically.\r\n\r\n"
-        L"Choose No to do this later from More > Sony update links > Collect links.";
-    if (::MessageBoxW(m_hWnd, question.c_str(), L"Update All Games", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
-
+    if (gamesWithoutLink <= 0) return;
     startCollecting();
     updateAllAfterCollect_ = collecting_;
 }
 
 std::vector<std::filesystem::path> UpdatesView::linkFiles() const {
     std::vector<std::filesystem::path> files;
-    wchar_t exePath[MAX_PATH]{};
-    if (::GetModuleFileNameW(nullptr, exePath, MAX_PATH) > 0) {
-        files.push_back(std::filesystem::path(exePath).parent_path() / "sony-version-links.tsv");
+    std::array<wchar_t, MAX_PATH> exePath{};
+    if (::GetModuleFileNameW(nullptr, exePath.data(), static_cast<DWORD>(exePath.size())) > 0) {
+        files.push_back(std::filesystem::path(exePath.data()).parent_path() / "sony-version-links.tsv");
     }
     files.push_back(sonyLinksPath_);
     files.push_back(sonyLinksPath_.parent_path() / "sony-links-needed.tsv");
@@ -1078,7 +1654,7 @@ LRESULT UpdatesView::OnSonyLinksClick(WORD, WORD, HWND, BOOL&) {
     ::AppendMenuW(menu, MF_STRING, kOpenFile, L"Open the links file");
     ::AppendMenuW(menu, MF_STRING, kOpenCopyLog, L"Open the copied-SC-links log (opens Notepad)");
     RECT rect{};
-    moreButton_.GetWindowRect(&rect);
+    board_.GetWindowRect(&rect);
     const UINT chosen = static_cast<UINT>(::TrackPopupMenu(menu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, rect.left,
                                                            rect.bottom, 0, m_hWnd, nullptr));
     ::DestroyMenu(menu);
@@ -1142,10 +1718,10 @@ void UpdatesView::writeNeededLinksList() {
         std::ofstream out(neededPath, std::ios::binary | std::ios::trunc);
         out << gth::network::BuildSonyLinksNeededList(needed);
     }
-    statusLabel_.SetWindowText((std::to_wstring(needed.size()) + L" of " + std::to_wstring(ps5Games().size()) +
-                                L" PS5 game(s) still need a Sony link. Opened " + neededPath.wstring() +
-                                L" - put each game's version-file link at the end of its line, save, then press Check Sony "
-                                L"for Updates.").c_str());
+    statusLabel_.SetWindowText(
+        std::format(L"{} of {} PS5 game(s) still need a Sony link. Opened {} - put each game's version-file link at the end of its line, save, then press Check Sony for Updates.",
+                    needed.size(), ps5Games().size(), neededPath.wstring())
+            .c_str());
     ::ShellExecuteW(m_hWnd, L"open", L"notepad.exe", (L"\"" + neededPath.wstring() + L"\"").c_str(), nullptr,
                     SW_SHOWNORMAL);
 }
@@ -1161,20 +1737,20 @@ void UpdatesView::startLinkDownload() {
     std::vector<std::string> titleIds;
     for (const auto& game : ps5Games()) titleIds.push_back(game.first);
 
-    linksThread_ = std::thread([this, hwnd = m_hWnd, titleIds, files = linkFiles(), target = sonyLinksPath_] {
-        auto* outcome = new LinksJobOutcome;
+    linksThread_ = std::jthread([this, hwnd = m_hWnd, titleIds, files = linkFiles(), target = sonyLinksPath_] {
+        auto outcome = std::make_unique<LinksJobOutcome>();
         const auto fetch = gth::network::MakeSonyFetcher();
         const auto response = fetch(kPublicLinkListUrl);
         if (response.status == 0) {
             outcome->error = response.failure;
         } else if (response.status != 200) {
-            outcome->error = "the server answered HTTP " + std::to_string(response.status);
+            outcome->error = std::format("the server answered HTTP {}", response.status);
         } else {
             const auto merged = gth::network::MergeSonyVersionLinks(target, response.body);
             if (merged.incoming == 0) {
                 outcome->error = "the list had no links in it";
             } else if (!merged.written) {
-                outcome->error = "couldn't save the links to " + target.string();
+                outcome->error = std::format("couldn't save the links to {}", target.string());
             } else {
                 outcome->ok = true;
                 outcome->downloaded = merged.incoming;
@@ -1185,7 +1761,7 @@ void UpdatesView::startLinkDownload() {
         const auto known = gth::network::ReadSonyLinkTitleIds(files);
         outcome->ps5Games = static_cast<int>(titleIds.size());
         for (const auto& id : titleIds) outcome->covered += known.contains(id) ? 1 : 0;
-        ::PostMessageW(hwnd, kLinksDoneMessage, 0, reinterpret_cast<LPARAM>(outcome));
+        gth::app::detail::postOwnedMessage(hwnd, kLinksDoneMessage, std::move(outcome));
     });
 }
 
@@ -1196,7 +1772,7 @@ void UpdatesView::addLinksFromClipboard() {
                       L"The clipboard has no Sony addresses in it.\r\n\r\n"
                       L"Open the game's page on prosperopatches.com (Tracker Page opens it), click a patch, and copy the "
                       L"SC link (right-click the SC button > Copy link address) - the CRC or manifest link works too. "
-                      L"Then choose this again. (More > Sony update links > Collect links from prosperopatches.com does the "
+                      L"Then choose this again. (The updates grid's context menu > Sony update links > Collect links from prosperopatches.com does the "
                       L"stepping from game to game for you.)",
                       L"Add links from the clipboard", MB_OK | MB_ICONINFORMATION);
         return;
@@ -1207,18 +1783,18 @@ void UpdatesView::addLinksFromClipboard() {
 void UpdatesView::addLinksFromFile() {
     if (anythingRunning()) return;
 
-    wchar_t file[MAX_PATH] = L"";
+    std::array<wchar_t, MAX_PATH> file{};
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
     dialog.hwndOwner = m_hWnd;
-    dialog.lpstrFile = file;
-    dialog.nMaxFile = MAX_PATH;
+    dialog.lpstrFile = file.data();
+    dialog.nMaxFile = static_cast<DWORD>(file.size());
     dialog.lpstrTitle = L"Add links from a file of Sony addresses";
     dialog.lpstrFilter = L"Lists (*.txt;*.csv;*.tsv;*.log)\0*.txt;*.csv;*.tsv;*.log\0All files (*.*)\0*.*\0";
     dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
     if (!::GetOpenFileNameW(&dialog)) return;
 
-    const std::string text = readListFile(file);
+    const std::string text = readListFile(file.data());
     if (gth::network::ExtractSonyAddresses(text).empty()) {
         ::MessageBoxW(m_hWnd, L"That file has no Sony addresses (sgst / gst.prod.dl.playstation.net) in it.",
                       L"Add links from a file", MB_OK | MB_ICONINFORMATION);
@@ -1239,28 +1815,56 @@ bool UpdatesView::startLinkImport(std::string text, bool guided) {
     std::vector<std::string> titleIds;
     for (const auto& game : ps5Games()) titleIds.push_back(game.first);
 
-    linksThread_ = std::thread([this, hwnd = m_hWnd, text = std::move(text), titleIds, files = linkFiles(), target = sonyLinksPath_, guided] {
-        auto* outcome = new LinksJobOutcome;
+    linksThread_ = std::jthread([this, hwnd = m_hWnd, text = std::move(text), titleIds, files = linkFiles(), target = sonyLinksPath_, guided] {
+        auto outcome = std::make_unique<LinksJobOutcome>();
         outcome->imported = true;
         outcome->guided = guided;
 
         gth::network::SonyLinkImporter importer(target, files);
-        outcome->import = importer.import(
+        outcome->importResult = importer.importLinks(
             text, [this] { return linksCancel_.load(); },
             [hwnd](const std::string& line) {
-                ::PostMessageW(hwnd, kLinksProgressMessage, 0, reinterpret_cast<LPARAM>(new std::wstring(Utf8ToWide(line))));
+                gth::app::detail::postOwnedMessage(hwnd, kLinksProgressMessage,
+                                                   std::make_unique<std::wstring>(Utf8ToWide(line)));
             });
-        outcome->ok = !outcome->import.saveFailed;
+        outcome->ok = !outcome->importResult.saveFailed;
 
         const auto known = gth::network::ReadSonyLinkTitleIds(files);
         outcome->ps5Games = static_cast<int>(titleIds.size());
         for (const auto& id : titleIds) outcome->covered += known.contains(id) ? 1 : 0;
-        ::PostMessageW(hwnd, kLinksDoneMessage, 0, reinterpret_cast<LPARAM>(outcome));
+        gth::app::detail::postOwnedMessage(hwnd, kLinksDoneMessage, std::move(outcome));
     });
     return true;
 }
 
 // ---- Guided collection of Sony links ---------------------------------------------------------------------------------
+
+void UpdatesView::appendCollectedLinksToDesktop(const std::vector<std::string>& titleIds) {
+    if (const auto desktop = desktopDirectory(); !desktop.empty()) {
+        collectLinksLogPath_ = desktop / "GTH-Prosperopatches-links.txt";
+    }
+
+    const auto links = gth::network::ParseSonyVersionLinks(readListFile(sonyLinksPath_));
+    if (links.empty()) return;
+
+    std::set<std::string> loggedIds;
+    {
+        std::ifstream existing(collectLinksLogPath_);
+        std::string line;
+        while (std::getline(existing, line)) {
+            const auto tab = line.find('\t');
+            if (tab != std::string::npos && tab > 0) loggedIds.insert(line.substr(0, tab));
+        }
+    }
+
+    std::ofstream output(collectLinksLogPath_, std::ios::app);
+    if (!output) return;
+    for (const auto& titleId : titleIds) {
+        const auto link = links.find(titleId);
+        if (link == links.end() || !loggedIds.insert(titleId).second) continue;
+        output << titleId << '\t' << link->second << "\r\n";
+    }
+}
 
 void UpdatesView::startCollecting() {
     if (collecting_ || anythingRunning()) return;
@@ -1282,7 +1886,18 @@ void UpdatesView::startCollecting() {
     collectLearned_ = 0;
     collectAccountRevealShown_ = false;
     collectLastSequence_ = ::GetClipboardSequenceNumber();  // what is on the clipboard now isn't an answer
+    if (const auto desktop = desktopDirectory(); !desktop.empty()) {
+        collectLinksLogPath_ = desktop / "GTH-Prosperopatches-links.txt";
+    }
+    {
+        std::ofstream output(collectLinksLogPath_, std::ios::trunc);
+        if (output) {
+            output << "# GTH Prosperopatches link collection\r\n"
+                      "# TITLE_ID\\tSONY_VERSION_LINK\r\n";
+        }
+    }
     lastAutoclickProgressAt_ = std::chrono::steady_clock::now();
+    selectedGameToolsExpanded_ = true;
     skipGameButton_.ShowWindow(SW_SHOW);
     setBusy(false);
     SetTimer(kCollectTimerId, kCollectTickMs);
@@ -1297,15 +1912,11 @@ void UpdatesView::startCollecting() {
 void UpdatesView::showCollectStatus(const std::wstring& lead) {
     std::wstring title = Utf8ToWide(collectCurrent_);
     for (const auto& game : ps5Games()) {
-        if (game.first == collectCurrent_) title = Utf8ToWide(game.second) + L" (" + Utf8ToWide(game.first) + L")";
+        if (game.first == collectCurrent_) title = std::format(L"{} ({})", Utf8ToWide(game.second), Utf8ToWide(game.first));
     }
     const int position = collectLearned_ + static_cast<int>(collectSkipped_.size()) + 1;
-    std::wstring text = lead + L"Collecting Sony links - game " + std::to_wstring(position) + L" of " +
-                        std::to_wstring(collectTotal_) + L": " + title +
-                        L".\r\nThis game's page and the next few are open in your browser. The app opens the newest patch for "
-                        L"whichever page is in front and copies its link for you - just solve the captcha if the site shows "
-                        L"one (or, if it doesn't open on its own, click the newest patch yourself and right-click SC > Copy "
-                        L"link address). Skip Game if this game has no patch; Cancel stops.";
+    std::wstring text = std::format(L"{}Collecting link {} / {}: {}. Open the newest patch and copy its SC link; Skip skips it; Cancel stops.",
+                                    lead, position, collectTotal_, title);
     statusLabel_.SetWindowText(text.c_str());
 }
 
@@ -1314,7 +1925,7 @@ void UpdatesView::collectNext(const std::wstring& lead) {
     const auto games = ps5Games();
     const auto next = gth::application::NextGameNeedingLink(games, known, collectSkipped_);
     if (!next) {
-        finishCollecting(lead + L"Every game is covered or skipped.", /*completed=*/true);
+        finishCollecting(std::format(L"{}Every game is covered or skipped.", lead), /*completed=*/true);
         return;
     }
     collectCurrent_ = next->first;
@@ -1385,8 +1996,8 @@ void UpdatesView::finishCollecting(const std::wstring& how, bool completed) {
 
     setBusy(anythingRunning());
 
-    const std::wstring status = how + L" Saved " + std::to_wstring(collectLearned_) + L" link(s), skipped " +
-                                std::to_wstring(collectSkipped_.size()) + L" game(s).";
+    const std::wstring status =
+        std::format(L"{} Saved {} link(s), skipped {} game(s).", how, collectLearned_, collectSkipped_.size());
     statusLabel_.SetWindowText(status.c_str());
     GTH_LOG_INFO("Collecting Sony links finished: {}", WideToUtf8(status));
 
@@ -1398,7 +2009,7 @@ void UpdatesView::finishCollecting(const std::wstring& how, bool completed) {
         updateAllChain_ = false;  // the second line doesn't offer the collection again
         startSync("", gth::application::SyncMode::Full, /*automatic=*/false);
         if (syncInProgress_.load()) {
-            statusLabel_.SetWindowText((status + L"\r\nUpdating the games that just got a link...").c_str());
+            statusLabel_.SetWindowText(std::format(L"{}\r\nUpdating the games that just got a link...", status).c_str());
         }
         return;
     }
@@ -1407,7 +2018,7 @@ void UpdatesView::finishCollecting(const std::wstring& how, bool completed) {
     if (collectLearned_ > 0 && !anythingRunning()) {
         BOOL handled = TRUE;
         OnCheckUpdatesClick(0, 0, nullptr, handled);
-        if (updateInProgress_.load()) statusLabel_.SetWindowText((status + L"\r\nChecking those games against Sony now...").c_str());
+        if (updateInProgress_.load()) statusLabel_.SetWindowText(std::format(L"{}\r\nChecking those games against Sony now...", status).c_str());
     }
 }
 
@@ -1420,7 +2031,8 @@ void UpdatesView::collectTick() {
     const DWORD sequence = ::GetClipboardSequenceNumber();
     if (sequence != collectLastSequence_) {
         collectLastSequence_ = sequence;
-        if (const auto clipboard = readClipboardText(m_hWnd); clipboard && !gth::network::ExtractSonyAddresses(*clipboard).empty()) {
+        if (const auto clipboard = readClipboardText(m_hWnd);
+            clipboard.has_value() && !gth::network::ExtractSonyAddresses(*clipboard).empty()) {
             collectPending_.push_back(*clipboard);
         }
     }
@@ -1431,14 +2043,15 @@ void UpdatesView::collectTick() {
 }
 
 void UpdatesView::onGuidedImportDone(const LinksJobOutcome& outcome) {
-    const auto& result = outcome.import;
+    const auto& result = outcome.importResult;
     collectLearned_ += static_cast<int>(result.learned);
 
     if (result.saveFailed) {
-        finishCollecting(L"Couldn't write the links to " + sonyLinksPath_.wstring() + L" - stopped.");
+        finishCollecting(std::format(L"Couldn't write the links to {} - stopped.", sonyLinksPath_.wstring()));
         return;
     }
     if (result.learned > 0) {
+        appendCollectedLinksToDesktop(result.titleIdsLearned);
         std::wstring ids;
         for (size_t i = 0; i < result.titleIdsLearned.size() && i < 4; ++i) ids += (i ? L", " : L"") + Utf8ToWide(result.titleIdsLearned[i]);
         for (const auto& titleId : result.titleIdsLearned) {
@@ -1446,12 +2059,12 @@ void UpdatesView::onGuidedImportDone(const LinksJobOutcome& outcome) {
             liveRows_.erase(titleId);  // resolved - stop showing any "needs you"/"waiting" marker for it
         }
         refresh();  // clears those rows' markers immediately rather than waiting for the next unrelated refresh
-        collectNext(L"Saved the link for " + ids + L". ");
+        collectNext(std::format(L"Saved the link for {}. ", ids));
         return;
     }
     if (result.failed + result.gamePiecesOnly > 0 && !result.notes.empty()) {
         // Nothing usable: say why, and keep waiting for the same game.
-        showCollectStatus(Utf8ToWide(result.notes.front()) + L"\r\n");
+        showCollectStatus(std::format(L"{}\r\n", Utf8ToWide(result.notes.front())));
         return;
     }
     // Already known (the person copied a game that has a link): carry on with whatever is next.
@@ -1499,7 +2112,7 @@ void UpdatesView::tryStartNextAutoDownload() {
     startSync(next.gameVariantId, gth::application::SyncMode::Full, /*automatic=*/false, /*checkAfter=*/false);
 }
 
-LRESULT UpdatesView::OnMoreClick(WORD, WORD, HWND, BOOL&) {
+void UpdatesView::showToolsMenu(POINT screenPoint) {
     const bool idle = !anythingRunning() && !collecting_;
     const auto* selected = selectedEntry();
     HMENU menu = ::CreatePopupMenu();
@@ -1513,12 +2126,10 @@ LRESULT UpdatesView::OnMoreClick(WORD, WORD, HWND, BOOL&) {
     ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     item(IDC_UPDATES_GUIDE_BUTTON, L"How this tab works", true);
 
-    RECT rect{};
-    moreButton_.GetWindowRect(&rect);
-    // No TPM_RETURNCMD: the chosen item arrives as a WM_COMMAND with the id of the button that used to do this.
-    ::TrackPopupMenu(menu, TPM_LEFTALIGN | TPM_TOPALIGN, rect.left, rect.bottom, 0, m_hWnd, nullptr);
+    // This menu is opened from the board's context menu, keeping secondary
+    // tools available without another permanent button in the page header.
+    ::TrackPopupMenu(menu, TPM_LEFTALIGN | TPM_TOPALIGN, screenPoint.x, screenPoint.y, 0, m_hWnd, nullptr);
     ::DestroyMenu(menu);
-    return 0;
 }
 
 LRESULT UpdatesView::OnSkipGameClick(WORD, WORD, HWND, BOOL&) {
@@ -1529,13 +2140,13 @@ LRESULT UpdatesView::OnSkipGameClick(WORD, WORD, HWND, BOOL&) {
 }
 
 LRESULT UpdatesView::OnLinksProgress(UINT, WPARAM, LPARAM lParam, BOOL&) {
-    std::unique_ptr<std::wstring> line(reinterpret_cast<std::wstring*>(lParam));
+    auto line = gth::app::detail::takeOwnedMessage<std::wstring>(lParam);
     if (linksInProgress_.load()) statusLabel_.SetWindowText(line->c_str());
     return 0;
 }
 
 LRESULT UpdatesView::OnLinksDone(UINT, WPARAM, LPARAM lParam, BOOL&) {
-    std::unique_ptr<LinksJobOutcome> outcome(reinterpret_cast<LinksJobOutcome*>(lParam));
+    auto outcome = gth::app::detail::takeOwnedMessage<LinksJobOutcome>(lParam);
     linksInProgress_.store(false);
     shared_->endJob();
     setBusy(false);
@@ -1547,24 +2158,25 @@ LRESULT UpdatesView::OnLinksDone(UINT, WPARAM, LPARAM lParam, BOOL&) {
     }
 
     if (outcome->imported) {
-        const auto& result = outcome->import;
-        std::wstring status = L"Read " + std::to_wstring(result.addressesFound) + L" Sony address(es): " +
-                              std::to_wstring(result.learned) + L" new link(s) saved, " + std::to_wstring(result.alreadyKnown) +
-                              L" already known";
+        const auto& result = outcome->importResult;
+        std::wstring status = std::format(L"Read {} Sony address(es): {} new link(s) saved, {} already known",
+                                          result.addressesFound, result.learned, result.alreadyKnown);
         if (result.failed + result.gamePiecesOnly > 0) {
-            status += L", " + std::to_wstring(result.failed + result.gamePiecesOnly) + L" couldn't be used";
+            status += std::format(L", {} couldn't be used", result.failed + result.gamePiecesOnly);
         }
         status += result.cancelled ? L" (cancelled). " : L". ";
         if (result.saveFailed) status += L"Couldn't write the links to " + sonyLinksPath_.wstring() + L". ";
-        status += L"Now " + std::to_wstring(outcome->covered) + L" of your " + std::to_wstring(outcome->ps5Games) +
-                  L" PS5 games have a Sony link.";
+        status += std::format(L"Now {} of your {} PS5 games have a Sony link.", outcome->covered,
+                              outcome->ps5Games);
         statusLabel_.SetWindowText(status.c_str());
         GTH_LOG_INFO("Sony address import: {} | {}", WideToUtf8(status), result.notes.empty() ? "" : result.notes.front());
 
         if (!result.notes.empty()) {
             std::wstring detail = L"These addresses couldn't be turned into a link:\r\n\r\n";
             for (size_t i = 0; i < result.notes.size() && i < 12; ++i) detail += L"- " + Utf8ToWide(result.notes[i]) + L"\r\n";
-            if (result.notes.size() > 12) detail += L"... and " + std::to_wstring(result.notes.size() - 12) + L" more (see the log).\r\n";
+            if (result.notes.size() > 12) {
+                detail += std::format(L"... and {} more (see the log).\r\n", result.notes.size() - 12);
+            }
             for (size_t i = 12; i < result.notes.size(); ++i) GTH_LOG_INFO("Sony address import: {}", result.notes[i]);
             ::MessageBoxW(m_hWnd, detail.c_str(), L"Add links", MB_OK | MB_ICONINFORMATION);
         }
@@ -1572,21 +2184,21 @@ LRESULT UpdatesView::OnLinksDone(UINT, WPARAM, LPARAM lParam, BOOL&) {
         if (result.learned > 0) {
             BOOL handled = TRUE;
             OnCheckUpdatesClick(0, 0, nullptr, handled);
-            if (updateInProgress_.load()) statusLabel_.SetWindowText((status + L"\r\nChecking those games against Sony now...").c_str());
+            if (updateInProgress_.load()) statusLabel_.SetWindowText(std::format(L"{}\r\nChecking those games against Sony now...", status).c_str());
         }
         return 0;
     }
 
     std::wstring status;
     if (outcome->ok) {
-        status = L"Downloaded " + std::to_wstring(outcome->downloaded) + L" Sony links (" + std::to_wstring(outcome->total) +
-                 L" saved in total). They cover " + std::to_wstring(outcome->covered) + L" of your " +
-                 std::to_wstring(outcome->ps5Games) + L" PS5 games";
+        status = std::format(L"Downloaded {} Sony links ({} saved in total). They cover {} of your {} PS5 games",
+                             outcome->downloaded, outcome->total, outcome->covered, outcome->ps5Games);
         const int missing = outcome->ps5Games - outcome->covered;
         if (missing > 0) {
-            status += L"; " + std::to_wstring(missing) +
-                      L" still need a link (the public list only has the titles somebody has shared - use More > Sony update links > "
-                      L"Add links from the clipboard with each game's SC link; the Guide explains where to copy it).";
+            status += std::format(
+                L"; {} still need a link (the public list only has the titles somebody has shared - right-click the updates grid and choose Sony update links > "
+                L"Add links from the clipboard with each game's SC link; the Guide explains where to copy it).",
+                missing);
         } else {
             status += L".";
         }
@@ -1601,7 +2213,7 @@ LRESULT UpdatesView::OnLinksDone(UINT, WPARAM, LPARAM lParam, BOOL&) {
         BOOL handled = TRUE;
         OnCheckUpdatesClick(0, 0, nullptr, handled);
         if (updateInProgress_.load()) {
-            statusLabel_.SetWindowText((status + L"\r\nChecking those games against Sony now...").c_str());
+            statusLabel_.SetWindowText(std::format(L"{}\r\nChecking those games against Sony now...", status).c_str());
         }
     }
     return 0;
@@ -1615,8 +2227,8 @@ void UpdatesView::applyVersionToSelected(const std::string& version) {
     const std::string title = entry->title;
     const auto result = indexer_->setVersion(variantId, version);
     if (!result.success) {
-        statusLabel_.SetWindowText((L"Couldn't save the version for " + Utf8ToWide(title) + L": " +
-                                    Utf8ToWide(result.errorMessage)).c_str());
+        statusLabel_.SetWindowText(std::format(L"Couldn't save the version for {}: {}", Utf8ToWide(title),
+                                               Utf8ToWide(result.errorMessage)).c_str());
         GTH_LOG_WARN("Set version for '{}' failed: {}", title, result.errorMessage);
         return;
     }
@@ -1624,17 +2236,17 @@ void UpdatesView::applyVersionToSelected(const std::string& version) {
     refresh();
     selectVariant(variantId);
     const std::wstring message = version.empty()
-        ? L"Cleared the version for " + Utf8ToWide(title) + L" - it will be detected again at the next scan."
-        : L"Saved version " + Utf8ToWide(version) + L" for " + Utf8ToWide(title) +
-              L", next to its files, so a rescan keeps it.";
+        ? std::format(L"Cleared the version for {} - it will be detected again at the next scan.", Utf8ToWide(title))
+        : std::format(L"Saved version {} for {}, next to its files, so a rescan keeps it.", Utf8ToWide(version),
+                      Utf8ToWide(title));
     statusLabel_.SetWindowText(message.c_str());
     GTH_LOG_INFO("Set version for '{}' to '{}'", title, version);
 }
 
 LRESULT UpdatesView::OnSetVersionClick(WORD, WORD, HWND, BOOL&) {
-    wchar_t text[64]{};
-    versionEdit_.GetWindowText(text, 64);
-    applyVersionToSelected(WideToUtf8(text));
+    std::array<wchar_t, 64> text{};
+    versionEdit_.GetWindowText(text.data(), static_cast<int>(text.size()));
+    applyVersionToSelected(WideToUtf8(text.data()));
     return 0;
 }
 
@@ -1659,8 +2271,7 @@ void UpdatesView::importSonyLinks(const std::string& text, std::wstring& report)
     if (merged.incoming == 0) return;
 
     if (merged.written) {
-        report += L"Saved " + std::to_wstring(merged.incoming) + L" Sony version link(s) - " + std::to_wstring(merged.total) +
-                  L" in total.\r\n";
+        report += std::format(L"Saved {} Sony version link(s) - {} in total.\r\n", merged.incoming, merged.total);
     } else {
         report += L"Couldn't write the Sony links to " + sonyLinksPath_.wstring() + L".\r\n";
     }
@@ -1669,19 +2280,19 @@ void UpdatesView::importSonyLinks(const std::string& text, std::wstring& report)
 LRESULT UpdatesView::OnImportVersionsClick(WORD, WORD, HWND, BOOL&) {
     if (!indexer_ || anythingRunning()) return 0;
 
-    wchar_t file[MAX_PATH] = L"";
+    std::array<wchar_t, MAX_PATH> file{};
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
     dialog.hwndOwner = m_hWnd;
-    dialog.lpstrFile = file;
-    dialog.nMaxFile = MAX_PATH;
+    dialog.lpstrFile = file.data();
+    dialog.nMaxFile = static_cast<DWORD>(file.size());
     dialog.lpstrTitle = L"Import versions or Sony links";
     dialog.lpstrFilter = L"Lists (*.txt;*.csv;*.tsv)\0*.txt;*.csv;*.tsv\0All files (*.*)\0*.*\0";
     dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
     if (!::GetOpenFileNameW(&dialog)) return 0;
 
     WaitCursor wait;
-    const std::string text = readListFile(file);
+    const std::string text = readListFile(file.data());
 
     std::wstring report;
     importSonyLinks(text, report);
@@ -1689,21 +2300,22 @@ LRESULT UpdatesView::OnImportVersionsClick(WORD, WORD, HWND, BOOL&) {
 
     const auto result = indexer_->importVersions(text);
     if (result.applied > 0 || result.failed > 0 || !importedLinks) {
-        report += L"Set the version of " + std::to_wstring(result.applied) + L" game(s), next to their files.\r\n";
+        report += std::format(L"Set the version of {} game(s), next to their files.\r\n", result.applied);
     }
     if (!result.unmatchedTitleIds.empty()) {
         std::wstring first;
         for (size_t i = 0; i < result.unmatchedTitleIds.size() && i < 5; ++i) {
             first += (i ? L", " : L"") + Utf8ToWide(result.unmatchedTitleIds[i]);
         }
-        report += std::to_wstring(result.unmatchedTitleIds.size()) + L" title ID(s) in the list aren't in this library (" +
-                  first + (result.unmatchedTitleIds.size() > 5 ? L", ..." : L"") + L").\r\n";
+        report += std::format(L"{} title ID(s) in the list aren't in this library ({}{}).\r\n",
+                              result.unmatchedTitleIds.size(), first,
+                              result.unmatchedTitleIds.size() > 5 ? L", ..." : L"");
     }
     if (result.failed > 0) {
-        report += std::to_wstring(result.failed) + L" couldn't be saved - first: " + Utf8ToWide(result.firstError) + L"\r\n";
+        report += std::format(L"{} couldn't be saved - first: {}\r\n", result.failed, Utf8ToWide(result.firstError));
     }
     if (result.linesIgnored > 0 && !importedLinks) {
-        report += std::to_wstring(result.linesIgnored) + L" line(s) had no recognizable title ID and version.\r\n";
+        report += std::format(L"{} line(s) had no recognizable title ID and version.\r\n", result.linesIgnored);
     }
 
     refresh();

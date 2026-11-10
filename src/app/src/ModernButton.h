@@ -97,7 +97,8 @@ private:
         const int len = GetWindowTextLength();
         std::wstring text(static_cast<size_t>(len), L'\0');
         if (len > 0) GetWindowText(text.data(), len + 1);
-        theme::DrawCenteredText(hdc, rect, text, theme::BodyFont(), textColor);
+        HFONT font = std::bit_cast<HFONT>(SendMessage(WM_GETFONT, 0, 0));
+        theme::DrawCenteredText(hdc, rect, text, font ? font : theme::BodyFont(), textColor);
 
         EndPaint(&ps);
         return 0;
