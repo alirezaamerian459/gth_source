@@ -260,8 +260,10 @@ public:
             return false;
         }
 
-        ::CoSetProxyBlanket(services_, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, nullptr, RPC_C_AUTHN_LEVEL_CALL,
-                             RPC_C_IMP_LEVEL_IMPERSONATE, nullptr, EOAC_NONE);
+        if (FAILED(::CoSetProxyBlanket(services_, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, nullptr,
+                                       RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, nullptr, EOAC_NONE))) {
+            return false;
+        }
         return true;
     }
 

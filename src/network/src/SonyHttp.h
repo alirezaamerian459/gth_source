@@ -103,6 +103,7 @@ inline std::optional<ParsedUrl> crackUrl(std::string_view url) {
 
     ParsedUrl parsed;
     parsed.https = parts.nScheme == INTERNET_SCHEME_HTTPS;
+    if (parts.lpszHostName == nullptr || parts.dwHostNameLength == 0) return std::nullopt;
     parsed.host.assign(parts.lpszHostName, parts.dwHostNameLength);
     parsed.port = parts.nPort;
     if (parts.lpszUrlPath && parts.dwUrlPathLength) parsed.path.assign(parts.lpszUrlPath, parts.dwUrlPathLength);

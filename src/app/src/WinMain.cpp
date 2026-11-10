@@ -4,6 +4,7 @@
 
 #include <CommCtrl.h>
 #include <exception>
+#include <memory>
 
 #include "gth/infrastructure/ServiceContainer.h"
 #include "gth/logging/Logging.h"
@@ -21,7 +22,7 @@
 
 WTL::CAppModule _Module;
 
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
+int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int nCmdShow) {
     gth::logging::init(gth::infrastructure::ServiceContainer::defaultLogDirectory());
     GTH_LOG_INFO("Application started");
 
@@ -39,33 +40,38 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
     splash.CreateSplash();
     splash.ShowWindow(SW_SHOWNORMAL);
     splash.UpdateWindow();
-    const DWORD splashStartTick = ::GetTickCount();
+    const ULONGLONG splashStartTick = ::GetTickCount64();
 
     int exitCode = 0;
     try {
-        gth::infrastructure::ServiceContainer container(gth::infrastructure::ServiceContainer::defaultDatabasePath());
+        // Keep the two large application aggregates off the limited Windows
+        // thread stack.  Their ownership and lifetime remain identical: they
+        // live until the message loop exits, but heap allocation avoids a
+        // stack-overflow risk during startup.
+        auto container = std::make_unique<gth::infrastructure::ServiceContainer>(
+            gth::infrastructure::ServiceContainer::defaultDatabasePath());
         GTH_LOG_INFO("Database ready and migrated");
 
-        MainFrame frame(container.storageService(), container.gameIndexer(), container.gameLibraryService(),
-                         container.gamePosterService(),
-                         container.updateDetector(), container.updateJobService(),
-                         container.networkInterfaceDetector(), container.consoleManager(),
-                         container.transferQueue(), container.reportService(),
+        auto frame = std::make_unique<MainFrame>(container->storageService(), container->gameIndexer(),
+                         container->gameLibraryService(), container->gamePosterService(),
+                         container->updateDetector(), container->updateJobService(),
+                         container->networkInterfaceDetector(), container->consoleManager(),
+                         container->transferQueue(), container->reportService(),
                          gth::infrastructure::ServiceContainer::defaultLogDirectory(),
-                         container.centralServerService(), container.agentService(),
-                         container.ftpConnectionService(), container.ftpTransferService(),
-                         container.ftpServerService(), container.cdnUrlService(),
-                         container.downloadAcceleratorService(),
-                         container.appSettingsService(), container.adminAuthService(),
-                         container.downloadAcceleratorServerFactory(), container.firewallService(),
-                         container.titleLookupService(), container.updateChecker(),
-                         gth::infrastructure::ServiceContainer::defaultSonyLinksPath(), container.packageSync(),
+                         container->centralServerService(), container->agentService(),
+                         container->ftpConnectionService(), container->ftpTransferService(),
+                         container->ftpServerService(), container->cdnUrlService(),
+                         container->downloadAcceleratorService(),
+                         container->appSettingsService(), container->adminAuthService(),
+                         container->downloadAcceleratorServerFactory(), container->firewallService(),
+                         container->titleLookupService(), container->updateChecker(),
+                         gth::infrastructure::ServiceContainer::defaultSonyLinksPath(), container->packageSync(),
                          gth::infrastructure::ServiceContainer::defaultSonyAutomationPath(),
-                         container.coverArtClient(), container.backupService(), container.telegramBackupTransport(),
-                         container.credentialStore(),
+                         container->coverArtClient(), container->backupService(), container->telegramBackupTransport(),
+                         container->credentialStore(),
                          gth::infrastructure::ServiceContainer::defaultTelegramChatIdPath(),
                          gth::infrastructure::ServiceContainer::defaultDataDirectory() / "restored-games");
-        if (frame.CreateEx() == nullptr) {
+        if (frame->CreateEx() == nullptr) {
             GTH_LOG_ERROR("Main window creation failed");
             splash.DestroyWindow();
             exitCode = 1;
@@ -74,9 +80,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
             // its own messages (WM_PAINT chiefly) so it stays responsive/
             // repainted instead of just sitting there looking frozen for
             // up to two seconds.
-            const DWORD splashDeadline = splashStartTick + SplashWindow::kHoldMs;
+            const ULONGLONG splashDeadline = splashStartTick + SplashWindow::kHoldMs;
             MSG splashMsg;
-            while (::GetTickCount() < splashDeadline) {
+            while (::GetTickCount64() < splashDeadline) {
                 if (::PeekMessage(&splashMsg, nullptr, 0, 0, PM_REMOVE)) {
                     ::TranslateMessage(&splashMsg);
                     ::DispatchMessage(&splashMsg);
@@ -94,8 +100,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
             // treating a hidden startup request as an accidental launcher
             // default rather than hiding the product from the user.
             const int showCommand = nCmdShow == SW_HIDE ? SW_SHOWNORMAL : nCmdShow;
-            frame.ShowWindow(showCommand);
-            frame.UpdateWindow();
+            frame->ShowWindow(showCommand);
+            frame->UpdateWindow();
 
             MSG msg;
             while (::GetMessage(&msg, nullptr, 0, 0) > 0) {

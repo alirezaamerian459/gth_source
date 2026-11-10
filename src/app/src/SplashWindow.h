@@ -44,7 +44,7 @@ public:
         HWND hwnd = Create(nullptr, rect, L"", WS_POPUP | WS_VISIBLE, WS_EX_TOOLWINDOW);
         if (hwnd) {
             CenterWindow();
-            creationTick_ = ::GetTickCount();
+            creationTick_ = ::GetTickCount64();
             // ~60fps repaint while the splash is up - WinMain's hold loop
             // pumps messages for it, so a timer this frequent is what
             // actually makes the pop-in/pulse/loading-bar animation move
@@ -73,7 +73,7 @@ private:
     static constexpr DWORD kTextDelayMs = 150;
     static constexpr DWORD kTextAnimMs = 350;
 
-    DWORD creationTick_ = 0;
+    ULONGLONG creationTick_ = 0;
 
     LRESULT OnEraseBkgnd(UINT, WPARAM, LPARAM, BOOL&) { return 1; }  // painted fully in OnPaint - no flicker
     LRESULT OnTimer(UINT, WPARAM wParam, LPARAM, BOOL&) {
@@ -127,7 +127,7 @@ private:
     }
 
     void paintContent(HDC hdc, const CRect& rect) {
-        const DWORD elapsedMs = ::GetTickCount() - creationTick_;
+        const ULONGLONG elapsedMs = ::GetTickCount64() - creationTick_;
 
         // Midnight purple vertical gradient - deliberately a different,
         // deeper purple than the app's own accent color anywhere else

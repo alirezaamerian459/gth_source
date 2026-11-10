@@ -435,11 +435,16 @@ void SonyLinkCopyWatcher::Worker() {
         const auto currentTabs = OpenPs5TitleIdsInStripOrder(automation, windowElement);
         {
             // Every title ID is "PPSA" + 5 digits (LooksLikePs5TitleId already guarantees pure
-            // ASCII) - a plain per-character narrow-cast is exact here, not just an approximation
-            // a real UTF-8 conversion would be needed for.
+            // ASCII). Spell out the conversion instead of constructing std::string from wide
+            // iterators; the latter relies on an implicit wchar_t-to-char narrowing conversion.
             std::vector<std::string> snapshot;
             snapshot.reserve(currentTabs.size());
-            for (const auto& id : currentTabs) snapshot.emplace_back(id.begin(), id.end());
+            for (const auto& id : currentTabs) {
+                std::string narrow;
+                narrow.reserve(id.size());
+                for (const wchar_t character : id) narrow.push_back(static_cast<char>(character));
+                snapshot.push_back(std::move(narrow));
+            }
             std::lock_guard<std::mutex> lock(openTabsMutex_);
             openTabsSnapshot_ = std::move(snapshot);
         }

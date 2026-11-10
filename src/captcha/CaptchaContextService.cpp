@@ -142,6 +142,16 @@ void CaptchaContextService::PressEscapeKey() {
     keybd_event(VK_ESCAPE, KEYEVENTF_KEYUP, 0, 0);
 }
 
+void CaptchaContextService::ClickAccountAndClose(int accountX, int accountY) {
+    // Keep the lock's lifetime in a small helper. This makes the ownership
+    // boundary explicit to static analysis while preserving the existing
+    // serialized click/escape sequence.
+    std::lock_guard<std::mutex> mouseLock(MouseAutomationMutex());
+    MouseInput::ClickAtPosition(accountX, accountY);
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+    PressEscapeKey();
+}
+
 bool CaptchaContextService::IsBrowserWindowActive(const std::wstring& title) {
     HWND hwnd = FindWindowW(nullptr, title.c_str());
     return hwnd != nullptr && IsWindowVisible(hwnd);
@@ -188,12 +198,7 @@ void CaptchaContextService::ExecuteShowAccountAndWiFi() {
         // SonyLinkCopyWatcher, which needs the same lock to copy a link the moment one
         // appears - without this, the two could drive the mouse at the same instant and
         // send each other's click to the wrong place.
-        {
-            std::lock_guard<std::mutex> mouseLock(MouseAutomationMutex());
-            MouseInput::ClickAtPosition(accountX, accountY);
-            std::this_thread::sleep_for(std::chrono::seconds(2));
-            PressEscapeKey();
-        }
+        ClickAccountAndClose(accountX, accountY);
 
         cleanup();
     } catch (...) {

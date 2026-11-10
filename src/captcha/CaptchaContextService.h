@@ -51,6 +51,9 @@ private:
     // Press Escape key to close menus.
     static void PressEscapeKey();
 
+    // Serialize the click/escape sequence with other mouse automation.
+    static void ClickAccountAndClose(int accountX, int accountY);
+
     // Internal execution on worker thread.
     void ExecuteShowAccountAndWiFi();
 

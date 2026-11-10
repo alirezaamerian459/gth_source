@@ -6,11 +6,12 @@
 namespace gth::core::Guid {
 
 std::string newGuid() {
-    UUID uuid;
-    ::UuidCreate(&uuid);
+    UUID uuid{};
+    const RPC_STATUS createStatus = ::UuidCreate(&uuid);
+    if (createStatus != RPC_S_OK && createStatus != RPC_S_UUID_LOCAL_ONLY) return {};
 
     RPC_CSTR rpcStr = nullptr;
-    ::UuidToStringA(&uuid, &rpcStr);
+    if (::UuidToStringA(&uuid, &rpcStr) != RPC_S_OK || rpcStr == nullptr) return {};
 
     std::string result(reinterpret_cast<char*>(rpcStr));
     ::RpcStringFreeA(&rpcStr);
