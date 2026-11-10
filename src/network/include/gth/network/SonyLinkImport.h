@@ -80,8 +80,8 @@ public:
                      SonyHeadFetcher fetcher = MakeSonyHeadFetcher());
 
     // `onProgress` gets a short line before each title; `shouldCancel` is asked between titles.
-    SonyLinkImportResult import(const std::string& text, const std::function<bool()>& shouldCancel = {},
-                                const std::function<void(const std::string&)>& onProgress = {});
+    SonyLinkImportResult importLinks(const std::string& text, const std::function<bool()>& shouldCancel = {},
+                                     const std::function<void(const std::string&)>& onProgress = {});
 
 private:
     std::filesystem::path linksFile_;

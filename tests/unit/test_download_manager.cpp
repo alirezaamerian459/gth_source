@@ -1,6 +1,8 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <system_error>
 #include <fstream>
 
 #include "gth/application/updates/DownloadManager.h"
@@ -49,10 +51,13 @@ struct DownloadFixture {
 
     DownloadFixture() {
         Migrator::applyMigrations(db);
-        tempDir = fs::temp_directory_path() / ("gth_download_test_" + Guid::newGuid());
+        tempDir = gth::test::testTempRoot() / ("gth_download_test_" + Guid::newGuid());
     }
 
-    ~DownloadFixture() { fs::remove_all(tempDir); }
+    ~DownloadFixture() {
+        std::error_code ignored;
+        fs::remove_all(tempDir, ignored);
+    }
 
     std::string addJob() {
         UpdateJob job;

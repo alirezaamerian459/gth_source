@@ -39,7 +39,7 @@ private:
     std::string nodeName_;
     std::chrono::seconds interval_{60};
 
-    std::thread thread_;
+    std::jthread thread_;
     std::mutex mutex_;
     std::condition_variable cv_;
     std::atomic<bool> running_{false};

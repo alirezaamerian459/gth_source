@@ -55,7 +55,7 @@ void CdnMirrorRepository::add(const CdnMirror& mirror) {
 
 void CdnMirrorRepository::updateRtt(const std::string& mirrorId, std::optional<int> rttMs) {
     auto stmt = db_.prepare("UPDATE CdnMirrors SET LastRttMs = ? WHERE CdnMirrorId = ?;");
-    if (rttMs) {
+    if (rttMs.has_value()) {
         stmt.bind(1, static_cast<long long>(*rttMs));
     } else {
         stmt.bindNull(1);

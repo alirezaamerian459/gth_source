@@ -1,10 +1,13 @@
 #include "JbGamesView.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cwchar>
 #include <cwctype>
+#include <format>
 #include <set>
+#include <string_view>
 
 #include "gth/core/entities/Storage.h"
 #include "gth/core/enums/StorageType.h"
@@ -15,8 +18,8 @@ constexpr int kMargin = 24;
 constexpr UINT_PTR kScanPollTimerId = 1;
 constexpr UINT kScanPollIntervalMs = 200;
 
-bool equalsIgnoreCase(const std::wstring& left, const wchar_t* right) {
-    if (left.size() != wcslen(right)) return false;
+bool equalsIgnoreCase(const std::wstring& left, std::wstring_view right) {
+    if (left.size() != right.size()) return false;
     for (size_t i = 0; i < left.size(); ++i) {
         if (std::towlower(left[i]) != std::towlower(right[i])) return false;
     }
@@ -116,11 +119,11 @@ void addArtifact(const std::filesystem::path& path, bool directory, ArtifactSumm
 std::wstring artifactDetails(const ArtifactSummary& summary, bool exfat) {
     std::vector<std::wstring> details;
     if (exfat) details.push_back(L"exFAT");
-    if (summary.packages) details.push_back(L"PKG " + std::to_wstring(summary.packages));
-    if (summary.fpkg) details.push_back(L"FPKG " + std::to_wstring(summary.fpkg));
-    if (summary.dumps) details.push_back(L"Dump " + std::to_wstring(summary.dumps));
-    if (summary.patches) details.push_back(L"Patch " + std::to_wstring(summary.patches));
-    if (summary.dlc) details.push_back(L"DLC " + std::to_wstring(summary.dlc));
+    if (summary.packages) details.push_back(std::format(L"PKG {}", summary.packages));
+    if (summary.fpkg) details.push_back(std::format(L"FPKG {}", summary.fpkg));
+    if (summary.dumps) details.push_back(std::format(L"Dump {}", summary.dumps));
+    if (summary.patches) details.push_back(std::format(L"Patch {}", summary.patches));
+    if (summary.dlc) details.push_back(std::format(L"DLC {}", summary.dlc));
     if (details.empty()) details.push_back(L"No package metadata detected");
 
     std::wstring result;
@@ -140,10 +143,10 @@ std::wstring volumeRootForInfo(const std::wstring& rawRoot) {
 
 bool isExfatVolume(const std::wstring& rawRoot) {
     const std::wstring volumeRoot = volumeRootForInfo(rawRoot);
-    wchar_t fileSystemName[MAX_PATH] = {};
-    return GetVolumeInformationW(volumeRoot.c_str(), nullptr, 0, nullptr, nullptr, nullptr, fileSystemName,
-                                 MAX_PATH) != FALSE &&
-           equalsIgnoreCase(fileSystemName, L"exFAT");
+    std::array<wchar_t, MAX_PATH> fileSystemName{};
+    return GetVolumeInformationW(volumeRoot.c_str(), nullptr, 0, nullptr, nullptr, nullptr, fileSystemName.data(),
+                                 static_cast<DWORD>(fileSystemName.size())) != FALSE &&
+           equalsIgnoreCase(std::wstring(fileSystemName.data()), L"exFAT");
 }
 
 std::filesystem::path extendedPath(const std::wstring& raw) {
@@ -155,7 +158,7 @@ std::filesystem::path extendedPath(const std::wstring& raw) {
 
 LRESULT JbGamesView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     CRect titleRect(kMargin, 24, kMargin + 360, 58);
-    titleLabel_.Create(m_hWnd, titleRect, L"JB games", WS_CHILD | WS_VISIBLE);
+    titleLabel_.Create(m_hWnd, titleRect, L"JB Library", WS_CHILD | WS_VISIBLE);
     titleLabel_.SetFont(theme::TitleFont());
 
     CRect scanRect(kMargin + 380, 28, kMargin + 560, 60);
@@ -226,7 +229,7 @@ void JbGamesView::renderEntries() {
 
     int row = 0;
     for (const auto& entry : entries_) {
-        const std::wstring label = entry.title + L"\r\n" + Utf8ToWide(entry.platform) + L" • " + entry.details;
+        const std::wstring label = std::format(L"{}\r\n{} • {}", entry.title, Utf8ToWide(entry.platform), entry.details);
         const int imageIndex = posterCache_
             ? posterImageList_.Add(posterCache_->posterFor(entry.titleId, WideToUtf8(entry.title), entry.platform,
                                                           posterService_, ""))
@@ -240,11 +243,10 @@ void JbGamesView::renderEntries() {
     } else if (!hasScanned_) {
         statusLabel_.SetWindowText(L"No scan has run yet.");
     } else {
-        std::wstring status = L"Found " + std::to_wstring(entries_.size()) + L" game(s) in " +
-                               std::to_wstring(libraryFolderCount_) + L" JB folder(s) across " +
-                               std::to_wstring(storageCount_) + L" local drive(s), including " +
-                               std::to_wstring(exfatStorageCount_) + L" exFAT drive(s).";
-        if (!scanError_.empty()) status += L"\r\n" + scanError_;
+        std::wstring status = std::format(
+            L"Found {} game(s) in {} JB folder(s) across {} local drive(s), including {} exFAT drive(s).",
+            entries_.size(), libraryFolderCount_, storageCount_, exfatStorageCount_);
+        if (!scanError_.empty()) status += std::format(L"\r\n{}", scanError_);
         statusLabel_.SetWindowText(status.c_str());
     }
 }
@@ -265,7 +267,7 @@ void JbGamesView::startScan() {
     scanError_.clear();
     renderEntries();
 
-    scanThread_ = std::thread([this] {
+    scanThread_ = std::jthread([this] {
         std::vector<Entry> found;
         std::set<std::wstring> seenPaths;
         int libraryFolders = 0;

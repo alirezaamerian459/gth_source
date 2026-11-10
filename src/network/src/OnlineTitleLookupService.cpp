@@ -189,7 +189,7 @@ struct OnlineTitleLookupService::Connections {
             }
 
             outcome = requestOn(*found->second, path);
-            if (outcome.body || attempt == 1 || !looksLikeAStaleConnection(outcome.errorCode)) return outcome;
+            if (outcome.body.has_value() || attempt == 1 || !looksLikeAStaleConnection(outcome.errorCode)) return outcome;
             byHost.erase(host);  // drop the stale connection and try once more on a fresh one
         }
         return outcome;
@@ -272,7 +272,8 @@ std::optional<std::string> ParseTitleLookupResponse(const std::string& jsonBody,
                     // A character outside the basic plane arrives as two \u escapes (a surrogate pair).
                     if (codePoint >= 0xD800 && codePoint <= 0xDBFF && pos + 6 <= json.size() && json[pos] == '\\' &&
                         json[pos + 1] == 'u') {
-                        if (auto low = hex4(json, pos + 2); low && *low >= 0xDC00 && *low <= 0xDFFF) {
+                        if (auto low = hex4(json, pos + 2);
+                            low.has_value() && *low >= 0xDC00 && *low <= 0xDFFF) {
                             codePoint = 0x10000 + ((codePoint - 0xD800) << 10) + (*low - 0xDC00);
                             pos += 6;
                         }
@@ -326,7 +327,7 @@ std::optional<std::string> OnlineTitleLookupService::lookupTitle(const std::stri
 
     const std::wstring path = L"/api/internal/search?term=" + toWide(percentEncode(titleId));
     auto outcome = connections_->get(host, path);
-    if (!outcome.body) {
+    if (!outcome.body.has_value()) {
         lastFailureReason_ = outcome.failure;
         GTH_LOG_IF_READY(warn, "Online title lookup for {} failed: {}", titleId, outcome.failure);
         if (++consecutiveFailures_ >= kConsecutiveFailuresBeforePause) {
@@ -341,7 +342,7 @@ std::optional<std::string> OnlineTitleLookupService::lookupTitle(const std::stri
     consecutiveFailures_ = 0;
 
     auto title = ParseTitleLookupResponse(*outcome.body, titleId);
-    if (title) {
+    if (title.has_value()) {
         GTH_LOG_IF_READY(info, "Online title lookup: {} -> {}", titleId, *title);
     } else {
         GTH_LOG_IF_READY(info, "Online title lookup: {} not found on the tracker site", titleId);

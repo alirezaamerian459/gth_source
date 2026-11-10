@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <format>
 #include <limits>
 #include <optional>
 #include <string_view>
@@ -69,9 +70,14 @@ std::optional<uint32_t> readHex4(std::string_view text, size_t pos) {
     uint32_t value = 0;
     for (size_t i = 0; i < 4; ++i) {
         const char c = text[pos + i];
-        const int digit = c >= '0' && c <= '9' ? c - '0' :
-                          c >= 'a' && c <= 'f' ? c - 'a' + 10 :
-                          c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+        int digit = -1;
+        if (c >= '0' && c <= '9') {
+            digit = c - '0';
+        } else if (c >= 'a' && c <= 'f') {
+            digit = c - 'a' + 10;
+        } else if (c >= 'A' && c <= 'F') {
+            digit = c - 'A' + 10;
+        }
         if (digit < 0) return std::nullopt;
         value = (value << 4) | static_cast<uint32_t>(digit);
     }
@@ -84,7 +90,8 @@ std::optional<size_t> fieldValueStart(std::string_view json, std::string_view ke
     if (pos == std::string_view::npos) return std::nullopt;
     pos += needle.size();
     while (pos < json.size() && std::isspace(static_cast<unsigned char>(json[pos]))) ++pos;
-    if (pos >= json.size() || json[pos++] != ':') return std::nullopt;
+    if (pos >= json.size() || json[pos] != ':') return std::nullopt;
+    ++pos;
     while (pos < json.size() && std::isspace(static_cast<unsigned char>(json[pos]))) ++pos;
     return pos;
 }
@@ -112,12 +119,12 @@ std::optional<std::string> stringField(std::string_view json, std::string_view k
             case 't': value.push_back('\t'); break;
             case 'u': {
                 auto code = readHex4(json, pos + 1);
-                if (!code) return std::nullopt;
+                if (!code.has_value()) return std::nullopt;
                 pos += 4;
                 uint32_t cp = *code;
                 if (cp >= 0xd800 && cp <= 0xdbff && pos + 6 < json.size() && json[pos + 1] == '\\' && json[pos + 2] == 'u') {
                     auto low = readHex4(json, pos + 3);
-                    if (low && *low >= 0xdc00 && *low <= 0xdfff) {
+                    if (low.has_value() && *low >= 0xdc00 && *low <= 0xdfff) {
                         cp = 0x10000 + ((cp - 0xd800) << 10) + (*low - 0xdc00);
                         pos += 6;
                     }
@@ -143,12 +150,13 @@ std::optional<unsigned long> unsignedField(std::string_view json, std::string_vi
 
 bool isOk(std::string_view json) {
     auto start = fieldValueStart(json, "ok");
-    return start && json.substr(*start, 4) == "true";
+    return start.has_value() && json.substr(*start, 4) == "true";
 }
 
 std::string apiError(std::string_view json, const std::string& fallback) {
     const auto description = stringField(json, "description");
-    return description && !description->empty() ? "Telegram: " + *description : fallback;
+    if (description.has_value() && !description->empty()) return std::format("Telegram: {}", *description);
+    return fallback;
 }
 
 std::string formEncode(std::string_view text) {
@@ -331,7 +339,7 @@ bool TelegramBackupTransport::testConnection(std::string& error) {
     std::string body;
     if (!apiRequest(static_cast<HINTERNET>(session_), urlPath("/bot" + botToken_ + "/getMe"), "GET", {}, {}, status, body, error)) return false;
     if (status != 200 || !isOk(body)) {
-        error = apiError(body, "Telegram rejected the bot token (HTTP " + std::to_string(status) + ").");
+        error = apiError(body, std::format("Telegram rejected the bot token (HTTP {}).", status));
         return false;
     }
     body.clear();
@@ -339,7 +347,8 @@ bool TelegramBackupTransport::testConnection(std::string& error) {
     if (!apiRequest(static_cast<HINTERNET>(session_), urlPath("/bot" + botToken_ + "/getChat"), "POST", query,
                     "application/x-www-form-urlencoded; charset=utf-8", status, body, error)) return false;
     if (status != 200 || !isOk(body)) {
-        error = apiError(body, "Telegram couldn't access that channel (HTTP " + std::to_string(status) + "). Add the bot as a channel administrator.");
+        error = apiError(body, std::format("Telegram couldn't access that channel (HTTP {}). Add the bot as a channel administrator.",
+                                           status));
         return false;
     }
     error.clear();
@@ -409,7 +418,7 @@ std::optional<std::string> TelegramBackupTransport::uploadObject(const std::stri
             continue;
         }
         if (status != 200 || !isOk(response)) {
-            error = apiError(response, "Telegram rejected a backup object (HTTP " + std::to_string(status) + ").");
+            error = apiError(response, std::format("Telegram rejected a backup object (HTTP {}).", status));
             return std::nullopt;
         }
         const auto fileId = stringField(response, "file_id");
@@ -437,7 +446,7 @@ bool TelegramBackupTransport::downloadObject(const std::string& objectId, const 
     if (!apiRequest(static_cast<HINTERNET>(session_), urlPath("/bot" + botToken_ + "/getFile"), "POST", form,
                     "application/x-www-form-urlencoded; charset=utf-8", status, response, error)) return false;
     if (status != 200 || !isOk(response)) {
-        error = apiError(response, "Telegram couldn't locate a backup object (HTTP " + std::to_string(status) + ").");
+        error = apiError(response, std::format("Telegram couldn't locate a backup object (HTTP {}).", status));
         return false;
     }
     const auto remotePath = stringField(response, "file_path");
@@ -459,7 +468,7 @@ bool TelegramBackupTransport::downloadObject(const std::string& objectId, const 
         return false;
     }
     if (status != 200) {
-        error = "Telegram couldn't download the backup object (HTTP " + std::to_string(status) + ").";
+        error = std::format("Telegram couldn't download the backup object (HTTP {}).", status);
         return false;
     }
     DWORD expected = 0;
@@ -474,7 +483,7 @@ bool TelegramBackupTransport::downloadObject(const std::string& objectId, const 
     std::error_code ec;
     std::filesystem::create_directories(destination.parent_path(), ec);
     if (ec) {
-        error = "Couldn't create a temporary restore folder: " + ec.message();
+        error = std::format("Couldn't create a temporary restore folder: {}", ec.message());
         return false;
     }
     std::ofstream out(destination, std::ios::binary | std::ios::trunc);

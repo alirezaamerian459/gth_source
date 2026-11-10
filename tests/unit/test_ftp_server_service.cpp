@@ -73,8 +73,8 @@ TEST(FtpServerServiceTest, IsRunningIsFalseBeforeStart) {
 TEST(FtpServerServiceTest, ListenAddressesReturnsOnlyUpNonEmptyIpv4Interfaces) {
     FtpServerServiceFixture fixture;
     fixture.detector.interfaces = {
-        makeInterface("192.168.1.23", NetworkInterfaceStatus::Up),
-        makeInterface("10.0.0.5", NetworkInterfaceStatus::Down),
+        makeInterface("192.168.1.23", NetworkInterfaceStatus::Up),  // NOSONAR: private test-interface fixture; no socket is opened.
+        makeInterface("10.0.0.5", NetworkInterfaceStatus::Down),   // NOSONAR: private test-interface fixture; no socket is opened.
         makeInterface("", NetworkInterfaceStatus::Up),
     };
 

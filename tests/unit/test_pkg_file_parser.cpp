@@ -1,3 +1,4 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <cstdint>
@@ -183,7 +184,7 @@ std::string buildPs4PkgWithEntry(const std::string& contentId36, uint32_t fileId
 }
 
 std::string writeTempFile(const std::string& data, const std::string& filename) {
-    const auto path = std::filesystem::temp_directory_path() / filename;
+    const auto path = gth::test::testTempRoot() / filename;
     std::ofstream out(path, std::ios::binary);
     out.write(data.data(), static_cast<std::streamsize>(data.size()));
     out.close();

@@ -28,8 +28,8 @@ Storage mapRow(const Statement& stmt) {
     storage.isAvailable = stmt.columnBool(10);
     storage.createdAt = stmt.columnText(11);
     storage.updatedAt = stmt.columnText(12);
-    if (const auto health = stmt.columnInt64OrNull(13)) storage.healthPercent = static_cast<int>(*health);
-    if (const auto temp = stmt.columnInt64OrNull(14)) storage.temperatureCelsius = static_cast<int>(*temp);
+    if (const auto health = stmt.columnInt64OrNull(13); health.has_value()) storage.healthPercent = static_cast<int>(*health);
+    if (const auto temp = stmt.columnInt64OrNull(14); temp.has_value()) storage.temperatureCelsius = static_cast<int>(*temp);
     storage.healthAlertReason = stmt.columnTextOrNull(15);
     return storage;
 }

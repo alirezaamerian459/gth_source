@@ -1,3 +1,4 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <cstdint>
@@ -147,7 +148,7 @@ std::string buildPs5PackageBytes(const std::string& titleId, const std::string& 
 // versions against that single shared variant, flip-flopping which one was
 // "current" and reporting a spurious update every single scan.
 TEST(EnhancedStorageScannerTest, TwoDifferentReleasesInTheSameFlatFolderGetDistinctVariantPaths) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_collision_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_collision_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -166,7 +167,7 @@ TEST(EnhancedStorageScannerTest, TwoDifferentReleasesInTheSameFlatFolderGetDisti
 }
 
 TEST(EnhancedStorageScannerTest, SameReleaseSplitAcrossPartsInAFlatFolderStaysOneVariant) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_splitparts_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_splitparts_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -191,7 +192,7 @@ TEST(EnhancedStorageScannerTest, SameReleaseSplitAcrossPartsInAFlatFolderStaysOn
 // the split point by construction), so this only passes if the scanner
 // actually reads across both files as one virtual stream.
 TEST(EnhancedStorageScannerTest, RecoversRealTitleAcrossASplitPs5Package) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_split_title_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_split_title_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -226,7 +227,7 @@ TEST(EnhancedStorageScannerTest, RecoversRealTitleAcrossASplitPs5Package) {
 }
 
 TEST(EnhancedStorageScannerTest, FirstScanWritesASidecarJsonNextToTheGamesFiles) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_sidecar_write_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_sidecar_write_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -252,7 +253,7 @@ TEST(EnhancedStorageScannerTest, FirstScanWritesASidecarJsonNextToTheGamesFiles)
 }
 
 TEST(EnhancedStorageScannerTest, RescanUsesAHandEditedSidecarTitleOverTheTitleId) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_sidecar_edit_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_sidecar_edit_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -286,7 +287,7 @@ TEST(EnhancedStorageScannerTest, RescanUsesAHandEditedSidecarTitleOverTheTitleId
 // "titleSource" field exists specifically so an "auto" sidecar can still be
 // upgraded, while a "manual" one never is.
 TEST(EnhancedStorageScannerTest, AutoSidecarGetsUpgradedButManualOneDoesNot) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_sidecar_provenance_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_sidecar_provenance_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -327,7 +328,7 @@ TEST(EnhancedStorageScannerTest, AutoSidecarGetsUpgradedButManualOneDoesNot) {
 // set the real one by hand, with the same auto/manual provenance rule as
 // title.
 TEST(EnhancedStorageScannerTest, RescanUsesAHandEditedSidecarRegionOverUnknown) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_sidecar_region_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_sidecar_region_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -370,7 +371,7 @@ TEST(EnhancedStorageScannerTest, RescanUsesAHandEditedSidecarRegionOverUnknown) 
 // self-heal doesn't just unstick it, it also picks up the more accurate
 // value immediately.
 TEST(EnhancedStorageScannerTest, SelfHealsAPreFixLegacySidecarsWrongPs5RegionGuess) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_sidecar_region_migration_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_sidecar_region_migration_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -403,7 +404,7 @@ TEST(EnhancedStorageScannerTest, SelfHealsAPreFixLegacySidecarsWrongPs5RegionGue
 // row as "Missing" instead of updating it in place. relativePath must stay
 // identical across scans regardless of how much better the title gets.
 TEST(EnhancedStorageScannerTest, RelativePathStaysStableWhenTheTitleImproves) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_stable_path_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_stable_path_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -432,7 +433,7 @@ TEST(EnhancedStorageScannerTest, RelativePathStaysStableWhenTheTitleImproves) {
 // and use whatever real name comes back, instead of leaving the bare title
 // ID as the displayed title.
 TEST(EnhancedStorageScannerTest, OnlineLookupFillsInTheTitleWhenLocalParsingCannotFindOne) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_online_lookup_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_online_lookup_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -459,7 +460,7 @@ TEST(EnhancedStorageScannerTest, OnlineLookupFillsInTheTitleWhenLocalParsingCann
 // reports resolved / not-listed / failed counts and the last failure reason so
 // the UI can say what actually happened.
 TEST(EnhancedStorageScannerTest, ReportsOnlineLookupOutcomesAndTheFailureReason) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_lookup_diagnostics_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_lookup_diagnostics_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -501,7 +502,7 @@ static std::string readWholeFile(const std::filesystem::path& path) {
 // treated as the placeholder it was, not mistaken for a hand-typed version
 // and locked in forever.
 TEST(EnhancedStorageScannerTest, ASidecarsOldMadeUpVersionIsReplacedNotLockedIn) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_version_legacy_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_version_legacy_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -524,7 +525,7 @@ TEST(EnhancedStorageScannerTest, ASidecarsOldMadeUpVersionIsReplacedNotLockedIn)
 }
 
 TEST(EnhancedStorageScannerTest, AVersionSetByHandInTheSidecarIsNeverOverwritten) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_version_manual_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_version_manual_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -553,7 +554,7 @@ TEST(EnhancedStorageScannerTest, AVersionSetByHandInTheSidecarIsNeverOverwritten
 }
 
 TEST(EnhancedStorageScannerTest, AVersionNobodyStatedStaysUnknownInsteadOfBecomingOnePointZeroZero) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_version_unknown_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_version_unknown_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -575,7 +576,7 @@ TEST(EnhancedStorageScannerTest, AVersionNobodyStatedStaysUnknownInsteadOfBecomi
 // diagnostics now account for every release: looked up, named from the game
 // files already, or not something the tracker sites cover.
 TEST(EnhancedStorageScannerTest, ExplainsWhyReleasesWereNotLookedUp) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_lookup_reasons_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_lookup_reasons_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -606,7 +607,7 @@ TEST(EnhancedStorageScannerTest, ExplainsWhyReleasesWereNotLookedUp) {
 // whose real title was already recovered locally (the common case), since
 // that would mean a network call on every single scan for no benefit.
 TEST(EnhancedStorageScannerTest, OnlineLookupIsSkippedWhenLocalParsingAlreadyFoundTheRealTitle) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_online_lookup_skip_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_online_lookup_skip_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -635,7 +636,7 @@ TEST(EnhancedStorageScannerTest, OnlineLookupIsSkippedWhenLocalParsingAlreadyFou
 // different name - the same provenance rule that already protects a manual
 // edit from the local auto-guess must also protect it from this new source.
 TEST(EnhancedStorageScannerTest, ManualSidecarTitleWinsOverASuccessfulOnlineLookup) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_online_lookup_manual_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_online_lookup_manual_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -662,7 +663,7 @@ TEST(EnhancedStorageScannerTest, ManualSidecarTitleWinsOverASuccessfulOnlineLook
 // PS5 dumps carry no readable version, so the user types one in (Games tab).
 // It has to be saved where a rescan will find and respect it.
 TEST(EnhancedStorageScannerTest, PinnedVersionSurvivesRescansAndKeepsTheRestOfTheSidecar) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_pin_version_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_pin_version_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -700,7 +701,7 @@ TEST(EnhancedStorageScannerTest, PinnedVersionSurvivesRescansAndKeepsTheRestOfTh
 }
 
 TEST(EnhancedStorageScannerTest, PinningAnEmptyVersionHandsItBackToAutomaticDetection) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_unpin_version_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_unpin_version_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -723,7 +724,7 @@ TEST(EnhancedStorageScannerTest, PinningAnEmptyVersionHandsItBackToAutomaticDete
 }
 
 TEST(EnhancedStorageScannerTest, PinningWorksBeforeAnySidecarExistsAndInsideSubfolders) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_pin_subfolder_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_pin_subfolder_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root / "PS5" / "It Takes Two");
 
@@ -745,7 +746,7 @@ TEST(EnhancedStorageScannerTest, PinningWorksBeforeAnySidecarExistsAndInsideSubf
 }
 
 TEST(EnhancedStorageScannerTest, PinningExplainsWhyWhenThereIsNowhereToSaveIt) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_pin_fail_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_pin_fail_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 
@@ -874,7 +875,7 @@ void writeCompletedPs5Release(const std::filesystem::path& folder, const std::st
 }  // namespace
 
 TEST(EnhancedStorageScannerTest, ACompletedPs5ReleaseIsOneGameWithItsRealTitleAndVersion) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_sc_piece_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_sc_piece_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
     writeCompletedPs5Release(root, "EP0006-PPSA99999_00-TESTJSON00000000", "PPSA99999", "My Completed Game", "01.500.000");
@@ -898,7 +899,7 @@ TEST(EnhancedStorageScannerTest, ACompletedPs5ReleaseIsOneGameWithItsRealTitleAn
 }
 
 TEST(EnhancedStorageScannerTest, TheVersionFromTheMetadataPieceIsWrittenToTheSidecar) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_sc_sidecar_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_sc_sidecar_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
     const std::string contentId = "EP0006-PPSA99999_00-TESTJSON00000000";
@@ -915,7 +916,7 @@ TEST(EnhancedStorageScannerTest, TheVersionFromTheMetadataPieceIsWrittenToTheSid
 }
 
 TEST(EnhancedStorageScannerTest, AMetadataPieceOnItsOwnIsNotAGame) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_sc_orphan_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_sc_orphan_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
     const std::string contentId = "EP0006-PPSA99999_00-TESTJSON00000000";
@@ -932,7 +933,7 @@ TEST(EnhancedStorageScannerTest, AMetadataPieceOnItsOwnIsNotAGame) {
 }
 
 TEST(EnhancedStorageScannerTest, ThePackagesOwnParamJsonWinsOverTheOriginCopy) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_sc_origin_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_sc_origin_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
     writeCompletedPs5Release(root, "EP0006-PPSA99999_00-TESTJSON00000000", "PPSA99999", "Origin Test", "01.500.000",
@@ -949,7 +950,7 @@ TEST(EnhancedStorageScannerTest, ThePackagesOwnParamJsonWinsOverTheOriginCopy) {
 }
 
 TEST(EnhancedStorageScannerTest, AMetadataPieceOnlyCompletesTheReleaseItsContentIdNames) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_sc_other_release_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_sc_other_release_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
     writeCompletedPs5Release(root, "EP0006-PPSA99999_00-TESTJSON00000000", "PPSA99999", "Game One", "01.500.000");
@@ -980,7 +981,7 @@ TEST(EnhancedStorageScannerTest, AMetadataPieceOnlyCompletesTheReleaseItsContent
 // showed up as soon as scanning became routine.
 
 TEST(EnhancedStorageScannerTest, AResolvedNameSurvivesLaterScansThatCouldNotResolveIt) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_name_survives_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_name_survives_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
     writePkg(root / "EP0006-PPSA02343_00-NUTSEU0000000000_0.pkg");
@@ -1020,7 +1021,7 @@ TEST(EnhancedStorageScannerTest, AResolvedNameSurvivesLaterScansThatCouldNotReso
 }
 
 TEST(EnhancedStorageScannerTest, AGameAlreadyNamedIsNotLookedUpAgain) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_no_repeat_lookup_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_no_repeat_lookup_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
     writePkg(root / "EP0006-PPSA02343_00-NUTSEU0000000000_0.pkg");
@@ -1052,7 +1053,7 @@ TEST(EnhancedStorageScannerTest, AGameAlreadyNamedIsNotLookedUpAgain) {
 // A sidecar saved by an older version says only "auto", even when its name was a real one from a lookup. It can't be
 // told from a guess, so it is looked up again - but it is still never traded for the bare ID.
 TEST(EnhancedStorageScannerTest, ALegacyAutoNameIsKeptAgainstTheIdAndUpgradedByALookup) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_legacy_auto_name_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_legacy_auto_name_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
     writePkg(root / "EP0006-PPSA02343_00-NUTSEU0000000000_0.pkg");
@@ -1085,7 +1086,7 @@ TEST(EnhancedStorageScannerTest, ALegacyAutoNameIsKeptAgainstTheIdAndUpgradedByA
 
 // The file-name guess (a humanized label) is weaker than a name a lookup found: it must not replace it either.
 TEST(EnhancedStorageScannerTest, AFileNameGuessNeverReplacesAVerifiedName) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_guess_vs_verified_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_guess_vs_verified_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
     writePkg(root / "EP0006-PPSA20050_00-EASPORTSFC2025BG_0.pkg");
@@ -1105,7 +1106,7 @@ TEST(EnhancedStorageScannerTest, AFileNameGuessNeverReplacesAVerifiedName) {
 
 // ...while the package's own name, when it becomes readable, does win over an online one.
 TEST(EnhancedStorageScannerTest, ThePackagesOwnNameUpgradesAnOnlineName) {
-    const auto root = std::filesystem::temp_directory_path() / "gth_enhanced_scanner_package_beats_online_test";
+    const auto root = gth::test::testTempRoot() / "gth_enhanced_scanner_package_beats_online_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
     const std::string full = buildPs5PackageBytes("PPSA99999", "IV0001-PPSA99999_00-TESTJSON00000000", "The Package Own Name");

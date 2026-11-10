@@ -85,7 +85,7 @@ private:
     std::vector<HWND> subscribers_;
 
     // Shared with the background worker.
-    std::thread worker_;
+    std::jthread worker_;
     std::atomic<bool> running_{false};
     std::mutex queueMutex_;
     std::condition_variable queueCv_;

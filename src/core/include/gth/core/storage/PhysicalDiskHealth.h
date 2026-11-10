@@ -36,7 +36,8 @@ struct PhysicalDiskHealth {
 inline StorageHealthInfo summarizeDisks(const std::vector<PhysicalDiskHealth>& disks) {
     StorageHealthInfo summary;
     for (const auto& disk : disks) {
-        if (disk.healthPercent && (!summary.healthPercent || *disk.healthPercent < *summary.healthPercent)) {
+        if (disk.healthPercent.has_value() &&
+            (!summary.healthPercent.has_value() || *disk.healthPercent < *summary.healthPercent)) {
             summary.healthPercent = disk.healthPercent;
             if (!disk.healthDetail.empty()) {
                 summary.healthDetail = disk.healthDetail;
@@ -44,8 +45,8 @@ inline StorageHealthInfo summarizeDisks(const std::vector<PhysicalDiskHealth>& d
                 summary.healthDetail.reset();
             }
         }
-        if (disk.temperatureCelsius &&
-            (!summary.temperatureCelsius || *disk.temperatureCelsius > *summary.temperatureCelsius)) {
+        if (disk.temperatureCelsius.has_value() &&
+            (!summary.temperatureCelsius.has_value() || *disk.temperatureCelsius > *summary.temperatureCelsius)) {
             summary.temperatureCelsius = disk.temperatureCelsius;
         }
     }

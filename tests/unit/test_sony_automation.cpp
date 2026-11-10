@@ -1,3 +1,4 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <chrono>
@@ -56,7 +57,7 @@ TEST(SonyAutomationSettingsTest, BadValuesKeepTheDefaultAndTheIntervalIsClamped)
 }
 
 TEST(SonyAutomationSettingsTest, RoundTripsThroughTheFile) {
-    const auto path = std::filesystem::temp_directory_path() / "gth_sony_automation_test" / "sony-automation.txt";
+    const auto path = gth::test::testTempRoot() / "gth_sony_automation_test" / "sony-automation.txt";
     std::filesystem::remove_all(path.parent_path());
     SonyAutomationSettingsStore store(path);
 
@@ -73,7 +74,7 @@ TEST(SonyAutomationSettingsTest, RoundTripsThroughTheFile) {
 }
 
 TEST(SonyAutomationSettingsTest, LegacySettingsEnableDownloadsAndNewSettingsKeepAnOptOut) {
-    const auto path = std::filesystem::temp_directory_path() / "gth_sony_automation_migration_test" / "sony-automation.txt";
+    const auto path = gth::test::testTempRoot() / "gth_sony_automation_migration_test" / "sony-automation.txt";
     std::filesystem::remove_all(path.parent_path());
     std::filesystem::create_directories(path.parent_path());
     {
@@ -212,7 +213,7 @@ TEST(SonyRunReportTest, ARunWithNothingSwitchedOnSaysSo) {
 }
 
 TEST(SonyRunReportTest, ALogKeepsEveryRunAndShowsTheNewestAsTheSummary) {
-    const auto dir = std::filesystem::temp_directory_path() / "gth_sony_report_test";
+    const auto dir = gth::test::testTempRoot() / "gth_sony_report_test";
     std::filesystem::remove_all(dir);
     const auto file = dir / "sony-automation-log.txt";
 
@@ -243,7 +244,7 @@ TEST(SonyRunReportTest, ALogKeepsEveryRunAndShowsTheNewestAsTheSummary) {
 }
 
 TEST(SonyRunReportTest, TheLogDoesNotGrowWithoutBoundAndKeepsWholeReports) {
-    const auto dir = std::filesystem::temp_directory_path() / "gth_sony_report_trim_test";
+    const auto dir = gth::test::testTempRoot() / "gth_sony_report_trim_test";
     std::filesystem::remove_all(dir);
     const auto file = dir / "sony-automation-log.txt";
 
@@ -278,7 +279,7 @@ TEST(SonyRunReportTest, SaysWhatTheScanForNewGamesAndTheLocalLinksFound) {
 }
 
 TEST(SonyRunReportTest, TheSummaryShownWhenTheTabOpensStillReachesTheCheckLine) {
-    const auto dir = std::filesystem::temp_directory_path() / "gth_sony_report_summary_test";
+    const auto dir = gth::test::testTempRoot() / "gth_sony_report_summary_test";
     std::filesystem::remove_all(dir);
     const auto file = dir / "sony-automation-log.txt";
 

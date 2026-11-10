@@ -21,7 +21,7 @@ DownloadOutcome DownloadManager::downloadForJob(const std::string& updateJobId,
 
     auto jobOpt = jobRepository_.getById(updateJobId);
     if (!jobOpt.has_value()) {
-        outcome.errorMessage = "UpdateJob not found: " + updateJobId;
+        outcome.errorMessage = std::format("UpdateJob not found: {}", updateJobId);
         return outcome;
     }
     UpdateJob job = *jobOpt;
@@ -34,7 +34,7 @@ DownloadOutcome DownloadManager::downloadForJob(const std::string& updateJobId,
     std::filesystem::create_directories(destinationPath, ec);
     if (ec) {
         job.status = UpdateJobStatus::Failed;
-        job.errorMessage = "Failed to prepare temporary storage: " + ec.message();
+        job.errorMessage = std::format("Failed to prepare temporary storage: {}", ec.message());
         job.updatedAt = core::Clock::utcNowIso8601();
         jobRepository_.update(job);
 

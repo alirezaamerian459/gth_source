@@ -11,7 +11,7 @@ HealthSnapshot mapRow(const Statement& stmt) {
     HealthSnapshot snapshot;
     snapshot.healthSnapshotId = stmt.columnText(0);
     snapshot.diskId = stmt.columnText(1);
-    if (auto v = stmt.columnInt64OrNull(2)) snapshot.healthPercent = static_cast<int>(*v);
+    if (auto v = stmt.columnInt64OrNull(2); v.has_value()) snapshot.healthPercent = static_cast<int>(*v);
     snapshot.source = stmt.columnText(3);
     snapshot.reason = stmt.columnTextOrNull(4);
     snapshot.capturedAt = stmt.columnText(5);

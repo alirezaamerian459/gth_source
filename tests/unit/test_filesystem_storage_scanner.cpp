@@ -1,3 +1,4 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <filesystem>
@@ -17,7 +18,7 @@ protected:
     fs::path root;
 
     void SetUp() override {
-        root = fs::temp_directory_path() / ("gth_scanner_test_" + gth::core::Guid::newGuid());
+        root = gth::test::testTempRoot() / ("gth_scanner_test_" + gth::core::Guid::newGuid());
 
         writeFile(root / "PS5" / "Spider-Man 2" / "Europe" / "1.04" / "data.bin", "v1.04");
         writeFile(root / "PS5" / "Spider-Man 2" / "Europe" / "1.06" / "data.bin", "v1.06");

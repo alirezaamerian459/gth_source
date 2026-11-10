@@ -1,3 +1,4 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <filesystem>
@@ -75,8 +76,8 @@ protected:
     void SetUp() override {
         Migrator::applyMigrations(db);
 
-        archiveRoot = fs::temp_directory_path() / ("gth_mgr_archive_" + Guid::newGuid());
-        tempRoot = fs::temp_directory_path() / ("gth_mgr_temp_" + Guid::newGuid());
+        archiveRoot = gth::test::testTempRoot() / ("gth_mgr_archive_" + Guid::newGuid());
+        tempRoot = gth::test::testTempRoot() / ("gth_mgr_temp_" + Guid::newGuid());
         fs::create_directories(archiveRoot);
 
         Storage storage;

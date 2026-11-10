@@ -123,7 +123,7 @@ The VS Code SonarQube Findings tree showed a 17-finding group. Its first eight v
 | cpp:S5945 | 23:4 | Replace C-style character array with `std::string` or `std::array`. | Addressed with a same-size `std::array<wchar_t, 32>`. |
 | cpp:S5945 | 30:4 | Replace C-style character array with `std::string` or `std::array`. | Addressed with a same-size `std::array<wchar_t, 48>`. |
 
-The remaining nine entries in this 17-finding group were not visible in the captured tree and are still untriaged. The open IDE did not yield a safe screenshot or input channel; its local H2 cache is locked while the IDE is running. No second analysis was started. The findings view still reported 1,761 of 1,761 overall. Across the two documented proxy batches and these eight StorageView rows, 23 distinct visible findings have a behavior-preserving code disposition; this is far below the requested 80% threshold of 1,409 findings, which remains open.
+The remaining nine entries in this 17-finding group were not visible in the captured tree and are still untriaged. The open IDE did not yield a safe screenshot or input channel; its local H2 cache is locked while the IDE is running. No second analysis was started. The findings view still reported 1,761 of 1,761 overall. Across the two documented proxy batches and these eight StorageView rows, 23 distinct visible findings have a behavior-preserving code disposition; this is far below the requested 80% goal of resolving at least 1,409 of the 1,761 baseline findings (at most 352 open), which remains open.
 
 Verification for the StorageView cleanup:
 - `git diff --check -- src/app/src/StorageView.cpp` — passed.
@@ -167,6 +167,36 @@ Verification:
 - `build/tests/unit/Debug/gth_unit_tests.exe --gtest_filter=PackageSyncServiceTest.*` — 25 passed.
 - `git diff --check -- src/application/src/PackageSyncService.cpp` — passed.
 - No Sonar re-analysis was run.
+
+### 2026-11-08 follow-up — continued source remediation
+
+The owner resumed remediation and requested that work continue while keeping the existing VS Code Sonar session open. The checked-out source in `C:\Users\DrGame\Desktop\gth_source-main\gth_source-main` is the IDE target and has no Git metadata; behavior-preserving edits were applied there and mirrored into the versioned Codex checkout when the corresponding code matched. The two unsaved proxy files and the other unsaved VS Code files were left untouched. No commit, remote push, or Sonar scan restart was made.
+
+Candidate fixes applied in this follow-up:
+- Replaced manual numeric string construction in SMART/NVMe health reasons, Sony HTTP and update diagnostics, update synchronization reports, migration SQL, archive free-space errors, firewall help text, and Sony automation settings serialization with `std::format`. Display text, values, ordering, ranges, and SQL version values stay the same.
+- Made the remaining Storage page optional-presence check explicit and formatted its disk label with unchanged text.
+- Replaced nested conditionals in SMART scoring, button colors, checkbox fill, package metadata path selection, transfer result status, and update history status with ordered checks. The same thresholds, priority order, and colors are used.
+- Corrected `MainFrame.cpp` to pass `std::array::data()` to `DrawTextW`; the first exact-source build exposed this missing pointer conversion.
+
+Verification:
+- The exact Desktop source configured with Visual Studio 2022 and the already cached dependencies in disconnected mode. A first attempt without the cached source directories stopped after the SQLite download failed because network access is unavailable; no dependency was installed or changed.
+- Debug `GameTransferHubApp` and `gth_unit_tests` builds passed for both the Desktop IDE source and the versioned checkout. The existing `LNK4098` warning remains.
+- Focused tests passed: 136 across 17 suites (health, Sony, package sync, backup, archive, download, and verification); 54 package-sync tests after status formatting; 20 storage/health tests; 12 archive/firewall tests; 17 storage/health threshold tests after simplifying scoring; and 58 package-sync/transfer-queue tests after simplifying result status. These filters overlap and are not a unique total.
+- Focused `git diff --check` passed for the modified tracked files.
+
+The IDE window was identified, but window capture timed out on two attempts while responding to the request to open Output. No UI action or scan restart was performed. The user-reported count is 1,714; the latest count previously captured by the agent was 1,658, and no current count could be read after those edits. The completed 1,761 baseline and later live counts are not fully reconciled; exact IDE rows for candidate fixes are not counted as confirmed reductions. The requested 80% resolution goal is at least 1,409 closed findings, leaving no more than 352 open.
+
+### 2026-11-08 follow-up — reported count and focused continuation
+
+The owner later reported 1,516 current Sonar problems in VS Code. This is 198 below the earlier owner-reported 1,714 and 245 below the original 1,761 baseline, but it was not independently read by the agent. Treat it as the latest owner observation, not a post-scan count. To meet the requested 80% completion threshold against the 1,761 baseline, at least 1,409 findings must be resolved, leaving at most 352 open. The active IDE session was not restarted.
+
+Continued candidate cleanup in the Desktop Sonar workspace and mirrored matching edits in the versioned checkout. Replaced message-only concatenations with equivalent `std::format` calls in `SonyUpdateService.cpp` and `UpdatesView.cpp`, keeping text, order, line breaks, and values unchanged. Bounded the username length read from Windows Credential Manager before conversion. Corrected stale sidebar test indices in the Desktop copy to match the current 15-tab order; no product behavior changed. The packed ATA pass-through buffer remains a C array because it is part of a Windows IOCTL layout.
+
+Verification:
+- Desktop Debug app and unit-test targets built successfully. Existing `LNK4098` CRT warning remains.
+- `ctest --test-dir build/desktop-sonar-verification-offline -C Debug --output-on-failure` — 503/503 passed, with 6 skipped (3 Credential Manager tests skip because the current logon session cannot store machine-persistent generic credentials; 1 live storefront test and 2 live storage-provider tests are intentionally skipped).
+- Focused `SidebarTabsTest.*` — 9 passed; the earlier failures were caused by stale test indices in the Desktop copy.
+- No new Sonar scan was run. The 1,516 count predates this latest batch; the current live count after file refresh is unknown.
 
 ### Findings capture follow-up
 
@@ -309,3 +339,265 @@ Verification:
 - Full unit CTest run — 506 passed, 6 skipped, 0 failed (512 total). The existing `LocalFileIndexTest.FindsFilesAfterARealScanOfTheStorage` case reported 57,546.58 seconds; avoid repeating the full suite without need.
 - `git diff --check` — passed after the final log update (Git reports only line-ending normalization notices for the two text reports).
 - No Sonar re-analysis was run.
+
+### 2026-11-08 — grouped optional checks and conditional cleanup
+
+Continued the confirmed `cpp:S7172` cleanup by replacing implicit optional-presence checks with `.has_value()` only where the value types were verified as `std::optional`. The grouped edits cover package parsing, sidecar metadata, local file lookup, update/indexing services, credential and FTP flows, backup UI state, repository settings, and Sony/Telegram response parsing. In Telegram parsing, replaced the nested hex-digit conditional with ordered `if`/`else if` branches and preserved its digit mapping; the error-description text now uses `std::format` with the same wording. No data flow, fallback, branch order, status value, or user-visible behavior was intentionally changed. The earlier failed numeric `SmartHealth::counter()` conversion remains reverted.
+
+Verification against the versioned checkout:
+- `cmake --build build --config Debug --target GameTransferHubApp gth_unit_tests --parallel 4 -- /p:OutDir=C:\Users\DrGame\Documents\Codex\2026-11-03\https-github-com-alirezaamerian459-gth-source\build\verification-2026-11-08-fast-batch\Debug\` — passed after each batch, including an incremental build after Telegram cleanup.
+- Focused GoogleTest run for parser, scanner, server, lookup, history, indexer, update job, and storage paths — 141 passed across 12 suites.
+- Focused GoogleTest run for parser, scanner, credentials, FTP, package sync, Sony links, lookup, central server, and backup service — 113 passed across 10 suites. This overlaps the first run; counts are not summed as unique tests.
+- `git diff --check -- src` — passed. Git emitted only existing LF-to-CRLF notices for `NetworkInfoHelper.h` and `LocalGameBackupSource.cpp`.
+
+The SonarQube for IDE issue list was not refreshed, and no project analysis was restarted. These code locations are candidate remediations until their rows clear in the IDE; no updated open-problem total is claimed. The last owner-reported total remains 1,516 before this batch, and the 80% target remains unverified.
+### 2026-11-08 — edits applied to the IDE-scanned Desktop checkout
+
+The IDE scans `C:\Users\DrGame\Desktop\gth_source-main\gth_source-main`, while the versioned checkout is under Documents\Codex. To make the existing IDE session see the fixes, applied 69 exact optional-check substitutions across 24 matching Desktop files, then three more optional-check substitutions in that checkout's older `AdminAuthService.cpp`. The Desktop and versioned AdminAuth implementations differ, so only the explicit-presence checks were changed there. The three previously identified unsaved source files were not touched. The Telegram nested conditional was also rewritten with the same ordered digit mapping and the fallback text branch preserved.
+
+Verification:
+- Desktop checkout Debug build of `GameTransferHubApp` and `gth_unit_tests` using `build/desktop-sonar-verification-offline` and a separate output directory — passed; existing `LNK4098` warnings remain.
+- Desktop checkout focused run: 212 tests across 22 suites passed.
+- After the Desktop AdminAuth optional checks, `AdminAuthServiceTest.*` — 8 passed.
+- Versioned checkout Debug `GameTransferHubApp` build after the local Enterprise button-label conditional cleanup — passed.
+- `git diff --check -- src` — passed with existing LF-to-CRLF notices for two unrelated files.
+
+The SonarQube for IDE session was not restarted. Its refreshed problem count has not been captured, so the Desktop edits are not yet counted as resolved findings. The last owner-reported count remains 1,516 from before these batches; the 80% target (at least 1,409 of 1,761 baseline findings resolved) is still unverified.
+### 2026-11-08 — remaining safe presence and conditional matches
+
+A read-only pattern sweep of the Desktop source found one remaining optional-presence check in `CurrentVersion.h`; changed it to `.has_value()` without altering which version is selected. The versioned checkout already had the explicit form. The nested conditional in the local Enterprise page label was rewritten into ordered branches, preserving the original short-circuit check and labels; the Desktop checkout has a different Enterprise page implementation, so that change was not applied there. A sweep of the Desktop source found the remaining fixed C arrays and `std::to_string` concatenations only in the previously identified unsaved proxy file; that file was left untouched.
+
+Verification:
+- Desktop Debug app and test targets rebuilt successfully.
+- `GameIndexerServiceTest.*:PackageSyncServiceTest.*:UpdateCheckServiceTest.*:UpdateDetectorServiceTest.*:UpdateManagerServiceTest.*` — 77 passed across 5 suites.
+- The local versioned checkout Debug app target built successfully after the Enterprise page label cleanup.
+- `git diff --check -- src` — passed, with only two existing line-ending notices.
+- No new project analysis was started. The IDE's current total remains unknown, so the 80% target cannot yet be confirmed.
+### 2026-11-08 — WMI nesting and explicit-join thread cleanup
+
+- Replaced the two detached storage-probe launches with `std::jthread` while retaining the immediate `.detach()`, timeout values, and timeout fallback behavior.
+- Extracted Windows disk WMI detail retrieval and Storage Spaces expansion from deeply nested blocks. Query order, optional-property handling, COM lifetime, fallback SMART reads, and results remain the same.
+- Converted 23 explicit-join thread declarations/constructions in AgentService, UpdateSchedulerService, TransferQueueService, WinsockFtpServer, PosterCache, GamesView, JbGamesView, and UpdatesView to `std::jthread` in both the versioned checkout and the IDE-scanned Desktop checkout. These workers keep the same lambdas and explicit join points. The unsaved proxy and BackupsView files and CAPTCHA code were not changed.
+- SonarQube for IDE rechecked `WindowsStorageHealthProvider.cpp`; its visible file count fell from 36 to 30. The later incremental pass analyzed six edited files (UpdateSchedulerService, JbGamesView, UpdatesView, WinsockFtpServer, PosterCache, GamesView) and logged 120 findings across those six files. That is a per-file refresh result, not a project-wide total. The last owner-reported project total remains 1,512 from before this batch; no updated total has been read and no full scan was restarted.
+
+Verification:
+- Versioned Debug app and unit-test targets built successfully; the app linked to a separate output directory so the running app was not replaced. The canonical Debug unit-test target was then rebuilt successfully.
+- Versioned focused tests passed 11/11 across AgentService, UpdateSchedulerService, and TransferQueueService, plus 4/4 WinsockFtpServer tests (15 total).
+- Desktop Debug app and unit-test targets built successfully. The matching focused 15/15 tests passed across the same four suites.
+- The storage-health focused selection passed 28 tests with 2 expected environment skips in each checkout.
+- `git diff --check` passed for all edited C++ source files.
+- Existing `LNK4098` CRT mismatch warnings remain; the Desktop build also repeated the pre-existing `SonyLinkCopyWatcher.cpp` C4244 warning.
+
+The first versioned test run from a separate output directory produced failures, including FTP bind timeouts during a parallel run with the Desktop suite. A rebuild to the normal test output followed by isolated versioned runs passed all 15 tests; the separate-output failure's exact cause was not established.
+### 2026-11-08 — refreshed panel count
+
+After the six-file incremental analysis, a read-only VS Code snapshot showed 1,513 Problems total. The Sonar filter showed 1,512 rows; the status bar showed 2 errors and 1,511 warnings. The IDE log's 120 findings were the current per-file results across six analyzed files, not an increase of 120 in the project total. This live total remains above the 80% target (no more than 352 open findings). No full scan was restarted.
+### 2026-11-08 — owner-reported VS Code count
+
+The owner reports 1,492 total VS Code Problems, 20 fewer than the prior owner-reported 1,512. The last direct accessibility snapshot showed 1,513 total Problems, including 1,512 Sonar-filtered rows; the current filtered Sonar subtotal has not been read separately. This indicates progress, but does not identify which edits cleared which rows. No full analysis was restarted. The 80% target remains at no more than 352 open findings against the 1,761 baseline.
+
+### 2026-11-08 — Winsock initialization and fixed replies
+
+Applied the observed Sonar recommendation to keep each temporary WSADATA local inside its if initializer in CentralServerListener, TcpReachabilityChecker, TcpRemoteReportSender, and WinsockFtpServer. In CentralServerListener, also replaced strlen on two fixed protocol replies with compile-time array lengths and removed the unused <cstring> include. The exact response bytes and WSAStartup result handling are unchanged. Applied the same relevant edits to the IDE-scanned Desktop copy; its NetworkInfoHelper header received only the matching scope change.
+
+IDE log evidence after the Desktop edits:
+- CentralServerListener.cpp reported 13 findings after its recheck, down from 14 after the preceding reply-length cleanup (and 16 in its earlier file decoration).
+- TcpReachabilityChecker.cpp reported 6 findings; no pre-change per-file count is available.
+- The two-file recheck for WinsockFtpServer.cpp and TcpRemoteReportSender.cpp reported 32 findings combined; this is not a project total.
+
+Verification:
+- Versioned Debug gth_unit_tests build passed; focused CentralServerListener, WinsockFtpServer, TcpReachabilityChecker, and AgentService tests passed 10/10.
+- Desktop-source Debug app and unit-test targets built through the separate desktop-sonar-verification-offline build; the same focused tests passed 10/10.
+- git diff --check passed on the changed versioned source files.
+- No full project analysis was restarted. The owner reports 1,492 total VS Code Problems; the read-only accessibility snapshot still shows the older 1,513 total / 1,512 Sonar-filtered count, so the current project-wide Sonar subtotal remains unverified.
+
+### 2026-11-08 — ICMP and storage byte-buffer cleanup
+
+In IcmpHostPinger, replaced the static payload with a mutable std::array created from the same string literal, preserving its terminating null byte and request length. Changed the reply buffer to std::byte storage and copied the ICMP_ECHO_REPLY into a local struct with memcpy instead of reading it through a reinterpret_cast. The IDE recheck reports 4 findings in this file; its earlier Explorer decoration showed 5.
+
+Changed the Windows volume-extents buffer from unsigned-char storage to std::byte storage in both source copies. The IDE recheck for WindowsStorageHealthProvider.cpp remains at 30 findings, the same as the prior recheck; this candidate change is not counted as a resolved row.
+
+Verification:
+- Versioned Debug unit-test target built successfully; Debug app target linked successfully to the separate verification-2026-11-08-fast-batch output after the normal output was blocked by the already-running app.
+- Desktop-source Debug app and test targets built successfully through desktop-sonar-verification-offline.
+- Focused storage-health tests passed 22/24, with 2 expected environment skips, in both builds.
+- Earlier focused network tests passed 10/10 in both builds after the Winsock and listener changes. There is no direct IcmpHostPinger test in the suite.
+- No full Sonar analysis was restarted. The owner-reported total remains 1,492; the open accessibility snapshot still shows its earlier 1,513 total / 1,512 Sonar-filtered rows.
+
+### 2026-11-08 — network interface conversion buffer bounds
+
+In `Win32NetworkInterfaceDetector.cpp`, the UTF-8 conversion buffer now includes space for the terminating NUL while `WideCharToMultiByte` writes its reported length, then trims that terminator before returning. The returned string bytes are unchanged; the writable range now matches the Windows API's output length. Applied this to the versioned and IDE-scanned copies.
+
+The existing Sonar file refresh still reports 11 findings for `Win32NetworkInterfaceDetector.cpp`; this correction is not claimed as a Sonar finding reduction. The full Desktop Debug app and test targets built successfully. The versioned app build first hit the already-running executable's locked normal output, then linked successfully to `build/verification-2026-11-08-manual-debug/Debug/GameTransferHub.exe`; the running app was left untouched. The versioned unit-test target built separately. Focused network-interface tests passed 5/5 in both builds. `git diff --check` passed, with only existing LF-to-CRLF notices in the text reports. No project scan was restarted; the owner-reported total remains 1,492 and the direct VS Code panel snapshot remains stale at 1,513.
+
+### 2026-11-08 — manual proxy cleanup from captured problem text
+
+At the owner's direction, stopped scan/count work and set VS Code's `sonarlint.automaticAnalysis` user setting to `false`. Before disabling automatic analysis, the visible filtered Problems rows for the open Desktop `WinsockCachingProxyServer.cpp` exposed these messages:
+
+- Line 625: use an `if` init-statement for `wsaData`.
+- Line 638: use `std::byte` for byte-oriented memory access.
+- Lines 645, 655, and 676: replace `reinterpret_cast` with a safer operation.
+- Line 661 and another location: replace `std::thread` with `std::jthread`.
+- Line 680: replace the fixed C character array with `std::array` or `std::string`.
+- Line 682 and three more locations: reduce nested control-flow depth.
+- Line 699: pass `cacheDir` by const reference.
+- Line 700: replace a redundant explicit type with `auto`.
+
+The Problems filter showed 80 findings in that Desktop file; the 11 messages above were the rows exposed in the current panel snapshot, not a complete export. That file and two other tabs have unsaved edits and remain untouched. In the versioned checkout, applied safe matching fixes: moved `WSADATA` into the `if` initializer, changed the accept worker to `std::jthread`, converted fixed receive/status buffers to same-size `std::array`, replaced the address-result pointer cast with a validated `memcpy`, and used `auto` for the copied cache directory. Kept pointer casts required by Winsock's `sockaddr*` API boundary. These source changes preserve normal request bytes, buffer capacities, worker join point, and address selection.
+
+Verification: `gth_acceleratorserver` and `gth_unit_tests` Debug targets built; the app also linked to a separate Debug output path without replacing the running copy. Focused proxy/local-server tests passed 35/35; `git diff --check` passed. Sonar's automatic analysis was disabled, so no updated problem total is claimed. The owner-reported total remains 1,492; the last panel snapshot showed 1,513.
+
+### 2026-11-08 — StorageView captured findings and regression check
+
+Reviewed the full current `src/app/src/StorageView.cpp` and header against the eight captured IDE rows recorded above. All eight corresponding source edits are present: explicit optional checks, equivalent non-nested health-rating branches, `std::format`, and same-capacity `std::array` buffers. Code review found no additional definite behavior defect in this view; the other nine rows in the original 17-finding IDE group were not captured with file/message details, so they cannot be attributed to or claimed fixed in this file. No UI or service behavior was changed in this pass.
+
+Verification:
+- `cmake --build build --config Debug --target GameTransferHubApp gth_unit_tests --parallel 4 -- '/p:OutDir=C:\Users\DrGame\Documents\Codex\2026-11-03\https-github-com-alirezaamerian459-gth-source\build\verification-2026-11-08-manual-debug\Debug\'` — passed; app output used a separate directory.
+- `build/verification-2026-11-08-manual-debug/Debug/gth_unit_tests.exe --gtest_filter=StorageServiceTest.*:StorageServiceCategoryTest.*` — 19/19 passed.
+- `git diff --check -- src/app/src/StorageView.cpp src/app/src/StorageView.h` — passed.
+- No Sonar analysis was restarted and no new project total is claimed.
+
+### 2026-11-08 — saved IDE diagnostics: StorageView and SettingsView
+
+Read the existing VS Code Problems entries with Sonar automatic analysis disabled (no analysis restarted). The saved panel snapshot showed 1,485 total Problems; the active filter reported 1,484 Sonar/other filtered rows. `StorageView.cpp` had one remaining saved warning at line 267: replace `reinterpret_cast` with a safer operation. Replaced the integer/pointer representation cast through Win32 notification parameters with C++20 `std::bit_cast` in both versioned and Desktop copies. The prior eight captured StorageView rows remain addressed.
+
+`SettingsView.cpp` had nine saved rows. The current source already uses the SDK header's exact `ShlObj.h` casing. Applied the remaining matching fixes in both source copies: `std::bit_cast` with `auto` for the WM_CTLCOLORSTATIC HDC/HWND parameters, `using enum` for the button-kind enum, `unordered_set::contains`, a same-values `std::array` for the four log-level labels, and catches for the two exception types documented by `std::stoi`. No firewall handler or network module was changed; settings values, messages, choices, and drawing behavior are preserved.
+
+Verification:
+- Versioned Debug app and unit-test targets built to `build/verification-2026-11-08-manual-debug/Debug` — passed.
+- Versioned focused filter `SidebarTabsTest.*:StorageServiceTest.*:StorageServiceCategoryTest.*` — 28/28 passed.
+- Desktop-source Debug app and unit-test targets built to `build/verification-2026-11-08-desktop-debug/Debug` — passed. Existing LNK4098 and SonyLinkCopyWatcher C4244 warnings appeared in the build; neither is in the edited files.
+- Desktop-source focused filter `SidebarTabsTest.*:StorageServiceTest.*:StorageServiceCategoryTest.*` — 25/25 available tests passed (the Desktop copy does not expose the category suite in this test executable).
+- `git diff --check` passed for the changed source files.
+
+The current IDE display remains the saved pre-fix 1,485 total / 1,484 filtered snapshot because automatic analysis is disabled. No post-fix total or reduction is claimed.
+
+### 2026-11-08 — saved IDE diagnostics: ReportsView
+
+The saved VS Code filter showed three `ReportsView.cpp` rows: replace the redundant HDC type with `auto`, use a safer conversion for the WPARAM HDC, and use a safer conversion for the LPARAM child HWND. Applied `std::bit_cast` conversions to the pointer-sized Win32 message values in both the versioned and Desktop copies; no report values, colors, or rendering logic changed.
+
+Verification:
+- Versioned and Desktop-source Debug app and unit-test targets built successfully to separate output directories.
+- `ReportServiceTest.EmptyDatabaseReportsAllZeros` passed in both unit-test executables (1/1 each).
+- `git diff --check` passed for changed source files.
+
+Sonar automatic analysis remains disabled; the existing 1,485 total / 1,484 filtered IDE display is not refreshed and is not claimed as a post-fix result.
+
+### 2026-11-08 — saved IDE diagnostics: ComingSoonView
+
+The existing Problems panel listed three ComingSoonView rows: replace the redundant HDC type with `auto` and replace the WPARAM HDC / LPARAM HWND `reinterpret_cast` operations with safer conversions. Applied C++20 `std::bit_cast` in both source copies. The message parameters still resolve to the same handles, and the view's colors and layout behavior are unchanged.
+
+Verification: versioned and Desktop-source Debug app targets both built successfully to separate output directories. This view has no direct unit test. `git diff --check` passed for the versioned source. Sonar remains disabled; no new issue total is claimed.
+
+### 2026-11-08 — saved IDE diagnostic: WinMain
+
+The single saved WinMain finding was a non-portable include-path case mismatch for the Windows SDK header. The SDK file is named `CommCtrl.h`; changed the include to match that exact casing in both source copies. Startup logic is unchanged.
+
+Verification: versioned and Desktop-source Debug app targets both built successfully to separate output directories. No direct unit test applies to this include-only correction. `git diff --check` passed for the versioned source. Sonar was not rerun.
+
+### 2026-11-08 — saved IDE findings: Logging and DiskStatus
+
+The saved `Logging.cpp` row flagged the mutable namespace-scope logger pointer. Replaced that global with a function-local static shared pointer and routed initialization, default logger registration, and access through the same instance. The logger type, configuration, shared ownership, and initialization sequence are preserved.
+
+The saved `DiskStatus.cpp` rows flagged repeated enum qualification in `toString` and `diskStatusFromString`. Added function-local `using enum DiskStatus` declarations and removed only the redundant qualification; all status strings, comparisons, and fallback behavior remain unchanged. Applied the matching edits to the versioned checkout and the Desktop source copy.
+
+Verification:
+- Versioned and Desktop-source Debug app and unit-test targets built successfully to separate output directories after both changes.
+- No direct unit tests reference `DiskStatus` conversion functions or logging; the unit-test executables were rebuilt but not run for this pass.
+- `git diff --check` passed for all touched versioned source files. The two DiskStatus copies match after line-ending normalization.
+- Sonar automatic analysis remains disabled. The IDE's saved 1,485 total / 1,484 filtered display is pre-fix; no post-fix count or reduction is claimed.
+
+### 2026-11-08 — saved IDE diagnostic: AdminAuthService
+
+The saved Desktop finding flagged a hard-coded default admin password. The versioned implementation already followed `docs/SECURITY_POLICY.md`: first sign-in stores the user's non-empty chosen credential in the credential store, verifies it was saved, and contains no built-in default. Synced the Desktop implementation and header to that existing behavior, then updated its stale tests to cover user-selected first sign-in, empty input, and failed credential storage. Existing-credential verification, sign-out, and credential changes remain covered. No network code was changed.
+
+Verification:
+- Versioned Debug app and unit-test targets built; `AdminAuthServiceTest.*` passed 10/10.
+- The first Desktop check used a forced shared output directory and linked a stale library; that focused run failed 7/10. A clean rebuild with the Desktop CMake tree's native per-project output directories succeeded, then `AdminAuthServiceTest.*` passed 10/10. The build emitted the existing LNK4098 runtime-library warning.
+- `git diff --check` passed on the versioned auth files. The focused Desktop implementation/header and test changes match the versioned behavior and tests.
+- No Sonar analysis was run. The saved 1,485 total / 1,484 filtered IDE display remains pre-fix and stale.
+
+### 2026-11-08 — saved IDE findings: AgentService
+
+Handled both captured rows in `AgentService.cpp`: explicitly qualified the stop call from the destructor and used class-template argument deduction for the existing `std::unique_lock<std::mutex>`. The stop target, mutex type, report timing, sender call, destination, payload, and protocol are unchanged. Applied the matching cleanup to both source copies.
+
+Verification:
+- Versioned and Desktop-source Debug app and test targets built successfully.
+- `AgentServiceTest.*` passed 2/2 in each build. These existing tests use a loopback endpoint; no external network call was made.
+- `git diff --check` passed for versioned source changes.
+- Sonar automatic analysis remains disabled; this is not a refreshed finding count.
+
+### 2026-11-08 — UpdatesView saved rows still require review
+
+The saved VS Code panel reports 51 rows in `UpdatesView.cpp` within the stale 1,485 total / 1,484 filtered snapshot. The accessibility view exposes only the first 10 rows; attempts to capture the VS Code window timed out, so the remaining 41 descriptions were not available. No `UpdatesView.cpp` changes were made in this pass, and the file is not marked complete.
+
+The 10 currently visible row messages are:
+- Implicit conversion from `long long` to `double` may lose precision (lines 63 and 65).
+- `label` is assigned during initialization and never read (line 73).
+- Reduce verbosity with `using enum` for `gth::application::UpdateState` (line 74).
+- Replace `reinterpret_cast` with a safer operation (lines 98, 454, and 480).
+- Merge an `if` statement with its enclosing one (line 384, with one additional location).
+- `const_cast` removes const qualification from a reference (line 438).
+- Replace `new` with an operation that automatically manages memory (line 472).
+
+No Sonar analysis was restarted. Continue only after all saved rows for this file can be read and checked against the current source; do not infer that the stale 51-row decoration is the post-fix count.
+
+### 2026-11-08 — VS Code automatic analysis resumed
+
+The owner requested that SonarQube for IDE analysis be re-enabled. Enabled the extension's Automatic Analysis setting and cleared the Problems filter so the panel reports workspace-wide diagnostics. Direct VS Code snapshots showed 190 total while a file filter was still present, then 643 total after clearing it; the live panel showed 2 errors, 641 warnings, and “Analyzing 178 files.” The owner reported intermediate totals of 343, 431, and 481 during the same refresh. The workspace analysis is still in progress; none of these changing counts is treated as the final total. No server-side SonarQube scan was started.
+
+The live panel currently exposes two C/C++ IntelliSense errors in `SonyHttp.h` claiming `std::format` is missing (lines 74 and 139); both versioned and Desktop MSVC Debug builds compile successfully. These may be IntelliSense configuration diagnostics rather than compiler errors and remain to be reconciled separately.
+
+### 2026-11-08 — UpdatesView saved-row fixes continued
+
+Applied the recorded UpdatesView findings in both the versioned checkout and the Desktop IDE workspace: made the byte-to-double conversion explicit without changing the displayed units or precision; used a C++20 enum import while preserving the unknown-state empty label; decoded UTF-16LE file bytes by code unit rather than reading a potentially unaligned `wchar_t*`; removed the unnecessary `const_cast` by making the private selection helper non-const; and converted the notification header to its containing list-view record with `std::bit_cast` (NMLISTVIEW stores NMHDR first).
+
+Replaced raw message-payload allocations and pointer round trips with `std::unique_ptr` ownership helpers. Failed `PostMessageW` calls now free their payload, and pending payload messages are drained at view shutdown after workers stop. This does not change successful message contents, update requests, response processing, or network transfer behavior.
+
+Verification:
+- Versioned Debug app and unit-test targets built successfully to a separate output directory.
+- Desktop-source Debug app and unit-test targets built successfully to a separate output directory; existing LNK4098 warning remains.
+- Focused update-service tests passed 49/49 in both test executables.
+- An initial build caught that `static_cast` is not valid for the unrelated NMHDR/NMLISTVIEW pointer types; replaced it with the standard-layout pointer representation conversion and rebuilt both copies successfully.
+- No test exercises the private UTF-16LE UI file decoder directly; code review confirms it preserves the prior little-endian code units and ignores an odd trailing byte as before.
+
+### 2026-11-08 — live per-file refresh after UpdatesView fixes
+
+The workspace-wide Problems panel still reports 643 total (2 errors, 641 warnings) and “Analyzing 178 files” in the latest direct VS Code snapshot. The Explorer no longer displays the earlier “51 problems in this file” badge on `UpdatesView.cpp`, confirming that its diagnostics were refreshed after the saved edits; the workspace total has not settled. The two remaining visible errors are still C/C++ IntelliSense claims that `std::format` is absent from `std` in `SonyHttp.h`, despite successful MSVC C++20 builds. Added a local, ignored VS Code IntelliSense configuration for the installed MSVC compiler and C++20; the live IntelliSense view has not yet reloaded that configuration. The old Problems file filter remains cleared.
+
+### 2026-11-08 — GamesView owned-message cleanup
+
+The Games page's background title-lookup result now uses the existing owned-message helper in both the Desktop workspace and versioned checkout. The UI handler takes ownership through the matching helper, and shutdown drains queued result messages after joining the worker. This addresses a payload leak if posting fails or a result is queued as the view closes; successful lookup text, requests, and displayed results are unchanged.
+
+Verification:
+- Versioned Debug app and unit-test targets built successfully to `build/games-msg-verification/Debug`. CTest recorded 506 passes, 0 failures, and 6 skipped tests.
+- Desktop-source Debug app and unit-test targets built successfully to `build/games-msg-desktop-verification/Debug`.
+- Desktop CTest recorded 504 passes, 6 skips, and one failure: `CentralServerListenerTest.InvokesHandlerWithParsedFieldsAndAcks`. The test still failed when rerun by itself at its local report-send assertion. No networking implementation was changed; this mismatch needs separate review before claiming the Desktop suite is fully green.
+- The latest VS Code snapshot still showed 643 problems (2 errors, 641 warnings) and “Analyzing 178 files”; no refreshed zero or reduced count is claimed.
+
+### 2026-11-08 — app UI Win32 representation casts
+
+In `WtlCommon.h`, `Theme.h`, `LogsView.cpp`, and `MainFrame.cpp`, replaced Win32 message-value/handle `reinterpret_cast` operations with `std::bit_cast` where source and destination are same-sized representations. Drawing, colors, pointer targets, and UI behavior are unchanged. Applied matching edits to the Desktop IDE workspace and versioned checkout. FTP, proxy, and network modules were left alone.
+
+Verification:
+- Versioned and Desktop-source Debug app targets both rebuilt successfully to their separate verification output directories.
+- No tests were rerun for these representation-only UI conversions; the full versioned suite had just passed 506 tests with 6 skips. The Desktop suite still has the independently reproduced local `CentralServerListenerTest` failure recorded above.
+- `git diff --check` for touched source and log files passed (Git only reported the existing LF-to-CRLF normalization notice for the two Markdown logs). The last live IDE count before this batch was 643 with 178 files still analyzing; no updated issue count has been captured.
+
+Follow-up during the same pass: converted the UpdatesView static cue-banner pointer to `LPARAM` with `std::bit_cast` as well; the string and control behavior are unchanged. Both Desktop and versioned Debug app targets rebuilt successfully after this edit. `git diff --check` passed for all touched code and log/report files. A fresh IDE read still reports 643 (2 errors, 641 warnings) with 178 files analyzing; no issue reduction is claimed yet.
+
+### 2026-11-08 — Sonar IDE log reconciliation
+
+Read the installed SonarQube for IDE extension log at `%APPDATA%\Code\logs\20261107T134431\window1\exthost\SonarSource.sonarlint-vscode\SonarQube for IDE.log`. It confirms the full Automatic Analysis run completed at 19:22:14 and reported 1,461 findings across 178 files (0 Security Hotspots). Later per-file runs logged 34 findings for `UpdatesView.cpp` at 21:02, 5 for `GamesView.cpp` at 20:16, 2 for `LogsView.cpp` at 20:52, and 8 for `MainFrame.cpp` at 20:52. These counts are per-file analysis outputs, not new workspace totals.
+
+A newer live VS Code Problems-panel snapshot still shows 643 total (2 errors, 641 warnings) and a status item saying “Analyzing 178 files.” The extension log's 1,461 is the completed whole-workspace result; 643 is the live panel's currently displayed count. The two numbers are not interchangeable, and no post-edit, settled full-workspace total is available. Source edits after the 21:02 UpdatesView log entry have not yet been confirmed by a new per-file Sonar record. No full analysis was restarted.
+
+### 2026-11-08 — remaining saved UI message conversions
+
+Applied the same representation-only Win32 conversion to the remaining app UI paint handlers in `ComingSoonView.cpp`, `ReportsView.cpp`, and `SettingsView.cpp`, and to StorageView's static cue-banner pointers in both Desktop and versioned copies. Successful brush handles, storage path/category placeholder text, and UI messages are unchanged.
+
+Verification:
+- Desktop-source and versioned Debug app targets both built successfully to their separate verification output folders.
+- `git diff --check` passed for all touched code, run log, and remediation report (Git only noted LF-to-CRLF normalization for the Markdown files).
+- The last recorded Sonar per-file analyses predate these edits, so no issue reduction is attributed to this batch. The live Problems panel is 643, while the completed full run recorded 1,461; the discrepancy and file-level counts are documented above.
+- VS Code screenshot/filter actions failed with window-capture/activation errors, so the remaining individual Problems rows could not be read from the UI in this pass. No full analysis was restarted.

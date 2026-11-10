@@ -4,6 +4,8 @@
 #include <windows.h>
 #include <wincred.h>
 
+#include <cwchar>
+
 #pragma comment(lib, "advapi32.lib")
 
 namespace gth::credentials {
@@ -53,8 +55,14 @@ std::optional<core::Credential> WindowsCredentialStore::read(const std::string& 
     PCREDENTIALW cred = nullptr;
     if (!::CredReadW(targetName.c_str(), CRED_TYPE_GENERIC, 0, &cred) || cred == nullptr) return std::nullopt;
 
+    const size_t usernameLength = cred->UserName ? ::wcsnlen_s(cred->UserName, CRED_MAX_USERNAME_LENGTH + 1) : 0;
+    if (usernameLength > CRED_MAX_USERNAME_LENGTH) {
+        ::CredFree(cred);
+        return std::nullopt;
+    }
+
     core::Credential result;
-    result.username = cred->UserName ? toUtf8(cred->UserName, wcslen(cred->UserName)) : std::string();
+    result.username = toUtf8(cred->UserName, usernameLength);
     // CredentialBlob is the raw byte string we wrote in save() (UTF-8 text),
     // not wide text - copy it back as plain bytes.
     result.secret.assign(reinterpret_cast<const char*>(cred->CredentialBlob), cred->CredentialBlobSize);

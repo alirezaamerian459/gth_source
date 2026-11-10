@@ -1,3 +1,4 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <chrono>
@@ -66,8 +67,8 @@ TEST(TransferQueueServiceTest, CopiesRealFilesAndMarksJobCompleted) {
     TransferItemRepository itemRepository(db);
     LocalFileTransferProvider provider;
 
-    const auto srcDir = fs::temp_directory_path() / ("gth_xfer_src_" + Guid::newGuid());
-    const auto dstDir = fs::temp_directory_path() / ("gth_xfer_dst_" + Guid::newGuid());
+    const auto srcDir = gth::test::testTempRoot() / ("gth_xfer_src_" + Guid::newGuid());
+    const auto dstDir = gth::test::testTempRoot() / ("gth_xfer_dst_" + Guid::newGuid());
     fs::create_directories(srcDir);
     std::ofstream(srcDir / "game.bin") << "some game data";
 
@@ -162,7 +163,7 @@ TEST(TransferQueueServiceTest, RecoversAndRestartsItemsLeftMidTransferByAPreviou
     job.status = TransferStatus::Transferring;
     jobRepository.add(job);
 
-    const auto srcDir = fs::temp_directory_path() / ("gth_xfer_recover_" + Guid::newGuid());
+    const auto srcDir = gth::test::testTempRoot() / ("gth_xfer_recover_" + Guid::newGuid());
     fs::create_directories(srcDir);
     std::ofstream(srcDir / "data.bin") << "data";
     const auto dstPath = srcDir / "copied.bin";

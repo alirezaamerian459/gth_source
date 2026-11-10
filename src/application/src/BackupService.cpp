@@ -209,7 +209,7 @@ bool appendCatalog(const fs::path& path, const BackupManifestRef& entry, std::st
     std::error_code ec;
     fs::create_directories(path.parent_path(), ec);
     if (ec) {
-        error = "Couldn't create the backup catalog directory: " + ec.message();
+        error = std::format("Couldn't create the backup catalog directory: {}", ec.message());
         return false;
     }
     std::ofstream out(path, std::ios::binary | std::ios::app);
@@ -340,12 +340,12 @@ bool copyRange(const fs::path& source, long long offset, long long count, const 
                const BackupCallbacks& callbacks, std::string& error) {
     std::ifstream in(source, std::ios::binary);
     if (!in) {
-        error = "Couldn't read " + source.string();
+        error = std::format("Couldn't read {}", source.string());
         return false;
     }
     in.seekg(offset, std::ios::beg);
     if (!in) {
-        error = "Couldn't seek in " + source.string();
+        error = std::format("Couldn't seek in {}", source.string());
         return false;
     }
     std::ofstream out(destination, std::ios::binary | std::ios::trunc);
@@ -398,7 +398,7 @@ BackupResult BackupService::createBackup(const BackupGame& game, const BackupCal
     std::error_code ec;
     fs::create_directories(sourceRoot, ec);
     if (ec) {
-        result.error = "Couldn't create backup staging directory: " + ec.message();
+        result.error = std::format("Couldn't create backup staging directory: {}", ec.message());
         return result;
     }
     struct Cleanup {
@@ -423,12 +423,12 @@ BackupResult BackupService::createBackup(const BackupGame& game, const BackupCal
     fs::recursive_directory_iterator it(sourceRoot, fs::directory_options::none, ec), end;
     for (; it != end; it.increment(ec)) {
         if (ec) {
-            result.error = "Couldn't enumerate the downloaded game: " + ec.message();
+            result.error = std::format("Couldn't enumerate the downloaded game: {}", ec.message());
             return result;
         }
         const auto status = it->symlink_status(ec);
         if (ec) {
-            result.error = "Couldn't inspect a downloaded game path: " + ec.message();
+            result.error = std::format("Couldn't inspect a downloaded game path: {}", ec.message());
             return result;
         }
         if (fs::is_symlink(status)) {
@@ -478,13 +478,13 @@ BackupResult BackupService::createBackup(const BackupGame& game, const BackupCal
         ec.clear();
         const auto fileSize = fs::file_size(path, ec);
         if (ec || fileSize > static_cast<uintmax_t>(std::numeric_limits<long long>::max())) {
-            result.error = "Couldn't determine the size of " + file.relativePath + ".";
+            result.error = std::format("Couldn't determine the size of {}.", file.relativePath);
             return result;
         }
         file.size = static_cast<long long>(fileSize);
         auto fileDigest = hasher_.sha256(path);
         if (!fileDigest || !isDigest(*fileDigest)) {
-            result.error = "Couldn't compute SHA-256 for " + file.relativePath;
+            result.error = std::format("Couldn't compute SHA-256 for {}", file.relativePath);
             return result;
         }
         file.digest = lowercase(*fileDigest);
@@ -629,7 +629,7 @@ BackupResult BackupService::restoreBackup(const std::string& manifestObjectId, c
     std::error_code ec;
     fs::create_directories(jobRoot, ec);
     if (ec) {
-        result.error = "Couldn't create restore staging directory: " + ec.message();
+        result.error = std::format("Couldn't create restore staging directory: {}", ec.message());
         return result;
     }
     struct Cleanup {
@@ -668,14 +668,14 @@ BackupResult BackupService::restoreBackup(const std::string& manifestObjectId, c
         safeLeaf(manifest->version) + "-" + safeLeaf(manifest->backupId);
     const fs::path restoreRoot = destinationRoot / pathFromUtf8(restoreFolder);
     if (fs::exists(restoreRoot, ec)) {
-        result.error = "The restore destination already exists: " + restoreRoot.string();
+        result.error = std::format("The restore destination already exists: {}", restoreRoot.string());
         return result;
     }
     ec.clear();
     const fs::path stagedTree = jobRoot / "restored";
     fs::create_directories(stagedTree, ec);
     if (ec) {
-        result.error = "Couldn't create the restore staging tree: " + ec.message();
+        result.error = std::format("Couldn't create the restore staging tree: {}", ec.message());
         return result;
     }
     long long totalBytes = 0;
@@ -703,13 +703,13 @@ BackupResult BackupService::restoreBackup(const std::string& manifestObjectId, c
         }
         fs::create_directories(target.parent_path(), ec);
         if (ec) {
-            result.error = "Couldn't create a restore folder: " + ec.message();
+            result.error = std::format("Couldn't create a restore folder: {}", ec.message());
             return result;
         }
         const fs::path partial = target.string() + ".gth-partial";
         std::ofstream out(partial, std::ios::binary | std::ios::trunc);
         if (!out) {
-            result.error = "Couldn't create restored file " + file.relativePath;
+            result.error = std::format("Couldn't create restored file {}", file.relativePath);
             return result;
         }
         long long fileBytes = 0;
@@ -769,24 +769,24 @@ BackupResult BackupService::restoreBackup(const std::string& manifestObjectId, c
         }
         const auto fileDigest = hasher_.sha256(partial);
         if (!fileDigest || lowercase(*fileDigest) != file.digest) {
-            result.error = "A restored file failed its full-file SHA-256 check: " + file.relativePath;
+            result.error = std::format("A restored file failed its full-file SHA-256 check: {}", file.relativePath);
             return result;
         }
         fs::rename(partial, target, ec);
         if (ec) {
-            result.error = "Couldn't finalize restored file " + file.relativePath + ": " + ec.message();
+            result.error = std::format("Couldn't finalize restored file {}: {}", file.relativePath, ec.message());
             return result;
         }
     }
 
     fs::create_directories(destinationRoot, ec);
     if (ec) {
-        result.error = "Couldn't create the requested restore destination: " + ec.message();
+        result.error = std::format("Couldn't create the requested restore destination: {}", ec.message());
         return result;
     }
     fs::rename(stagedTree, restoreRoot, ec);
     if (ec) {
-        result.error = "Couldn't atomically install the restored game: " + ec.message();
+        result.error = std::format("Couldn't atomically install the restored game: {}", ec.message());
         return result;
     }
     result.success = true;

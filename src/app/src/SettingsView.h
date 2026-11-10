@@ -49,6 +49,7 @@ public:
         COMMAND_ID_HANDLER(IDC_SETTINGS_MAXCONSOLES_SAVE_BUTTON, OnMaxConsolesSaveClick)
         COMMAND_ID_HANDLER(IDC_SETTINGS_FIREWALL_ALLOW_BUTTON, OnFirewallAllowClick)
         COMMAND_ID_HANDLER(IDC_SETTINGS_FIREWALL_REMOVE_BUTTON, OnFirewallRemoveClick)
+        COMMAND_ID_HANDLER(IDC_SETTINGS_MORE_OPTIONS_BUTTON, OnMoreOptionsClick)
     END_MSG_MAP()
 
     void init(gth::application::IAppSettingsService& settingsService,
@@ -86,6 +87,7 @@ private:
     LRESULT OnMaxConsolesSaveClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnFirewallAllowClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnFirewallRemoveClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnMoreOptionsClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
 
     void applySettings(const gth::core::AppSettings& settings);
     void updateThemeButtons();
@@ -93,6 +95,7 @@ private:
     void refreshFirewallSection();
     std::wstring getEditText(CEdit& edit);
     void showStatus(const std::wstring& text);
+    void layoutOptions();
 
     gth::application::IAppSettingsService* settingsService_ = nullptr;
     gth::application::IAdminAuthService* adminAuthService_ = nullptr;
@@ -101,6 +104,10 @@ private:
     gth::core::AppSettings current_;
 
     CStatic titleLabel_;
+    ModernButton moreOptionsButton_;
+    bool moreOptionsExpanded_ = false;
+    int resetTop_ = 0;
+    int expandedContentHeight_ = 0;
 
     CStatic appearanceCaption_;
     ModernButton lightButton_, darkButton_;

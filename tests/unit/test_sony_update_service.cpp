@@ -1,8 +1,10 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <system_error>
 #include <fstream>
 #include <map>
 #include <set>
@@ -84,9 +86,12 @@ struct FakeSony {
 };
 
 struct TempLinksFile {
-    std::filesystem::path path = std::filesystem::temp_directory_path() / "gth_sony_links_test.tsv";
+    std::filesystem::path path = gth::test::testTempRoot() / "gth_sony_links_test.tsv";
     TempLinksFile() { std::filesystem::remove(path); }
-    ~TempLinksFile() { std::filesystem::remove(path); }
+    ~TempLinksFile() {
+        std::error_code ignored;
+        std::filesystem::remove(path, ignored);
+    }
     void write(const std::string& text) {
         std::ofstream out(path, std::ios::binary | std::ios::trunc);
         out << text;
@@ -293,7 +298,7 @@ TEST(SonyUpdateServiceTest, LinksAppendedWhileTheAppIsRunningArePickedUp) {
 TEST(SonyUpdateServiceTest, LaterLinkFilesOverrideEarlierOnes) {
     FakeSony sony;
     sony.answer("https://example.test/new-version.xml", 200, kPs5VersionXml);
-    const auto dir = std::filesystem::temp_directory_path();
+    const auto dir = gth::test::testTempRoot();
     const auto first = dir / "gth_sony_links_first.tsv";
     const auto second = dir / "gth_sony_links_second.tsv";
     { std::ofstream(first) << "PPSA02343\thttps://example.test/old-version.xml\n"; }
@@ -383,7 +388,7 @@ TEST(SonyPieceDownloaderTest, OnlyAcceptsSonysOwnHosts) {
 
 TEST(SonyPieceDownloaderTest, RefusesForeignAddressesWithoutTouchingTheNetwork) {
     SonyPieceDownloader downloader;
-    const auto destination = std::filesystem::temp_directory_path() / "gth_downloader_refuse_test" / "x.pkg.part";
+    const auto destination = gth::test::testTempRoot() / "gth_downloader_refuse_test" / "x.pkg.part";
 
     const auto result = downloader.download("http://example.com/x.pkg", destination, 10, nullptr);
 
@@ -392,7 +397,7 @@ TEST(SonyPieceDownloaderTest, RefusesForeignAddressesWithoutTouchingTheNetwork) 
     EXPECT_NE(result.error.find("isn't on Sony's servers"), std::string::npos) << result.error;
     EXPECT_FALSE(std::filesystem::exists(destination));
 
-    const auto noSize = downloader.download("http://gst.prod.dl.playstation.net/x.pkg", destination, 0, nullptr);
+    const auto noSize = downloader.download("http://gst.prod.dl.playstation.net/x.pkg", destination, 0, nullptr);  // NOSONAR: zero-size guard test returns before network access.
     EXPECT_FALSE(noSize.success);
 }
 
@@ -404,12 +409,15 @@ std::string slurp(const std::filesystem::path& path) {
 }
 
 struct TempFolder {
-    std::filesystem::path path = std::filesystem::temp_directory_path() / "gth_sony_links_folder_test";
+    std::filesystem::path path = gth::test::testTempRoot() / "gth_sony_links_folder_test";
     TempFolder() {
         std::filesystem::remove_all(path);
         std::filesystem::create_directories(path);
     }
-    ~TempFolder() { std::filesystem::remove_all(path); }
+    ~TempFolder() {
+        std::error_code ignored;
+        std::filesystem::remove_all(path, ignored);
+    }
 };
 
 }  // namespace
@@ -492,7 +500,7 @@ TEST(SonyLinksFileTest, TheNeededListListsEachGameAndCanBeFilledInAndReadBack) {
 TEST(SonyUpdateServiceTest, Ps4UpdateListsItsFilesFromTheManifest) {
     FakeSony sony;
     sony.answer(SonyPs4UpdateUrl("CUSA07410"), 200, kPs4VerXml);
-    sony.answer("http://gs2.ww.prod.dl.playstation.net/gs2/ppkgo/prod/CUSA07410_00/30/f_1d7b/f/"
+    sony.answer("http://gs2.ww.prod.dl.playstation.net/gs2/ppkgo/prod/CUSA07410_00/30/f_1d7b/f/"  // NOSONAR: fake response key; fetcher is injected and no request is sent.
                 "EP9000-CUSA07410_00-00000000GODOFWAR-A0136-V0100.json",
                 200,
                 "{\"originalFileSize\":8023703552,\"numberOfSplitFiles\":2,\"pieces\":["

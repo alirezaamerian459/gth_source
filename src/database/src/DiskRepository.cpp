@@ -21,8 +21,8 @@ Disk mapRow(const Statement& stmt) {
     disk.interfaceType = stmt.columnTextOrNull(7);
     disk.slot = stmt.columnTextOrNull(8);
     disk.status = core::diskStatusFromString(stmt.columnText(9));
-    if (auto v = stmt.columnInt64OrNull(10)) disk.healthPercent = static_cast<int>(*v);
-    if (auto v = stmt.columnInt64OrNull(11)) disk.temperatureCelsius = static_cast<int>(*v);
+    if (auto v = stmt.columnInt64OrNull(10); v.has_value()) disk.healthPercent = static_cast<int>(*v);
+    if (auto v = stmt.columnInt64OrNull(11); v.has_value()) disk.temperatureCelsius = static_cast<int>(*v);
     disk.powerOnHours = stmt.columnInt64OrNull(12);
     disk.lastSeen = stmt.columnTextOrNull(13);
     disk.createdAt = stmt.columnText(14);
@@ -31,11 +31,11 @@ Disk mapRow(const Statement& stmt) {
 }
 
 void bindOptionalText(Statement& stmt, int index, const std::optional<std::string>& value) {
-    if (value) stmt.bind(index, *value); else stmt.bindNull(index);
+    if (value.has_value()) stmt.bind(index, *value); else stmt.bindNull(index);
 }
 
 void bindOptionalInt(Statement& stmt, int index, const std::optional<long long>& value) {
-    if (value) stmt.bind(index, *value); else stmt.bindNull(index);
+    if (value.has_value()) stmt.bind(index, *value); else stmt.bindNull(index);
 }
 }  // namespace
 

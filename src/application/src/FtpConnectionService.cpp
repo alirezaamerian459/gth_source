@@ -31,7 +31,7 @@ FtpConnection FtpConnectionService::addConnection(const std::string& name, const
 
 void FtpConnectionService::removeConnection(const std::string& connectionId) {
     auto existing = repository_.getById(connectionId);
-    if (existing) credentialStore_.remove(existing->credentialTarget);
+    if (existing.has_value()) credentialStore_.remove(existing->credentialTarget);
     repository_.remove(connectionId);
 }
 

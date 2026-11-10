@@ -11,7 +11,7 @@ TemperatureSnapshot mapRow(const Statement& stmt) {
     TemperatureSnapshot snapshot;
     snapshot.temperatureSnapshotId = stmt.columnText(0);
     snapshot.diskId = stmt.columnText(1);
-    if (auto v = stmt.columnInt64OrNull(2)) snapshot.temperatureCelsius = static_cast<int>(*v);
+    if (auto v = stmt.columnInt64OrNull(2); v.has_value()) snapshot.temperatureCelsius = static_cast<int>(*v);
     snapshot.capturedAt = stmt.columnText(3);
     return snapshot;
 }

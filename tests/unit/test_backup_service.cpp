@@ -1,3 +1,4 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <filesystem>
@@ -87,7 +88,7 @@ private:
 class BackupServiceTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        root_ = fs::temp_directory_path() / ("gth-backup-test-" + gth::core::Guid::newGuid());
+        root_ = gth::test::testTempRoot() / ("gth-backup-test-" + gth::core::Guid::newGuid());
         fs::create_directories(root_ / "source" / "PS5" / "Game");
         fs::create_directories(root_ / "working");
         fs::create_directories(root_ / "telegram");

@@ -1,3 +1,4 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <winsock2.h>
@@ -132,11 +133,11 @@ class LocalGameServerTest : public ::testing::Test {
 protected:
     // GTH_LOG_* dereferences the process-wide logger, which only exists after init().
     static void SetUpTestSuite() {
-        gth::logging::init(fs::temp_directory_path() / ("gth_lgs_test_logs_" + std::to_string(::GetCurrentProcessId())));
+        gth::logging::init(gth::test::testTempRoot() / ("gth_lgs_test_logs_" + std::to_string(::GetCurrentProcessId())));
     }
 
     void SetUp() override {
-        dir = fs::temp_directory_path() / ("gth_lgs_test_" + std::to_string(::GetCurrentProcessId()) + "_" +
+        dir = gth::test::testTempRoot() / ("gth_lgs_test_" + std::to_string(::GetCurrentProcessId()) + "_" +
                                            std::to_string(counter++));
         fs::create_directories(dir);
         server = std::make_unique<LocalGameServer>(&cdn, &index);
@@ -161,7 +162,7 @@ protected:
 };
 
 const char* kGet = "GET /x HTTP/1.1\r\nHost: cdn.example.com\r\n\r\n";
-const char* kPkgUrl = "http://gs2.ww.prod.dl.playstation.net/gs2/ppkgo/prod/CUSA00001_00/1/f_abc/f/UP0001-CUSA00001_00-GAME-A0100-V0100.pkg";
+const char* kPkgUrl = "http://gs2.ww.prod.dl.playstation.net/gs2/ppkgo/prod/CUSA00001_00/1/f_abc/f/UP0001-CUSA00001_00-GAME-A0100-V0100.pkg";  // NOSONAR: fixture URL only; the local server test never contacts Sony.
 
 }  // namespace
 

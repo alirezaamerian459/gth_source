@@ -6,6 +6,9 @@
 #include <icmpapi.h>
 #include <ws2tcpip.h>
 
+#include <array>
+#include <cstddef>
+#include <cstring>
 #include <vector>
 
 #pragma comment(lib, "iphlpapi.lib")
@@ -20,19 +23,21 @@ std::optional<int> IcmpHostPinger::pingMs(const std::string& ip) {
     const HANDLE icmpHandle = ::IcmpCreateFile();
     if (icmpHandle == INVALID_HANDLE_VALUE) return std::nullopt;
 
-    const char payload[] = "gth-accelerator-ping";
-    const DWORD replySize = sizeof(ICMP_ECHO_REPLY) + sizeof(payload) + 8;
-    std::vector<BYTE> replyBuffer(replySize);
+    auto payload = std::to_array("gth-accelerator-ping");
+    const DWORD replySize = static_cast<DWORD>(sizeof(ICMP_ECHO_REPLY) + payload.size() + 8);
+    std::vector<std::byte> replyBuffer(replySize);
 
-    const DWORD result = ::IcmpSendEcho(icmpHandle, addr.S_un.S_addr, const_cast<char*>(payload), sizeof(payload),
-                                         nullptr, replyBuffer.data(), replySize, 1000);
+    const DWORD result = ::IcmpSendEcho(icmpHandle, addr.S_un.S_addr, payload.data(),
+                                         static_cast<WORD>(payload.size()), nullptr, replyBuffer.data(), replySize,
+                                         1000);
     ::IcmpCloseHandle(icmpHandle);
 
     if (result == 0) return std::nullopt;
 
-    const auto* reply = reinterpret_cast<PICMP_ECHO_REPLY>(replyBuffer.data());
-    if (reply->Status != IP_SUCCESS) return std::nullopt;
-    return static_cast<int>(reply->RoundTripTime);
+    ICMP_ECHO_REPLY reply{};
+    std::memcpy(&reply, replyBuffer.data(), sizeof(reply));
+    if (reply.Status != IP_SUCCESS) return std::nullopt;
+    return static_cast<int>(reply.RoundTripTime);
 }
 
 }  // namespace gth::network

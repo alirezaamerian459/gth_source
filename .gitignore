@@ -37,6 +37,7 @@ x86/
 *.db-wal
 logs/
 *.log
+/work/
 
 # Local configuration and browser-test runtime data
 .env

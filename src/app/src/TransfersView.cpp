@@ -1,11 +1,11 @@
 #include "TransfersView.h"
 
 #include <algorithm>
+#include <array>
 
 #include "gth/core/enums/TransferStatus.h"
 
 namespace {
-constexpr int kTopAreaHeight = 148;
 constexpr int kMargin = 24;
 }  // namespace
 
@@ -13,8 +13,14 @@ LRESULT TransfersView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     HFONT g_normalFont = theme::BodyFont();
 
     CRect titleRect(kMargin, 24, kMargin + 200, 56);
-    titleLabel_.Create(m_hWnd, titleRect, L"Transfers", WS_CHILD | WS_VISIBLE);
+    titleLabel_.Create(m_hWnd, titleRect, L"Quick Transfer", WS_CHILD | WS_VISIBLE);
     titleLabel_.SetFont(theme::TitleFont());
+
+    CRect newPanelRect(kMargin + 190, 27, kMargin + 340, 55);
+    newPanelButton_.Create(m_hWnd, newPanelRect, L"New transfer", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+                           0, IDC_TRANSFERS_NEW_PANEL_BUTTON);
+    newPanelButton_.SetFont(g_normalFont);
+    newPanelButton_.setKind(ModernButton::Kind::Primary);
 
     int x = kMargin;
     const int inputTop = 62;
@@ -63,7 +69,7 @@ LRESULT TransfersView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 
     CRect clientRect;
     GetClientRect(&clientRect);
-    CRect listRect(kMargin, kTopAreaHeight, clientRect.right - kMargin, clientRect.bottom - kMargin);
+    CRect listRect(kMargin, 104, clientRect.right - kMargin, clientRect.bottom - kMargin);
     listView_.Create(m_hWnd, listRect, L"", WS_CHILD | WS_VISIBLE | WS_BORDER | LVS_REPORT | LVS_SINGLESEL, 0,
                       IDC_TRANSFERS_LISTVIEW);
     listView_.SetExtendedListViewStyle(LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
@@ -76,17 +82,55 @@ LRESULT TransfersView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     listView_.InsertColumn(3, L"Status", LVCFMT_LEFT, 100);
     listView_.InsertColumn(4, L"Progress", LVCFMT_LEFT, 120);
 
+    layoutControls();
     return 0;
 }
 
 LRESULT TransfersView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {
-    const int width = LOWORD(lParam);
-    const int height = HIWORD(lParam);
-    if (listView_.IsWindow()) {
-        listView_.MoveWindow(kMargin, kTopAreaHeight, std::max(100, width - 2 * kMargin),
-                              std::max(100, height - kTopAreaHeight - kMargin));
-    }
+    layoutControls();
     return 0;
+}
+
+void TransfersView::layoutControls() {
+    if (!listView_.IsWindow()) return;
+    CRect client;
+    GetClientRect(&client);
+    const int width = std::max(420, static_cast<int>(client.right) - 2 * kMargin);
+    auto show = [](auto& control, bool visible) {
+        if (control.IsWindow()) control.ShowWindow(visible ? SW_SHOW : SW_HIDE);
+    };
+    auto move = [](auto& control, int x, int y, int w, int h) {
+        if (control.IsWindow()) control.MoveWindow(x, y, std::max(0, w), h, FALSE);
+    };
+
+    move(titleLabel_, kMargin, 22, 180, 36);
+    move(newPanelButton_, kMargin + 190, 26, 150, 28);
+    newPanelButton_.SetWindowText(newTransferExpanded_ ? L"Hide new transfer" : L"New transfer");
+    for (CWindow* control : {static_cast<CWindow*>(&nameCaption_), static_cast<CWindow*>(&nameEdit_),
+                             static_cast<CWindow*>(&sourceCaption_), static_cast<CWindow*>(&sourceEdit_),
+                             static_cast<CWindow*>(&destCaption_), static_cast<CWindow*>(&destEdit_),
+                             static_cast<CWindow*>(&enqueueButton_)}) show(*control, newTransferExpanded_);
+
+    int actionTop = 66;
+    if (newTransferExpanded_) {
+        const int nameWidth = std::min(190, width / 4);
+        const int pathWidth = std::max(180, (width - nameWidth - 160 - 42) / 2);
+        move(nameCaption_, kMargin, 66, nameWidth, 18);
+        move(nameEdit_, kMargin, 85, nameWidth, 24);
+        int x = kMargin + nameWidth + 14;
+        move(sourceCaption_, x, 66, pathWidth, 18);
+        move(sourceEdit_, x, 85, pathWidth, 24); x += pathWidth + 14;
+        move(destCaption_, x, 66, pathWidth, 18);
+        move(destEdit_, x, 85, pathWidth, 24); x += pathWidth + 14;
+        move(enqueueButton_, x, 84, 110, 28);
+        actionTop = 120;
+    }
+    move(cancelButton_, kMargin, actionTop, 140, 28);
+    move(refreshButton_, kMargin + 152, actionTop, 100, 28);
+    move(statusLabel_, kMargin + 270, actionTop + 4, std::max(120, width - 270), 22);
+    const int listTop = actionTop + 38;
+    move(listView_, kMargin, listTop, width,
+         std::max(100, static_cast<int>(client.bottom) - listTop - kMargin));
 }
 
 LRESULT TransfersView::OnCtlColorStatic(UINT, WPARAM wParam, LPARAM, BOOL&) { return HandleCtlColorStatic(wParam); }
@@ -114,9 +158,9 @@ void TransfersView::refresh() {
             listView_.SetItemText(row, 2, Utf8ToWide(item.destinationPath).c_str());
             listView_.SetItemText(row, 3, Utf8ToWide(gth::core::toString(item.status)).c_str());
 
-            wchar_t progress[64];
-            swprintf_s(progress, L"%lld / %lld bytes", item.bytesTransferred, item.sizeBytes);
-            listView_.SetItemText(row, 4, progress);
+            std::array<wchar_t, 64> progress{};
+            swprintf_s(progress.data(), progress.size(), L"%lld / %lld bytes", item.bytesTransferred, item.sizeBytes);
+            listView_.SetItemText(row, 4, progress.data());
 
             lastItems_.push_back(item);
             row++;
@@ -166,5 +210,11 @@ LRESULT TransfersView::OnCancelClick(WORD, WORD, HWND, BOOL&) {
 LRESULT TransfersView::OnRefreshClick(WORD, WORD, HWND, BOOL&) {
     refresh();
     statusLabel_.SetWindowText(L"Refreshed.");
+    return 0;
+}
+
+LRESULT TransfersView::OnNewPanelClick(WORD, WORD, HWND, BOOL&) {
+    newTransferExpanded_ = !newTransferExpanded_;
+    layoutControls();
     return 0;
 }

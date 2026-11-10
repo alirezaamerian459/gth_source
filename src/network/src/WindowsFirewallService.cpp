@@ -5,8 +5,10 @@
 #include <oleauto.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cwctype>
+#include <format>
 #include <fstream>
 
 #pragma comment(lib, "ole32.lib")
@@ -55,9 +57,9 @@ std::wstring widen(const std::string& utf8) {
 }
 
 std::string hexOf(HRESULT hr) {
-    char buf[16];
-    std::snprintf(buf, sizeof(buf), "0x%08X", static_cast<unsigned>(hr));
-    return buf;
+    std::array<char, 16> buf{};
+    std::snprintf(buf.data(), buf.size(), "0x%08X", static_cast<unsigned>(hr));
+    return buf.data();
 }
 
 // The firewall API refuses changes from a process that isn't elevated; the
@@ -68,7 +70,7 @@ std::string describeFailure(HRESULT hr) {
         return "Windows refused the change - the firewall can only be changed by an administrator. Close the app "
                "and start it with \"Run as administrator\".";
     }
-    return "Windows Firewall returned an error (" + hexOf(hr) + ").";
+    return std::format("Windows Firewall returned an error ({}).", hexOf(hr));
 }
 
 // COM must be initialised on the calling thread. The UI thread may already
@@ -229,8 +231,9 @@ HRESULT addRule(INetFwRules* rules, const FirewallRuleSpec& spec) {
     if (FAILED(hr = rule->put_Description(Bstr(spec.description)))) return hr;
     if (FAILED(hr = rule->put_ApplicationName(Bstr(spec.applicationPath)))) return hr;
     if (FAILED(hr = rule->put_Protocol(spec.protocol))) return hr;
-    if (!spec.remoteAddresses.empty() && FAILED(hr = rule->put_RemoteAddresses(Bstr(spec.remoteAddresses)))) {
-        return hr;
+    if (!spec.remoteAddresses.empty()) {
+        hr = rule->put_RemoteAddresses(Bstr(spec.remoteAddresses));
+        if (FAILED(hr)) return hr;
     }
     if (FAILED(hr = rule->put_Direction(spec.inbound ? NET_FW_RULE_DIR_IN : NET_FW_RULE_DIR_OUT))) return hr;
     if (FAILED(hr = rule->put_Action(NET_FW_ACTION_ALLOW))) return hr;
@@ -289,7 +292,7 @@ core::FirewallStatus WindowsFirewallService::status() {
     ComPtr<INetFwPolicy2> policy;
     const HRESULT hr = createPolicy(policy);
     if (FAILED(hr) || !policy) {
-        result.detail = "Windows Firewall isn't available on this PC (" + hexOf(hr) + ").";
+        result.detail = std::format("Windows Firewall isn't available on this PC ({}).", hexOf(hr));
         return result;
     }
     result.available = true;
@@ -345,7 +348,7 @@ core::FirewallResult WindowsFirewallService::allowThisApp() {
         ComPtr<INetFwRules> rules;
         if (SUCCEEDED(hr) && policy) hr = policy->get_Rules(rules.put());
         if (FAILED(hr) || !rules) {
-            result.message = "Windows Firewall isn't available on this PC (" + hexOf(hr) + ").";
+            result.message = std::format("Windows Firewall isn't available on this PC ({}).", hexOf(hr));
             return result;
         }
 
@@ -388,13 +391,15 @@ core::FirewallResult WindowsFirewallService::allowThisApp() {
 
     const auto after = status();
     if (!after.appAllowed) {
-        result.message = after.blockingRules > 0
-                             ? "Windows still has " + std::to_string(after.blockingRules) +
-                                   " firewall rule(s) blocking this app that couldn't be switched off. In Windows "
-                                   "Defender Firewall with Advanced Security, disable the inbound rules named "
-                                   "\"gametransferhub.exe\"."
-                             : "The rules were added but Windows doesn't show them as active - check Windows "
-                               "Defender Firewall with Advanced Security.";
+        if (after.blockingRules > 0) {
+            result.message = std::format(
+                "Windows still has {} firewall rule(s) blocking this app that couldn't be switched off. In Windows "
+                "Defender Firewall with Advanced Security, disable the inbound rules named \"gametransferhub.exe\".",
+                after.blockingRules);
+        } else {
+            result.message = "The rules were added but Windows doesn't show them as active - check Windows "
+                             "Defender Firewall with Advanced Security.";
+        }
         return result;
     }
 
@@ -402,8 +407,7 @@ core::FirewallResult WindowsFirewallService::allowThisApp() {
     result.success = true;
     result.message = "Dr Game Transfer Hub is now allowed through Windows Firewall for devices on your local network.";
     if (switchedOff > 0) {
-        result.message += " Also switched off " + std::to_string(switchedOff) +
-                          " older Windows rule(s) that were blocking it.";
+        result.message += std::format(" Also switched off {} older Windows rule(s) that were blocking it.", switchedOff);
     }
     return result;
 }
@@ -428,7 +432,7 @@ core::FirewallResult WindowsFirewallService::removeAppRules() {
     ComPtr<INetFwRules> rules;
     if (SUCCEEDED(hr) && policy) hr = policy->get_Rules(rules.put());
     if (FAILED(hr) || !rules) {
-        result.message = "Windows Firewall isn't available on this PC (" + hexOf(hr) + ").";
+        result.message = std::format("Windows Firewall isn't available on this PC ({}).", hexOf(hr));
         return result;
     }
 

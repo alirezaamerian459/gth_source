@@ -15,6 +15,7 @@
 #include <format>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "gth/network/SonyUpdateService.h"
 
@@ -41,7 +42,7 @@ private:
     HINTERNET handle_ = nullptr;
 };
 
-inline std::wstring toWide(const std::string& utf8) {
+inline std::wstring toWide(std::string_view utf8) {
     if (utf8.empty()) return {};
     const int len = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), nullptr, 0);
     if (len <= 0) return {};
@@ -93,7 +94,7 @@ struct ParsedUrl {
     std::wstring path;  // including any query
 };
 
-inline std::optional<ParsedUrl> crackUrl(const std::string& url) {
+inline std::optional<ParsedUrl> crackUrl(std::string_view url) {
     const std::wstring wide = toWide(url);
     URL_COMPONENTS parts{};
     parts.dwStructSize = sizeof(parts);

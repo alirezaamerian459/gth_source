@@ -3,6 +3,7 @@
 #include <commctrl.h>
 
 #include <array>
+#include <bit>
 
 #include "WtlCommon.h"
 
@@ -10,13 +11,11 @@
 
 // Shared visual language for the whole app - colors, fonts, and a couple of
 // GDI drawing helpers - so every view looks like it belongs to the same
-// product instead of each accumulating its own ad-hoc styling. Palette and
-// type scale are deliberately modeled after two references: PlayStation's
-// own site (playstation.com) for the accent blue / light, airy section
-// backgrounds / large light-weight headings, and Windows 11's own
-// Settings-app look (light sidebar with a soft accent "pill" behind the
-// selected item, rounded controls, generous whitespace) for the shell
-// chrome, since this is a Windows desktop app, not a website.
+// product instead of each accumulating its own ad-hoc styling. The palette
+// follows the supplied Transfer Hub references: a quiet obsidian canvas,
+// layered slate surfaces, one violet action color, and explicit green/amber/
+// red status colors. The app remains native Win32/WTL; this is a token change,
+// not a web or third-party UI dependency.
 //
 // Colors are exposed as functions (theme::ContentBg(), not a constexpr) so
 // the Settings tab's Light/Dark toggle can flip every view's palette at
@@ -42,40 +41,35 @@ inline bool IsDarkMode() { return detail::darkModeFlag(); }
 inline void SetDarkMode(bool dark) { detail::darkModeFlag() = dark; }
 
 // --- Palette ---
-// Light mode: accent blue sampled directly from playstation.com's computed
-// styles (rgb(0, 112, 204)). Dark mode intentionally does NOT reuse that
-// blue - a light-mode-tuned blue reads as muddy/low-contrast on a dark
-// surface, and it's the accent that's visible everywhere (primary buttons,
-// the selected sidebar pill, focus rings), so a "the whole app went dark"
-// toggle needs it to change too. Dark mode instead uses Discord's blurple
-// (#5865F2 family) against Discord's own near-black surface levels
-// (#202225 sidebar / #36393f content) - that combination (true dark
-// surfaces + a saturated purple accent, not just an inverted blue-on-gray)
-// is specifically what was asked for here.
-constexpr COLORREF kLightAccent = RGB(0, 112, 204);
-constexpr COLORREF kLightAccentHover = RGB(0, 98, 181);
-constexpr COLORREF kLightAccentPressed = RGB(0, 84, 158);
+// Both themes share the same semantic roles. Dark mode is the reference
+// direction; light mode keeps the same hierarchy for users who prefer it.
+constexpr COLORREF kLightAccent = RGB(124, 58, 237);
+constexpr COLORREF kLightAccentHover = RGB(139, 92, 246);
+constexpr COLORREF kLightAccentPressed = RGB(109, 40, 217);
 
-constexpr COLORREF kDarkAccent = RGB(88, 101, 242);     // Discord blurple #5865F2
-constexpr COLORREF kDarkAccentHover = RGB(71, 82, 196);  // #4752C4
-constexpr COLORREF kDarkAccentPressed = RGB(60, 68, 170);  // #3C45AA
+constexpr COLORREF kDarkAccent = RGB(139, 92, 246);       // #8B5CF6
+constexpr COLORREF kDarkAccentHover = RGB(167, 139, 250); // #A78BFA
+constexpr COLORREF kDarkAccentPressed = RGB(124, 58, 237); // #7C3AED
 
 constexpr COLORREF kTextOnAccent = RGB(255, 255, 255);
 
-constexpr COLORREF kLightAccentSoft = RGB(223, 237, 251);
-constexpr COLORREF kDarkAccentSoft = RGB(53, 45, 111);  // purple-tinted pill, not blue-tinted
+constexpr COLORREF kLightAccentSoft = RGB(237, 233, 254);
+constexpr COLORREF kDarkAccentSoft = RGB(48, 35, 85);
 
-constexpr COLORREF kLightSidebarBg = RGB(246, 247, 249);
-constexpr COLORREF kDarkSidebarBg = RGB(32, 34, 37);  // Discord's #202225-family nav level
+constexpr COLORREF kLightSidebarBg = RGB(246, 247, 251);
+constexpr COLORREF kDarkSidebarBg = RGB(22, 25, 34);       // navigation surface
 
-constexpr COLORREF kLightContentBg = RGB(255, 255, 255);
-constexpr COLORREF kDarkContentBg = RGB(54, 57, 63);  // Discord's #36393f content level
+constexpr COLORREF kLightContentBg = RGB(252, 252, 254);
+constexpr COLORREF kDarkContentBg = RGB(15, 17, 23);       // canvas #0F1117
 
-constexpr COLORREF kLightHoverBg = RGB(237, 238, 241);
-constexpr COLORREF kDarkHoverBg = RGB(66, 70, 78);
+constexpr COLORREF kLightSurfaceBg = RGB(255, 255, 255);
+constexpr COLORREF kDarkSurfaceBg = RGB(26, 29, 39);       // card surface
 
-constexpr COLORREF kLightBorder = RGB(226, 227, 231);
-constexpr COLORREF kDarkBorder = RGB(32, 34, 37);
+constexpr COLORREF kLightHoverBg = RGB(238, 237, 247);
+constexpr COLORREF kDarkHoverBg = RGB(34, 39, 52);         // elevated surface
+
+constexpr COLORREF kLightBorder = RGB(218, 218, 229);
+constexpr COLORREF kDarkBorder = RGB(54, 59, 73);
 
 // Header column separator lines specifically (see HeaderSubclassProc) -
 // deliberately its own token rather than reusing Border(): Border()'s dark
@@ -86,32 +80,35 @@ constexpr COLORREF kDarkBorder = RGB(32, 34, 37);
 // the light one to read as equally visible - a +28 step off kDarkHoverBg
 // (66,70,78) was too close in practice (still looked unchanged), so this
 // uses a bigger step, similar in spirit to kDarkTextSecondary's brightness.
-constexpr COLORREF kLightHeaderLine = RGB(205, 207, 212);
-constexpr COLORREF kDarkHeaderLine = RGB(130, 135, 145);
+constexpr COLORREF kLightHeaderLine = RGB(210, 210, 221);
+constexpr COLORREF kDarkHeaderLine = RGB(56, 61, 74);
 
-constexpr COLORREF kLightDisabledFill = RGB(210, 213, 218);
-constexpr COLORREF kDarkDisabledFill = RGB(64, 68, 75);
+constexpr COLORREF kLightDisabledFill = RGB(220, 220, 228);
+constexpr COLORREF kDarkDisabledFill = RGB(57, 61, 72);
 
 // Recessed input fields (edit boxes, combos) sit a shade darker than the
 // page itself, the way Discord's own text inputs read as "cut into" the
 // dark surface instead of floating on it as a bright white rectangle.
-constexpr COLORREF kLightEditBg = RGB(255, 255, 255);
-constexpr COLORREF kDarkEditBg = RGB(40, 43, 48);
+constexpr COLORREF kLightEditBg = RGB(247, 247, 251);
+constexpr COLORREF kDarkEditBg = RGB(18, 20, 28);
 
-constexpr COLORREF kLightTextPrimary = RGB(31, 31, 31);
-constexpr COLORREF kDarkTextPrimary = RGB(220, 221, 222);
+constexpr COLORREF kLightTextPrimary = RGB(26, 25, 35);
+constexpr COLORREF kDarkTextPrimary = RGB(245, 243, 250);
 
-constexpr COLORREF kLightTextSecondary = RGB(112, 112, 118);
-constexpr COLORREF kDarkTextSecondary = RGB(148, 150, 155);
+constexpr COLORREF kLightTextSecondary = RGB(93, 89, 105);
+constexpr COLORREF kDarkTextSecondary = RGB(184, 178, 197);
 
-constexpr COLORREF kLightTextDisabled = RGB(170, 170, 174);
-constexpr COLORREF kDarkTextDisabled = RGB(98, 100, 105);
+constexpr COLORREF kLightTextDisabled = RGB(157, 155, 169);
+constexpr COLORREF kDarkTextDisabled = RGB(117, 113, 130);
 
-constexpr COLORREF kLightDanger = RGB(196, 43, 28);
-constexpr COLORREF kDarkDanger = RGB(237, 66, 69);  // Discord red
+constexpr COLORREF kLightDanger = RGB(190, 43, 55);
+constexpr COLORREF kDarkDanger = RGB(239, 68, 68);
 
-constexpr COLORREF kLightSuccess = RGB(20, 132, 86);
-constexpr COLORREF kDarkSuccess = RGB(59, 165, 93);  // Discord green
+constexpr COLORREF kLightSuccess = RGB(5, 150, 105);
+constexpr COLORREF kDarkSuccess = RGB(16, 185, 129);
+
+constexpr COLORREF kLightWarning = RGB(180, 111, 0);
+constexpr COLORREF kDarkWarning = RGB(245, 158, 11);
 
 inline COLORREF Accent() { return IsDarkMode() ? kDarkAccent : kLightAccent; }
 inline COLORREF AccentHover() { return IsDarkMode() ? kDarkAccentHover : kLightAccentHover; }
@@ -120,6 +117,7 @@ inline COLORREF TextOnAccent() { return kTextOnAccent; }
 inline COLORREF AccentSoft() { return IsDarkMode() ? kDarkAccentSoft : kLightAccentSoft; }
 inline COLORREF SidebarBg() { return IsDarkMode() ? kDarkSidebarBg : kLightSidebarBg; }
 inline COLORREF ContentBg() { return IsDarkMode() ? kDarkContentBg : kLightContentBg; }
+inline COLORREF SurfaceBg() { return IsDarkMode() ? kDarkSurfaceBg : kLightSurfaceBg; }
 inline COLORREF HoverBg() { return IsDarkMode() ? kDarkHoverBg : kLightHoverBg; }
 inline COLORREF Border() { return IsDarkMode() ? kDarkBorder : kLightBorder; }
 inline COLORREF HeaderLine() { return IsDarkMode() ? kDarkHeaderLine : kLightHeaderLine; }
@@ -130,6 +128,7 @@ inline COLORREF TextSecondary() { return IsDarkMode() ? kDarkTextSecondary : kLi
 inline COLORREF TextDisabled() { return IsDarkMode() ? kDarkTextDisabled : kLightTextDisabled; }
 inline COLORREF Danger() { return IsDarkMode() ? kDarkDanger : kLightDanger; }
 inline COLORREF Success() { return IsDarkMode() ? kDarkSuccess : kLightSuccess; }
+inline COLORREF Warning() { return IsDarkMode() ? kDarkWarning : kLightWarning; }
 
 // Brushes used as WM_CTLCOLORSTATIC/WM_CTLCOLORLISTBOX return values need a
 // stable HBRUSH the caller doesn't delete - these keep one brush per mode
@@ -147,6 +146,12 @@ inline HBRUSH ContentBgBrush() {
 inline HBRUSH SidebarBgBrush() {
     static HBRUSH light = ::CreateSolidBrush(kLightSidebarBg);
     static HBRUSH dark = ::CreateSolidBrush(kDarkSidebarBg);
+    return IsDarkMode() ? dark : light;
+}
+
+inline HBRUSH SurfaceBgBrush() {
+    static HBRUSH light = ::CreateSolidBrush(kLightSurfaceBg);
+    static HBRUSH dark = ::CreateSolidBrush(kDarkSurfaceBg);
     return IsDarkMode() ? dark : light;
 }
 
@@ -185,7 +190,7 @@ inline LRESULT CALLBACK HeaderSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, L
         ::FillRect(hdc, &clientRect, bg);
         ::DeleteObject(bg);
 
-        HFONT font = reinterpret_cast<HFONT>(::SendMessage(hwnd, WM_GETFONT, 0, 0));
+        HFONT font = std::bit_cast<HFONT>(::SendMessage(hwnd, WM_GETFONT, 0, 0));
         HGDIOBJ oldFont = font ? ::SelectObject(hdc, font) : nullptr;
         ::SetBkMode(hdc, TRANSPARENT);
         ::SetTextColor(hdc, TextSecondary());
@@ -252,8 +257,8 @@ inline LRESULT CALLBACK HeaderSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, L
 // created after the toggle.
 inline void ApplyListViewTheme(CListViewCtrl& listView) {
     ::SetWindowTheme(listView.m_hWnd, IsDarkMode() ? L"DarkMode_Explorer" : L"Explorer", nullptr);
-    listView.SetBkColor(ContentBg());
-    listView.SetTextBkColor(ContentBg());
+    listView.SetBkColor(SurfaceBg());
+    listView.SetTextBkColor(SurfaceBg());
     listView.SetTextColor(TextPrimary());
 
     HWND header = ListView_GetHeader(listView.m_hWnd);
@@ -263,7 +268,7 @@ inline void ApplyListViewTheme(CListViewCtrl& listView) {
     }
 }
 
-constexpr int kRadiusButton = 6;
+constexpr int kRadiusButton = 8;
 constexpr int kRadiusPill = 999;  // clamped to half-height by the drawing helper - a true pill
 constexpr int kMargin = 28;
 

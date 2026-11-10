@@ -52,7 +52,7 @@ public:
     // ignores the Range header and starts sending the whole file).
     SonyHttpResponse get(const std::string& url, size_t maxBytes = 0) {
         const auto parsed = crackUrl(url);
-        if (!parsed) return failure("not a valid address: " + url);
+        if (!parsed) return failure(std::format("not a valid address: {}", url));
 
         SonyHttpResponse response;
         for (int attempt = 0; attempt < 2; ++attempt) {
@@ -207,15 +207,15 @@ std::optional<SonyUpdateInfo> newestPackage(const std::string& xml, const std::s
     std::optional<SonyUpdateInfo> newest;
     for (const auto& tag : packageTags(xml)) {
         const auto version = xmlAttribute(tag, versionAttribute);
-        if (!version || version->empty()) continue;
+        if (!version.has_value() || version->empty()) continue;
 
         SonyUpdateInfo info;
         info.version = *version;
-        if (const auto size = xmlAttribute(tag, "size")) info.sizeBytes = toNumber(*size);
-        if (const auto manifest = xmlAttribute(tag, "manifest_url")) info.manifestUrl = *manifest;
-        if (const auto url = xmlAttribute(tag, "url")) info.url = *url;
-        if (const auto digest = xmlAttribute(tag, "digest")) info.digest = *digest;
-        if (!newest || core::compareVersions(info.version, newest->version) > 0) newest = std::move(info);
+        if (const auto size = xmlAttribute(tag, "size"); size.has_value()) info.sizeBytes = toNumber(*size);
+        if (const auto manifest = xmlAttribute(tag, "manifest_url"); manifest.has_value()) info.manifestUrl = *manifest;
+        if (const auto url = xmlAttribute(tag, "url"); url.has_value()) info.url = *url;
+        if (const auto digest = xmlAttribute(tag, "digest"); digest.has_value()) info.digest = *digest;
+        if (!newest.has_value() || core::compareVersions(info.version, newest->version) > 0) newest = std::move(info);
     }
     return newest;
 }
@@ -322,7 +322,7 @@ std::optional<SonyPackageManifest> ParseSonyPackageManifest(const std::string& j
 
     SonyPackageManifest manifest;
     size_t end = 0;
-    if (const auto total = numberAfter("originalFileSize", 0, end)) manifest.originalFileSize = *total;
+    if (const auto total = numberAfter("originalFileSize", 0, end); total.has_value()) manifest.originalFileSize = *total;
 
     // Each piece is one flat {...} object inside "pieces"; read its three
     // fields from that object's own text so they can't be mixed up between
@@ -493,7 +493,7 @@ core::LatestReleaseResult SonyUpdateService::latestRelease(const std::string& pl
     }
 
     if (std::chrono::steady_clock::now() < pausedUntil_) {
-        result.detail = "skipped after repeated failures: " + pauseReason_;
+        result.detail = std::format("skipped after repeated failures: {}", pauseReason_);
         return result;
     }
 
@@ -520,7 +520,7 @@ core::LatestReleaseResult SonyUpdateService::ps4Latest(const std::string& titleI
     core::LatestReleaseResult result;
     const auto response = fetcher_(SonyPs4UpdateUrl(titleId));
     if (response.status == 0) {
-        result.detail = "no answer from Sony: " + response.failure;
+        result.detail = std::format("no answer from Sony: {}", response.failure);
         return result;
     }
     if (response.status == 404) {
@@ -547,7 +547,7 @@ core::LatestReleaseResult SonyUpdateService::ps4Latest(const std::string& titleI
     if (!info->manifestUrl.empty()) {
         const auto manifestResponse = fetcher_(info->manifestUrl);
         if (manifestResponse.status == 200) {
-            if (const auto manifest = ParseSonyPackageManifest(manifestResponse.body)) {
+            if (const auto manifest = ParseSonyPackageManifest(manifestResponse.body); manifest.has_value()) {
                 result.release.pieces = manifest->pieces;
                 if (manifest->originalFileSize > 0) result.release.packageSizeBytes = manifest->originalFileSize;
             }
@@ -571,13 +571,13 @@ core::LatestReleaseResult SonyUpdateService::ps5Latest(const std::string& titleI
     const auto link = ps5Links_.find(titleId);
     if (link == ps5Links_.end()) {
         result.status = core::LatestReleaseStatus::NoSonyLink;
-        result.detail = "no Sony version link saved for " + titleId;
+        result.detail = std::format("no Sony version link saved for {}", titleId);
         return result;
     }
 
     const auto versionFile = fetcher_(link->second);
     if (versionFile.status == 0) {
-        result.detail = "no answer from Sony: " + versionFile.failure;
+        result.detail = std::format("no answer from Sony: {}", versionFile.failure);
         return result;
     }
     if (versionFile.status != 200) {
@@ -599,7 +599,7 @@ core::LatestReleaseResult SonyUpdateService::ps5Latest(const std::string& titleI
     if (!info->manifestUrl.empty()) {
         const auto manifestResponse = fetcher_(info->manifestUrl);
         if (manifestResponse.status == 200) {
-            if (const auto manifest = ParseSonyPackageManifest(manifestResponse.body)) {
+            if (const auto manifest = ParseSonyPackageManifest(manifestResponse.body); manifest.has_value()) {
                 result.release.pieceSizes = manifest->pieceSizes;
                 result.release.pieces = manifest->pieces;
                 if (manifest->originalFileSize > 0) result.release.packageSizeBytes = manifest->originalFileSize;

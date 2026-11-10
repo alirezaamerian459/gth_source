@@ -36,7 +36,7 @@ private:
     void acceptLoop(core::FtpServerConfig config);
     void handleClient(std::uintptr_t clientSocket, std::string rootPath);
 
-    std::thread acceptThread_;
+    std::jthread acceptThread_;
     std::atomic<bool> running_{false};
     std::atomic<int> port_{0};
 };

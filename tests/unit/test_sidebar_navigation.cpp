@@ -11,7 +11,7 @@ TEST(SidebarNavigationTest, ShowsAllSectionHeadingsButOnlyExpandedPages) {
     const auto rows = BuildSidebarNavigationRows(VisibleSidebarTabIndices({}, true), expanded);
 
     EXPECT_EQ(rows, (std::vector<int>{SidebarGroupRowValue(SidebarGroup::Workspace), kSidebarDashboardIndex, 1, 2,
-                                      3, 4, 7, SidebarGroupRowValue(SidebarGroup::Devices),
+                                      3, 4, SidebarGroupRowValue(SidebarGroup::Devices),
                                       SidebarGroupRowValue(SidebarGroup::LibraryData),
                                       SidebarGroupRowValue(SidebarGroup::Administration),
                                       SidebarGroupRowValue(SidebarGroup::Settings)}));
@@ -22,6 +22,7 @@ TEST(SidebarNavigationTest, ExpandingAnotherSectionAddsItsPagesWithoutChangingRo
     const auto rows = BuildSidebarNavigationRows(VisibleSidebarTabIndices({}, true), expanded);
 
     EXPECT_NE(std::find(rows.begin(), rows.end(), SidebarGroupRowValue(SidebarGroup::Devices)), rows.end());
+    EXPECT_NE(std::find(rows.begin(), rows.end(), 5), rows.end());  // Storage
     EXPECT_NE(std::find(rows.begin(), rows.end(), 6), rows.end());  // Consoles
     EXPECT_NE(std::find(rows.begin(), rows.end(), 8), rows.end());  // FTP
     EXPECT_NE(std::find(rows.begin(), rows.end(), 9), rows.end());  // Network

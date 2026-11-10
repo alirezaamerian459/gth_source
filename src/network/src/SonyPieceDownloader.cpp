@@ -59,7 +59,7 @@ AttemptOutcome fetchRemainder(const ParsedUrl& url, const fs::path& destination,
     }
 
     std::wstring headers;
-    if (have > 0) headers = L"Range: bytes=" + std::to_wstring(have) + L"-\r\n";
+    if (have > 0) headers = std::format(L"Range: bytes={}-\r\n", have);
     if (!WinHttpSendRequest(request, headers.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : headers.c_str(),
                             headers.empty() ? 0 : static_cast<DWORD>(-1), WINHTTP_NO_REQUEST_DATA, 0, 0, 0)) {
         return retry(describeWinHttpError(GetLastError()));
@@ -122,7 +122,7 @@ core::PieceDownloadResult SonyPieceDownloader::download(const std::string& url, 
     core::PieceDownloadResult result;
     const auto parsed = crackUrl(url);
     if (!parsed || !isSonyHost(parsed->host)) {
-        result.error = "refusing to download from an address that isn't on Sony's servers: " + url;
+        result.error = std::format("refusing to download from an address that isn't on Sony's servers: {}", url);
         return result;
     }
     if (expectedSizeBytes <= 0) {

@@ -18,7 +18,7 @@ std::string formatSummary(const core::reports::ArchiveHealthReport& report) {
 AgentService::AgentService(IReportService& reportService, core::IRemoteReportSender& sender, std::string localNodeId)
     : reportService_(reportService), sender_(sender), localNodeId_(std::move(localNodeId)) {}
 
-AgentService::~AgentService() { stop(); }
+AgentService::~AgentService() { AgentService::stop(); }
 
 bool AgentService::sendOneReport() {
     const auto report = reportService_.generate();
@@ -37,7 +37,7 @@ bool AgentService::start(const std::string& serverAddress, int port, const std::
     const bool firstReportSucceeded = sendOneReport();
 
     running_.store(true);
-    thread_ = std::thread(&AgentService::run, this);
+    thread_ = std::jthread(&AgentService::run, this);
     return firstReportSucceeded;
 }
 
@@ -48,7 +48,7 @@ void AgentService::stop() {
 }
 
 void AgentService::run() {
-    std::unique_lock<std::mutex> lock(mutex_);
+    std::unique_lock lock(mutex_);
     while (running_.load()) {
         cv_.wait_for(lock, interval_, [this] { return !running_.load(); });
         if (!running_.load()) break;

@@ -101,7 +101,10 @@ std::optional<DownloadHistoryEntry> ParseDownloadHistoryLine(const std::string& 
     const auto outcome = stringToOutcome(fields[4]);
     const auto bytes = parseLongLong(fields[5]);
     const auto duration = parseLongLong(fields[6]);
-    if (!when || !kind || !outcome || !bytes || !duration) return std::nullopt;
+    if (!when.has_value() || !kind.has_value() || !outcome.has_value() || !bytes.has_value() ||
+        !duration.has_value()) {
+        return std::nullopt;
+    }
 
     DownloadHistoryEntry entry;
     entry.when = static_cast<std::time_t>(*when);
@@ -147,7 +150,7 @@ std::vector<DownloadHistoryEntry> ReadDownloadHistory(const std::filesystem::pat
     std::string line;
     while (std::getline(lines, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (auto entry = ParseDownloadHistoryLine(line)) entries.push_back(std::move(*entry));
+        if (auto entry = ParseDownloadHistoryLine(line); entry.has_value()) entries.push_back(std::move(*entry));
     }
 
     std::reverse(entries.begin(), entries.end());  // newest first

@@ -17,9 +17,9 @@ public:
                             const std::optional<std::string>& newPassword) override;
 
 private:
-    // Reads the stored admin credential, seeding the default
-    // (drgame/12345678) on first use if nothing's been saved yet.
-    core::Credential loadOrSeedCredential();
+    // A first sign-in saves the values supplied by the user. No default
+    // password is embedded in the application.
+    std::optional<core::Credential> loadCredential();
 
     core::ICredentialStore& credentialStore_;
     bool signedIn_ = false;

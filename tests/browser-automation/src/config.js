@@ -27,8 +27,8 @@ export const config = {
       path.join(__dirname, '..', 'session-data'),
 
     // Browser window size for visual testing
-    viewportWidth: parseInt(process.env.VIEWPORT_WIDTH || '1280', 10),
-    viewportHeight: parseInt(process.env.VIEWPORT_HEIGHT || '720', 10),
+    viewportWidth: Number.parseInt(process.env.VIEWPORT_WIDTH || '1280', 10),
+    viewportHeight: Number.parseInt(process.env.VIEWPORT_HEIGHT || '720', 10),
   },
 
   // Test target configuration
@@ -37,19 +37,19 @@ export const config = {
     targetUrl: process.env.TARGET_URL || 'http://localhost:8080',
 
     // Navigation timeout in milliseconds
-    navigationTimeout: parseInt(process.env.NAVIGATION_TIMEOUT || '30000', 10),
+    navigationTimeout: Number.parseInt(process.env.NAVIGATION_TIMEOUT || '30000', 10),
 
     // Wait for page ready timeout
-    pageReadyTimeout: parseInt(process.env.PAGE_READY_TIMEOUT || '10000', 10),
+    pageReadyTimeout: Number.parseInt(process.env.PAGE_READY_TIMEOUT || '10000', 10),
   },
 
   // CAPTCHA configuration
   captcha: {
     // CAPTCHA detection timeout (how long to wait for CAPTCHA to appear)
-    detectionTimeout: parseInt(process.env.CAPTCHA_DETECTION_TIMEOUT || '15000', 10),
+    detectionTimeout: Number.parseInt(process.env.CAPTCHA_DETECTION_TIMEOUT || '15000', 10),
 
     // CAPTCHA completion timeout (how long to wait for manual completion)
-    completionTimeout: parseInt(process.env.CAPTCHA_COMPLETION_TIMEOUT || '300000', 10), // 5 minutes
+    completionTimeout: Number.parseInt(process.env.CAPTCHA_COMPLETION_TIMEOUT || '300000', 10), // 5 minutes
 
     // CAPTCHA test mode enabled (looks for test-mode signals)
     testModeEnabled: process.env.CAPTCHA_TEST_MODE === 'true',
@@ -67,13 +67,13 @@ export const config = {
   // Interaction configuration
   interaction: {
     // Optional pause between mouse actions (milliseconds)
-    interactionDelay: parseInt(process.env.INTERACTION_DELAY || '100', 10),
+    interactionDelay: Number.parseInt(process.env.INTERACTION_DELAY || '100', 10),
 
     // Mouse move duration in milliseconds
-    mouseMoveDelay: parseInt(process.env.MOUSE_MOVE_DELAY || '300', 10),
+    mouseMoveDelay: Number.parseInt(process.env.MOUSE_MOVE_DELAY || '300', 10),
 
     // Wait time after click before next action
-    clickWaitDelay: parseInt(process.env.CLICK_WAIT_DELAY || '200', 10),
+    clickWaitDelay: Number.parseInt(process.env.CLICK_WAIT_DELAY || '200', 10),
   },
 
   // Logging configuration
@@ -102,10 +102,10 @@ export const config = {
   // Retry configuration
   retry: {
     // Maximum retries for failed operations
-    maxRetries: parseInt(process.env.MAX_RETRIES || '3', 10),
+    maxRetries: Number.parseInt(process.env.MAX_RETRIES || '3', 10),
 
     // Delay between retries in milliseconds
-    retryDelay: parseInt(process.env.RETRY_DELAY || '1000', 10),
+    retryDelay: Number.parseInt(process.env.RETRY_DELAY || '1000', 10),
   },
 
   // Debug configuration

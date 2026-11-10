@@ -37,7 +37,7 @@ struct ConsoleFixture {
 
 TEST(ConsoleManagerServiceTest, AddConsolePersistsIt) {
     ConsoleFixture fixture;
-    auto console = fixture.service.addConsole("Living Room PS5", "PS5", "192.168.1.50", 2121, ConsoleProtocol::Ftp);
+    auto console = fixture.service.addConsole("Living Room PS5", "PS5", "192.168.1.50", 2121, ConsoleProtocol::Ftp);  // NOSONAR: RFC1918 fixture value; this fake service does not connect to it.
 
     EXPECT_EQ(console.name, "Living Room PS5");
     EXPECT_EQ(console.status, ConsoleStatus::Unknown);
@@ -51,7 +51,7 @@ TEST(ConsoleManagerServiceTest, AddConsolePersistsIt) {
 
 TEST(ConsoleManagerServiceTest, RemoveConsoleDeletesIt) {
     ConsoleFixture fixture;
-    auto console = fixture.service.addConsole("Test", "Switch", "192.168.1.60", 21, ConsoleProtocol::Ftp);
+    auto console = fixture.service.addConsole("Test", "Switch", "192.168.1.60", 21, ConsoleProtocol::Ftp);  // NOSONAR: RFC1918 fixture value; this fake service does not connect to it.
 
     fixture.service.removeConsole(console.consoleId);
 
@@ -60,7 +60,7 @@ TEST(ConsoleManagerServiceTest, RemoveConsoleDeletesIt) {
 
 TEST(ConsoleManagerServiceTest, CheckReachabilityUpdatesStatusToOnlineAndSetsLastConnected) {
     ConsoleFixture fixture;
-    auto console = fixture.service.addConsole("Test", "PS5", "192.168.1.50", 2121, ConsoleProtocol::Ftp);
+    auto console = fixture.service.addConsole("Test", "PS5", "192.168.1.50", 2121, ConsoleProtocol::Ftp);  // NOSONAR: RFC1918 fixture value; this fake service does not connect to it.
     fixture.checker.shouldSucceed = true;
 
     auto status = fixture.service.checkReachability(console.consoleId);
@@ -77,7 +77,7 @@ TEST(ConsoleManagerServiceTest, CheckReachabilityUpdatesStatusToOnlineAndSetsLas
 
 TEST(ConsoleManagerServiceTest, CheckReachabilityUpdatesStatusToOfflineWithoutTouchingLastConnected) {
     ConsoleFixture fixture;
-    auto console = fixture.service.addConsole("Test", "PS5", "192.168.1.50", 2121, ConsoleProtocol::Ftp);
+    auto console = fixture.service.addConsole("Test", "PS5", "192.168.1.50", 2121, ConsoleProtocol::Ftp);  // NOSONAR: RFC1918 fixture value; this fake service does not connect to it.
     fixture.checker.shouldSucceed = false;
 
     auto status = fixture.service.checkReachability(console.consoleId);
@@ -98,7 +98,7 @@ TEST(ConsoleManagerServiceTest, CheckReachabilityReturnsUnknownForNonexistentCon
 
 TEST(ConsoleManagerServiceTest, RecordConnectionCreatesAutoDetectedConsoleOnFirstSighting) {
     ConsoleFixture fixture;
-    fixture.service.recordConnection("192.168.1.77", "libhttp/1.0 (PlayStation 5)", 8080, ConsoleProtocol::Http);
+    fixture.service.recordConnection("192.168.1.77", "libhttp/1.0 (PlayStation 5)", 8080, ConsoleProtocol::Http);  // NOSONAR: RFC1918 fixture value; no socket is opened.
 
     auto all = fixture.service.getAllConsoles();
     ASSERT_EQ(all.size(), 1u);
@@ -113,12 +113,12 @@ TEST(ConsoleManagerServiceTest, RecordConnectionCreatesAutoDetectedConsoleOnFirs
 
 TEST(ConsoleManagerServiceTest, RecordConnectionUpsertsExistingConsoleByIpInsteadOfDuplicating) {
     ConsoleFixture fixture;
-    fixture.service.recordConnection("192.168.1.77", "", 8080, ConsoleProtocol::Http);
+    fixture.service.recordConnection("192.168.1.77", "", 8080, ConsoleProtocol::Http);  // NOSONAR: RFC1918 fixture value; no socket is opened.
     auto firstPass = fixture.service.getAllConsoles();
     ASSERT_EQ(firstPass.size(), 1u);
     const std::string consoleId = firstPass[0].consoleId;
 
-    fixture.service.recordConnection("192.168.1.77", "", 8081, ConsoleProtocol::Http);
+    fixture.service.recordConnection("192.168.1.77", "", 8081, ConsoleProtocol::Http);  // NOSONAR: RFC1918 fixture value; no socket is opened.
 
     auto all = fixture.service.getAllConsoles();
     ASSERT_EQ(all.size(), 1u);
@@ -128,9 +128,9 @@ TEST(ConsoleManagerServiceTest, RecordConnectionUpsertsExistingConsoleByIpInstea
 
 TEST(ConsoleManagerServiceTest, RecordConnectionNeverOverwritesAnAlreadyKnownPlatformOrManualFlag) {
     ConsoleFixture fixture;
-    fixture.service.addConsole("Living Room PS5", "PS5", "192.168.1.77", 2121, ConsoleProtocol::Ftp);
+    fixture.service.addConsole("Living Room PS5", "PS5", "192.168.1.77", 2121, ConsoleProtocol::Ftp);  // NOSONAR: RFC1918 fixture value; this fake service does not connect to it.
 
-    fixture.service.recordConnection("192.168.1.77", "some-other-hint", 8080, ConsoleProtocol::Http);
+    fixture.service.recordConnection("192.168.1.77", "some-other-hint", 8080, ConsoleProtocol::Http);  // NOSONAR: RFC1918 fixture value; no socket is opened.
 
     auto all = fixture.service.getAllConsoles();
     ASSERT_EQ(all.size(), 1u);

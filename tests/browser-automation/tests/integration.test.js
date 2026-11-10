@@ -20,10 +20,14 @@ test('isAllowedHost - Rejects non-allowed hosts', () => {
 });
 
 test('isAllowedHost - Handles wildcard domains', () => {
-  // Test with wildcard support
-  const url = 'http://sub.example.com';
-  // Wildcard matching would be: *.example.com
-  // This depends on implementation
+  const originalAllowedHosts = config.browser.allowedHosts;
+  config.browser.allowedHosts = ['*.example.com'];
+  try {
+    assert.ok(isAllowedHost('http://sub.example.com'));
+    assert.ok(!isAllowedHost('http://example.com'));
+  } finally {
+    config.browser.allowedHosts = originalAllowedHosts;
+  }
 });
 
 test('isAllowedHost - Handles invalid URLs', () => {

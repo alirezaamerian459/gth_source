@@ -86,14 +86,14 @@ private:
     // the app being "stuck" to the user). Run it on this background thread
     // instead; a short-lived poll timer notices completion and updates the
     // UI on the UI thread.
-    std::thread scanThread_;
+    std::jthread scanThread_;
     std::atomic<bool> scanInProgress_{false};
 
     // "Test Online Lookup": asks the tracker sites about two known titles and
     // shows exactly what came back (or why it didn't), independent of any
     // scan. Shares the lookup service with the scan thread, which isn't safe
     // to use from two threads, so the two never run at the same time.
-    std::thread testThread_;
+    std::jthread testThread_;
     std::atomic<bool> testInProgress_{false};
 
     // Written by the background thread before scanInProgress_.store(false),

@@ -6,10 +6,12 @@
 #include <ntddscsi.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstring>
 #include <cwchar>
+#include <format>
 #include <future>
 #include <memory>
 #include <optional>
@@ -58,7 +60,7 @@ std::vector<int> resolveVolumeDiskNumbers(const std::string& rootPath) {
     // Every extent of the volume: one for a plain volume, one per disk for a spanned/striped one. The
     // structure is variable-length, so when the buffer is too small Windows fills in the extent count
     // and reports ERROR_MORE_DATA - grow to fit and ask again.
-    std::vector<unsigned char> buffer(sizeof(VOLUME_DISK_EXTENTS) + 7 * sizeof(DISK_EXTENT));
+    std::vector<std::byte> buffer(sizeof(VOLUME_DISK_EXTENTS) + 7 * sizeof(DISK_EXTENT));
     for (int attempt = 0; attempt < 3 && numbers.empty(); ++attempt) {
         DWORD returned = 0;
         if (::DeviceIoControl(handle, IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, nullptr, 0, buffer.data(),
@@ -87,14 +89,16 @@ std::vector<int> resolveVolumeDiskNumbers(const std::string& rootPath) {
 #pragma pack(push, 1)
 struct AtaPassThroughBuffer {
     ATA_PASS_THROUGH_EX header;
-    UCHAR data[512];
+    std::array<UCHAR, 512> data{};
 };
 #pragma pack(pop)
+static_assert(offsetof(AtaPassThroughBuffer, data) == sizeof(ATA_PASS_THROUGH_EX));
+static_assert(sizeof(AtaPassThroughBuffer) == sizeof(ATA_PASS_THROUGH_EX) + 512);
 
 // One ATA SMART sub-command that returns a 512-byte sector: READ DATA (feature 0xD0) or READ THRESHOLDS (0xD1).
 // Both only read; nothing is written to the disk and no self-test is started. Command 0xB0 is SMART; the
 // 0x4F / 0xC2 signature in the LBA mid/high registers is what ATA requires of every SMART sub-command.
-bool ataSmartReadSector(HANDLE handle, UCHAR feature, unsigned char (&sector)[512]) {
+bool ataSmartReadSector(HANDLE handle, UCHAR feature, std::array<unsigned char, 512>& sector) {
     AtaPassThroughBuffer buffer{};
     buffer.header.Length = sizeof(ATA_PASS_THROUGH_EX);
     buffer.header.AtaFlags = ATA_FLAGS_DRDY_REQUIRED | ATA_FLAGS_DATA_IN;
@@ -114,14 +118,14 @@ bool ataSmartReadSector(HANDLE handle, UCHAR feature, unsigned char (&sector)[51
                             &bytesReturned, nullptr)) {
         return false;
     }
-    std::memcpy(sector, buffer.data, sizeof(sector));
+    std::memcpy(sector.data(), buffer.data.data(), sector.size());
     return true;
 }
 
 // The NVMe SMART / Health Information log page (log id 2) through the standard storage-protocol query -
 // how Windows itself reads it. NVMe disks have no ATA SMART table.
 std::optional<NvmeHealth> readNvmeHealth(int driveNumber) {
-    const std::wstring path = L"\\\\.\\PhysicalDrive" + std::to_wstring(driveNumber);
+    const std::wstring path = std::format(L"\\\\.\\PhysicalDrive{}", driveNumber);
     HANDLE handle = ::CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
                                    OPEN_EXISTING, 0, nullptr);
     if (handle == INVALID_HANDLE_VALUE) {
@@ -163,7 +167,7 @@ std::optional<NvmeHealth> readNvmeHealth(int driveNumber) {
 // WMI provider doesn't describe (dynamic disks, some USB bridges). Needs no elevation. Same coarse
 // translation as the WMI health enum below: a real yes/no signal, not an invented precision.
 std::optional<int> readHealthViaPredictFailure(int driveNumber) {
-    const std::wstring path = L"\\\\.\\PhysicalDrive" + std::to_wstring(driveNumber);
+    const std::wstring path = std::format(L"\\\\.\\PhysicalDrive{}", driveNumber);
     HANDLE handle = ::CreateFileW(path.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
     if (handle == INVALID_HANDLE_VALUE) return std::nullopt;
 
@@ -178,24 +182,25 @@ std::optional<int> readHealthViaPredictFailure(int driveNumber) {
 
 // "Vendor Product" from the storage device descriptor - readable without elevation.
 std::string readModelViaIoctl(int driveNumber) {
-    const std::wstring path = L"\\\\.\\PhysicalDrive" + std::to_wstring(driveNumber);
+    const std::wstring path = std::format(L"\\\\.\\PhysicalDrive{}", driveNumber);
     HANDLE handle = ::CreateFileW(path.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
     if (handle == INVALID_HANDLE_VALUE) return {};
 
     STORAGE_PROPERTY_QUERY query{};
     query.PropertyId = StorageDeviceProperty;
     query.QueryType = PropertyStandardQuery;
-    alignas(8) unsigned char buffer[1024] = {};
+    alignas(8) std::array<unsigned char, 1024> buffer{};
     DWORD returned = 0;
-    const bool ok = ::DeviceIoControl(handle, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query), buffer, sizeof(buffer),
+    const bool ok = ::DeviceIoControl(handle, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query), buffer.data(),
+                                       static_cast<DWORD>(buffer.size()),
                                        &returned, nullptr) != 0;
     ::CloseHandle(handle);
     if (!ok || returned < sizeof(STORAGE_DEVICE_DESCRIPTOR)) return {};
 
-    const auto* descriptor = reinterpret_cast<const STORAGE_DEVICE_DESCRIPTOR*>(buffer);
+    const auto* descriptor = reinterpret_cast<const STORAGE_DEVICE_DESCRIPTOR*>(buffer.data());
     const auto text = [&](DWORD offset) -> std::string {
         if (offset == 0 || offset >= returned) return {};
-        std::string value(reinterpret_cast<const char*>(buffer) + offset);
+        std::string value(reinterpret_cast<const char*>(buffer.data()) + offset);
         while (!value.empty() && value.back() == ' ') value.pop_back();
         while (!value.empty() && value.front() == ' ') value.erase(value.begin());
         return value;
@@ -386,27 +391,29 @@ std::optional<int> healthPercentFromStatus(int healthStatus) {
 std::vector<int> storageSpacesMemberDisks(WmiStorageSession& session, int number) {
     std::vector<int> members;
 
-    std::wstring diskPath;
-    if (IWbemClassObject* disk = session.queryFirst(L"SELECT * FROM MSFT_Disk WHERE Number = " + std::to_wstring(number))) {
-        if (const auto path = readStringProperty(disk, L"__RELPATH")) diskPath = *path;
-        disk->Release();
-    }
-    if (diskPath.empty()) return members;
+    IWbemClassObject* disk = session.queryFirst(std::format(L"SELECT * FROM MSFT_Disk WHERE Number = {}", number));
+    if (disk == nullptr) return members;
+    const auto diskPath = readStringProperty(disk, L"__RELPATH");
+    disk->Release();
+    if (!diskPath.has_value() || diskPath->empty()) return members;
 
-    for (IWbemClassObject* virtualDisk :
-         session.queryAll(L"ASSOCIATORS OF {" + diskPath + L"} WHERE AssocClass = MSFT_VirtualDiskToDisk")) {
+    for (IWbemClassObject* virtualDisk : session.queryAll(L"ASSOCIATORS OF {" + *diskPath +
+                                                           L"} WHERE AssocClass = MSFT_VirtualDiskToDisk")) {
         const auto virtualPath = readStringProperty(virtualDisk, L"__RELPATH");
         virtualDisk->Release();
-        if (!virtualPath) continue;
+        if (!virtualPath.has_value()) continue;
 
-        for (IWbemClassObject* physical :
-             session.queryAll(L"ASSOCIATORS OF {" + *virtualPath + L"} WHERE AssocClass = MSFT_VirtualDiskToPhysicalDisk")) {
-            if (const auto id = readStringProperty(physical, L"DeviceId")) {
-                wchar_t* end = nullptr;
-                const long value = ::wcstol(id->c_str(), &end, 10);
-                if (end != id->c_str() && value >= 0) members.push_back(static_cast<int>(value));
-            }
+        const auto physicalDisks =
+            session.queryAll(L"ASSOCIATORS OF {" + *virtualPath + L"} WHERE AssocClass = MSFT_VirtualDiskToPhysicalDisk");
+        for (IWbemClassObject* physical : physicalDisks) {
+            const auto id = readStringProperty(physical, L"DeviceId");
             physical->Release();
+            if (!id.has_value()) continue;
+
+            wchar_t* end = nullptr;
+            const long value = ::wcstol(id->c_str(), &end, 10);
+            if (end == id->c_str() || value < 0) continue;
+            members.push_back(static_cast<int>(value));
         }
     }
     return members;
@@ -420,6 +427,41 @@ std::string wideToUtf8(const std::wstring& wide) {
     return utf8;
 }
 
+// Read Windows' optional WMI properties for one disk; the SMART fallbacks stay in queryDiskBlocking.
+void queryWindowsPhysicalDiskInfo(int driveNumber, PhysicalDiskHealth& info, std::optional<bool>& solidState) {
+    ScopedCom com;
+    if (!com.usable()) return;
+
+    WmiStorageSession session;
+    if (!session.connect()) return;
+
+    const std::wstring idText = std::to_wstring(driveNumber);
+    IWbemClassObject* disk =
+        session.queryFirst(L"SELECT * FROM MSFT_PhysicalDisk WHERE DeviceId = '" + idText + L"'");
+    if (disk == nullptr) return;
+
+    if (const auto status = readIntProperty(disk, L"HealthStatus"); status.has_value()) {
+        info.healthPercent = healthPercentFromStatus(*status);
+    }
+    if (const auto mediaType = readIntProperty(disk, L"MediaType"); mediaType.has_value()) {
+        if (*mediaType == 4) solidState = true;
+        if (*mediaType == 3) solidState = false;
+    }
+    if (const auto name = readStringProperty(disk, L"FriendlyName"); name.has_value()) info.model = wideToUtf8(*name);
+    if (const auto size = readUInt64Property(disk, L"Size"); size.has_value()) info.sizeBytes = *size;
+
+    if (const auto path = readStringProperty(disk, L"__PATH"); path.has_value()) {
+        AutoBstr objectPath(*path);
+        IWbemClassObject* counters =
+            session.getEmbeddedMethodResult(objectPath, L"GetStorageReliabilityCounter", L"StorageReliabilityCounter");
+        if (counters != nullptr) {
+            info.temperatureCelsius = readIntProperty(counters, L"Temperature");
+            counters->Release();
+        }
+    }
+    disk->Release();
+}
+
 // Everything known about ONE physical disk. Runs on its own thread (see queryDisksBlocking) so several
 // disks are asked at once.
 PhysicalDiskHealth queryDiskBlocking(int driveNumber) {
@@ -429,60 +471,44 @@ PhysicalDiskHealth queryDiskBlocking(int driveNumber) {
 
     // WMI first (works unelevated on most drives); the fallbacks below run
     // independently of whether COM/WMI succeeded, since they don't use either.
-    {
-        ScopedCom com;
-        if (com.usable()) {
-            WmiStorageSession session;
-            if (session.connect()) {
-                const std::wstring idText = std::to_wstring(driveNumber);
-
-                if (IWbemClassObject* disk = session.queryFirst(
-                        L"SELECT * FROM MSFT_PhysicalDisk WHERE DeviceId = '" + idText + L"'")) {
-                    if (const auto status = readIntProperty(disk, L"HealthStatus")) {
-                        info.healthPercent = healthPercentFromStatus(*status);
-                    }
-                    if (const auto mediaType = readIntProperty(disk, L"MediaType")) {
-                        if (*mediaType == 4) solidState = true;
-                        if (*mediaType == 3) solidState = false;
-                    }
-                    if (const auto name = readStringProperty(disk, L"FriendlyName")) info.model = wideToUtf8(*name);
-                    if (const auto size = readUInt64Property(disk, L"Size")) info.sizeBytes = *size;
-
-                    if (const auto path = readStringProperty(disk, L"__PATH")) {
-                        AutoBstr objectPath(*path);
-                        if (IWbemClassObject* counters = session.getEmbeddedMethodResult(
-                                objectPath, L"GetStorageReliabilityCounter", L"StorageReliabilityCounter")) {
-                            info.temperatureCelsius = readIntProperty(counters, L"Temperature");
-                            counters->Release();
-                        }
-                    }
-                    disk->Release();
-                }
-            }
-        }
-    }
+    queryWindowsPhysicalDiskInfo(driveNumber, info, solidState);
 
     // The disk's own SMART data: a real health estimate and, when Windows gave none, the temperature. Windows'
     // three-level verdict still counts - if it says Warning or Unhealthy, that is never scored away.
     std::optional<HealthAssessment> smart;
-    if (const auto attributes = readAtaSmartAttributes(driveNumber)) {
+    if (const auto attributes = readAtaSmartAttributes(driveNumber); attributes.has_value()) {
         smart = assessAtaHealth(*attributes, solidState);
-        if (!info.temperatureCelsius) info.temperatureCelsius = ataTemperatureCelsius(*attributes);
-    } else if (const auto nvme = readNvmeHealth(driveNumber)) {
+        if (!info.temperatureCelsius.has_value()) info.temperatureCelsius = ataTemperatureCelsius(*attributes);
+    } else if (const auto nvme = readNvmeHealth(driveNumber); nvme.has_value()) {
         smart = assessNvmeHealth(*nvme);
-        if (!info.temperatureCelsius) info.temperatureCelsius = nvme->temperatureCelsius;
+        if (!info.temperatureCelsius.has_value()) info.temperatureCelsius = nvme->temperatureCelsius;
     }
-    if (smart) {
+    if (smart.has_value()) {
         const std::optional<int> windowsHealth = info.healthPercent;
-        info.healthPercent = (windowsHealth && *windowsHealth < smart->percent) ? *windowsHealth : smart->percent;
+        info.healthPercent = (windowsHealth.has_value() && *windowsHealth < smart->percent) ? *windowsHealth : smart->percent;
         info.healthDetail = smart->detail;
-        if (windowsHealth && *windowsHealth < smart->percent) {
+        if (windowsHealth.has_value() && *windowsHealth < smart->percent) {
             info.healthDetail = *windowsHealth <= 10 ? "Windows reports this disk as Unhealthy" : "Windows reports a warning for this disk";
         }
     }
-    if (!info.healthPercent) info.healthPercent = readHealthViaPredictFailure(driveNumber);
+    if (!info.healthPercent.has_value()) info.healthPercent = readHealthViaPredictFailure(driveNumber);
     if (info.model.empty()) info.model = readModelViaIoctl(driveNumber);
     return info;
+}
+
+void expandStorageSpacesPhysicalDiskNumbers(const std::vector<int>& diskNumbers, std::set<int>& toQuery) {
+    ScopedCom com;
+    if (!com.usable()) return;
+
+    WmiStorageSession session;
+    if (!session.connect()) return;
+
+    for (const int number : diskNumbers) {
+        const auto members = storageSpacesMemberDisks(session, number);
+        if (members.empty()) continue;
+        toQuery.erase(number);
+        toQuery.insert(members.begin(), members.end());
+    }
 }
 
 // All the disks behind a set of disk numbers, each queried separately (in parallel).
@@ -490,24 +516,18 @@ std::vector<PhysicalDiskHealth> queryDisksBlocking(const std::vector<int>& diskN
     std::set<int> toQuery(diskNumbers.begin(), diskNumbers.end());
 
     // A Storage Spaces virtual disk stands for the pool's real disks - swap it for them.
-    {
-        ScopedCom com;
-        if (com.usable()) {
-            WmiStorageSession session;
-            if (session.connect()) {
-                for (const int number : diskNumbers) {
-                    const auto members = storageSpacesMemberDisks(session, number);
-                    if (members.empty()) continue;
-                    toQuery.erase(number);
-                    toQuery.insert(members.begin(), members.end());
-                }
-            }
-        }
-    }
+    expandStorageSpacesPhysicalDiskNumbers(diskNumbers, toQuery);
 
     std::vector<std::future<PhysicalDiskHealth>> pending;
+    std::vector<std::jthread> workers;
     pending.reserve(toQuery.size());
-    for (const int number : toQuery) pending.push_back(std::async(std::launch::async, queryDiskBlocking, number));
+    workers.reserve(toQuery.size());
+    for (const int number : toQuery) {
+        std::packaged_task<PhysicalDiskHealth()> task([number] { return queryDiskBlocking(number); });
+        pending.push_back(task.get_future());
+        workers.emplace_back([task = std::move(task)]() mutable { task(); });
+    }
+    workers.clear();  // jthread joins each disk query before its result is read
 
     std::vector<PhysicalDiskHealth> disks;
     disks.reserve(pending.size());
@@ -529,20 +549,22 @@ constexpr auto kHealthQueryTimeout = std::chrono::milliseconds(5000);
 }  // namespace
 
 std::optional<std::vector<SmartAttribute>> readAtaSmartAttributes(int diskNumber) {
-    const std::wstring path = L"\\\\.\\PhysicalDrive" + std::to_wstring(diskNumber);
+    const std::wstring path = std::format(L"\\\\.\\PhysicalDrive{}", diskNumber);
     HANDLE handle = ::CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
                                    OPEN_EXISTING, 0, nullptr);
     if (handle == INVALID_HANDLE_VALUE) return std::nullopt;
 
-    unsigned char data[512] = {};
+    std::array<unsigned char, 512> data{};
     if (!ataSmartReadSector(handle, 0xD0, data)) {
         ::CloseHandle(handle);
         return std::nullopt;
     }
-    auto attributes = parseAtaSmartAttributes(data, sizeof(data));
+    auto attributes = parseAtaSmartAttributes(data.data(), data.size());
 
-    unsigned char thresholds[512] = {};
-    if (ataSmartReadSector(handle, 0xD1, thresholds)) applyAtaSmartThresholds(attributes, thresholds, sizeof(thresholds));
+    std::array<unsigned char, 512> thresholds{};
+    if (ataSmartReadSector(handle, 0xD1, thresholds)) {
+        applyAtaSmartThresholds(attributes, thresholds.data(), thresholds.size());
+    }
     ::CloseHandle(handle);
 
     if (attributes.empty()) return std::nullopt;
@@ -557,7 +579,7 @@ std::optional<std::vector<PhysicalDiskHealth>> WindowsStorageHealthProvider::que
         [diskNumbers] { return queryDisksBlocking(diskNumbers); });
 
     std::future<std::vector<PhysicalDiskHealth>> future = task->get_future();
-    std::thread([task] { (*task)(); }).detach();
+    std::jthread([task] { (*task)(); }).detach();
 
     if (future.wait_for(kHealthQueryTimeout) != std::future_status::ready) {
         return std::vector<PhysicalDiskHealth>{};  // unknown health/temperature rather than a hang

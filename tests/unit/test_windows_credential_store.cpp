@@ -1,14 +1,27 @@
 #include <gtest/gtest.h>
 
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <wincred.h>
+
+#include <array>
+
 #include "gth/credentials/WindowsCredentialStore.h"
 
 using namespace gth::credentials;
 using namespace gth::core;
 
 namespace {
-// Real Windows Credential Manager round-trip. Uses a unique-per-run target
-// name and always cleans up, even on assertion failure, so a failing run
-// never leaves a stray Credential Manager entry behind.
+bool supportsLocalMachineGenericCredentials() {
+    std::array<DWORD, CRED_TYPE_MAXIMUM> maxPersistence{};
+    if (!::CredGetSessionTypes(static_cast<DWORD>(maxPersistence.size()), maxPersistence.data())) {
+        return ::GetLastError() != ERROR_NO_SUCH_LOGON_SESSION;
+    }
+    return maxPersistence[CRED_TYPE_GENERIC] >= CRED_PERSIST_LOCAL_MACHINE;
+}
+
+// Real Windows Credential Manager round-trip. Uses a test-only target and
+// always cleans it up, even on assertion failure.
 struct CredentialGuard {
     WindowsCredentialStore store;
     std::string target = "unit-test-target";
@@ -17,6 +30,10 @@ struct CredentialGuard {
 }  // namespace
 
 TEST(WindowsCredentialStoreTest, SaveAndReadRoundTrips) {
+    if (!supportsLocalMachineGenericCredentials()) {
+        GTEST_SKIP() << "This Windows logon session cannot store machine-persistent generic credentials";
+    }
+
     CredentialGuard guard;
     guard.store.save(guard.target, "someuser", "s3cr3t!");
 
@@ -32,6 +49,10 @@ TEST(WindowsCredentialStoreTest, ReadReturnsNulloptForMissingTarget) {
 }
 
 TEST(WindowsCredentialStoreTest, RemoveDeletesEntry) {
+    if (!supportsLocalMachineGenericCredentials()) {
+        GTEST_SKIP() << "This Windows logon session cannot store machine-persistent generic credentials";
+    }
+
     WindowsCredentialStore store;
     const std::string target = "unit-test-remove-target";
     store.save(target, "user", "pass");
@@ -42,6 +63,10 @@ TEST(WindowsCredentialStoreTest, RemoveDeletesEntry) {
 }
 
 TEST(WindowsCredentialStoreTest, SaveOverwritesExistingEntry) {
+    if (!supportsLocalMachineGenericCredentials()) {
+        GTEST_SKIP() << "This Windows logon session cannot store machine-persistent generic credentials";
+    }
+
     CredentialGuard guard;
     guard.store.save(guard.target, "first", "firstpass");
     guard.store.save(guard.target, "second", "secondpass");

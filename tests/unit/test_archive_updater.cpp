@@ -1,3 +1,4 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <filesystem>
@@ -36,7 +37,7 @@ protected:
     void SetUp() override {
         Migrator::applyMigrations(db);
 
-        archiveRoot = fs::temp_directory_path() / ("gth_archive_" + Guid::newGuid());
+        archiveRoot = gth::test::testTempRoot() / ("gth_archive_" + Guid::newGuid());
         fs::create_directories(archiveRoot);
 
         Storage storage;
@@ -63,7 +64,7 @@ protected:
 
     // Simulates a verified download sitting in a temp directory, ready to be placed.
     fs::path makeVerifiedTempContent(const std::string& fileContent = "update data") {
-        tempSourceDir = fs::temp_directory_path() / ("gth_verified_" + Guid::newGuid());
+        tempSourceDir = gth::test::testTempRoot() / ("gth_verified_" + Guid::newGuid());
         fs::create_directories(tempSourceDir);
         std::ofstream(tempSourceDir / "data.bin") << fileContent;
         return tempSourceDir;
@@ -177,7 +178,7 @@ TEST_F(ArchiveUpdaterTest, FailsAndLeavesArchiveUntouchedWhenVerifiedPathIsMissi
     const auto jobId = addJob("1.04", "1.06");
 
     auto updater = makeUpdater();
-    auto outcome = updater.applyVerifiedUpdate(jobId, (fs::temp_directory_path() / "does-not-exist").string(),
+    auto outcome = updater.applyVerifiedUpdate(jobId, (gth::test::testTempRoot() / "does-not-exist").string(),
                                                 RetentionPolicy{1});
 
     EXPECT_FALSE(outcome.success);

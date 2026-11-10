@@ -1,3 +1,4 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <chrono>
@@ -32,7 +33,7 @@ bool waitFor(Predicate predicate, std::chrono::milliseconds timeout = std::chron
 }
 
 struct WinsockFtpServerFixture {
-    fs::path tempDir = fs::temp_directory_path() /
+    fs::path tempDir = gth::test::testTempRoot() /
                         ("gth_ftpserver_test_" +
                          std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     WinsockFtpServer server;

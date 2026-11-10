@@ -29,7 +29,7 @@ VerificationResult FileVerifier::verify(const std::string& path, long long expec
     std::error_code ec;
 
     if (!fs::exists(path, ec)) {
-        result.errorMessage = "Downloaded content not found at: " + path;
+        result.errorMessage = std::format("Downloaded content not found at: {}", path);
         return result;
     }
 
@@ -54,12 +54,12 @@ VerificationResult FileVerifier::verify(const std::string& path, long long expec
     if (expectedSha256Hex.has_value() && !expectedSha256Hex->empty() && !isDirectory) {
         auto actualHash = computeSha256Hex(path);
         if (!actualHash.has_value()) {
-            result.errorMessage = "Failed to compute hash for: " + path;
+            result.errorMessage = std::format("Failed to compute hash for: {}", path);
             return result;
         }
 
         if (!equalsIgnoreCase(*actualHash, *expectedSha256Hex)) {
-            result.errorMessage = "Hash mismatch: expected " + *expectedSha256Hex + ", computed " + *actualHash;
+            result.errorMessage = std::format("Hash mismatch: expected {}, computed {}", *expectedSha256Hex, *actualHash);
             return result;
         }
 
@@ -81,7 +81,7 @@ VerificationResult FileVerifier::verifyRange(const std::string& path, long long 
 
     std::error_code ec;
     if (!fs::is_regular_file(path, ec) || ec) {
-        result.errorMessage = "Range verification requires a readable regular file: " + path;
+        result.errorMessage = std::format("Range verification requires a readable regular file: {}", path);
         return result;
     }
     const auto fileSize = static_cast<long long>(fs::file_size(path, ec));
@@ -92,11 +92,11 @@ VerificationResult FileVerifier::verifyRange(const std::string& path, long long 
 
     const auto actualHash = computeSha256HexRange(path, offsetBytes, expectedSizeBytes);
     if (!actualHash.has_value()) {
-        result.errorMessage = "Failed to compute the range hash for: " + path;
+        result.errorMessage = std::format("Failed to compute the range hash for: {}", path);
         return result;
     }
     if (!equalsIgnoreCase(*actualHash, expectedSha256Hex)) {
-        result.errorMessage = "Hash mismatch: expected " + expectedSha256Hex + ", computed " + *actualHash;
+        result.errorMessage = std::format("Hash mismatch: expected {}, computed {}", expectedSha256Hex, *actualHash);
         return result;
     }
 

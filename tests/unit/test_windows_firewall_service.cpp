@@ -1,3 +1,4 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <filesystem>
@@ -68,7 +69,7 @@ TEST(WindowsFirewallServiceTest, DoesNotTreatAllowRulesDisabledRulesOrOtherProgr
 // The user removing the rules on purpose must stick across restarts, per copy
 // of the app (a re-extracted portable copy is a different program to Windows).
 TEST(WindowsFirewallServiceTest, RemembersWhichCopiesOfTheAppHadTheirRulesRemovedOnPurpose) {
-    const auto file = std::filesystem::temp_directory_path() / "gth_firewall_optout_test" / "off.txt";
+    const auto file = gth::test::testTempRoot() / "gth_firewall_optout_test" / "off.txt";
     std::filesystem::remove_all(file.parent_path());
     const std::wstring copyA = L"C:\\Apps\\GTH 3.9\\GameTransferHub.exe";
     const std::wstring copyB = L"C:\\Apps\\GTH 4.0\\GameTransferHub.exe";
@@ -92,7 +93,7 @@ TEST(WindowsFirewallServiceTest, RemembersWhichCopiesOfTheAppHadTheirRulesRemove
 }
 
 TEST(WindowsFirewallServiceTest, ReadOnlyStatusQueryReportsThisTestProgramHasNoRules) {
-    WindowsFirewallService service(std::filesystem::temp_directory_path() / "gth_firewall_status_test.txt");
+    WindowsFirewallService service(gth::test::testTempRoot() / "gth_firewall_status_test.txt");
 
     const auto status = service.status();
 

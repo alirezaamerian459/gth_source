@@ -1,3 +1,4 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -76,7 +77,7 @@ TEST(DownloadHistoryTest, MalformedLinesAreRejectedNotCrashed) {
 }
 
 TEST(DownloadHistoryTest, AppendAndReadRoundTripsAndOrdersNewestFirst) {
-    const auto path = std::filesystem::temp_directory_path() / "gth_download_history_test" / "history.tsv";
+    const auto path = gth::test::testTempRoot() / "gth_download_history_test" / "history.tsv";
     std::filesystem::remove_all(path.parent_path());
 
     AppendDownloadHistory(path, MakeEntry(100, "PPSA00001"));
@@ -93,7 +94,7 @@ TEST(DownloadHistoryTest, AppendAndReadRoundTripsAndOrdersNewestFirst) {
 }
 
 TEST(DownloadHistoryTest, ReadRespectsALimit) {
-    const auto path = std::filesystem::temp_directory_path() / "gth_download_history_limit_test" / "history.tsv";
+    const auto path = gth::test::testTempRoot() / "gth_download_history_limit_test" / "history.tsv";
     std::filesystem::remove_all(path.parent_path());
 
     for (int i = 0; i < 5; ++i) AppendDownloadHistory(path, MakeEntry(i, "PPSA0000" + std::to_string(i)));
@@ -107,6 +108,6 @@ TEST(DownloadHistoryTest, ReadRespectsALimit) {
 }
 
 TEST(DownloadHistoryTest, MissingFileReadsAsEmptyNotAnError) {
-    const auto entries = ReadDownloadHistory(std::filesystem::temp_directory_path() / "gth_download_history_nonexistent.tsv");
+    const auto entries = ReadDownloadHistory(gth::test::testTempRoot() / "gth_download_history_nonexistent.tsv");
     EXPECT_TRUE(entries.empty());
 }

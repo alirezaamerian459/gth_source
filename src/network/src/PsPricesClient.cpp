@@ -182,16 +182,17 @@ std::optional<std::string> PsPricesClient::fetchPosterByTitle(const std::string&
     static const std::wstring kHost = L"psprices.com";
     const std::wstring searchPath = L"/region-us/games/?q=" + toWide(percentEncodeUtf8(gameTitle));
     const auto searchOutcome = connections_->get(kHost, searchPath);
-    if (!searchOutcome.body) return std::nullopt;
+    if (!searchOutcome.body.has_value()) return std::nullopt;
 
     const auto imageUrl = ExtractFirstPsPricesCoverUrl(*searchOutcome.body);
-    if (!imageUrl) return std::nullopt;
+    if (!imageUrl.has_value()) return std::nullopt;
 
     const auto parsedUrl = crackUrl(toWide(*imageUrl));
-    if (!parsedUrl || !parsedUrl->https || parsedUrl->host != L"image.api.playstation.com") return std::nullopt;
+    if (!parsedUrl.has_value() || !parsedUrl->https || parsedUrl->host != L"image.api.playstation.com")
+        return std::nullopt;
 
     const auto imageOutcome = connections_->get(parsedUrl->host, parsedUrl->path);
-    if (!imageOutcome.body || imageOutcome.body->empty()) return std::nullopt;
+    if (!imageOutcome.body.has_value() || imageOutcome.body->empty()) return std::nullopt;
     return imageOutcome.body;
 }
 

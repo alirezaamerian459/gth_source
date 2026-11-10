@@ -8,7 +8,10 @@
 namespace gth::logging {
 
 namespace {
-std::shared_ptr<spdlog::logger> g_logger;
+std::shared_ptr<spdlog::logger>& loggerInstance() {
+    static std::shared_ptr<spdlog::logger> instance;
+    return instance;
+}
 }
 
 void init(const std::filesystem::path& logDirectory) {
@@ -21,14 +24,15 @@ void init(const std::filesystem::path& logDirectory) {
     sinks.push_back(std::make_shared<spdlog::sinks::msvc_sink_mt>());
 #endif
 
-    g_logger = std::make_shared<spdlog::logger>("gth", sinks.begin(), sinks.end());
-    g_logger->set_pattern("%Y-%m-%d %H:%M:%S.%e [%l] %v");
-    g_logger->set_level(spdlog::level::info);
-    g_logger->flush_on(spdlog::level::info);
+    auto& currentLogger = loggerInstance();
+    currentLogger = std::make_shared<spdlog::logger>("gth", sinks.begin(), sinks.end());
+    currentLogger->set_pattern("%Y-%m-%d %H:%M:%S.%e [%l] %v");
+    currentLogger->set_level(spdlog::level::info);
+    currentLogger->flush_on(spdlog::level::info);
 
-    spdlog::set_default_logger(g_logger);
+    spdlog::set_default_logger(currentLogger);
 }
 
-std::shared_ptr<spdlog::logger>& logger() { return g_logger; }
+std::shared_ptr<spdlog::logger>& logger() { return loggerInstance(); }
 
 }  // namespace gth::logging

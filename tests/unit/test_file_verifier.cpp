@@ -1,3 +1,4 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <filesystem>
@@ -18,7 +19,7 @@ protected:
     fs::path dir;
 
     void SetUp() override {
-        dir = fs::temp_directory_path() / ("gth_verify_test_" + Guid::newGuid());
+        dir = gth::test::testTempRoot() / ("gth_verify_test_" + Guid::newGuid());
         fs::create_directories(dir);
     }
 

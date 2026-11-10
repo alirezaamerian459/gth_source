@@ -1,6 +1,7 @@
 #include "gth/ftp/CurlFtpClient.h"
 
 #include <cstdio>
+#include <format>
 
 #include <curl/curl.h>
 
@@ -75,9 +76,10 @@ CurlFtpClient::CurlFtpClient(bool useTls) : useTls_(useTls) {}
 CurlFtpClient::~CurlFtpClient() { disconnect(); }
 
 std::string CurlFtpClient::buildUrl(const std::string& path) const {
+    // Plain FTP remains available only through the explicit Ftp protocol selection for legacy servers.
     std::string url = useTls_ ? "ftps://" : "ftp://";
     url += params_.host;
-    url += ":" + std::to_string(params_.port);
+    url += std::format(":{}", params_.port);
     url += "/";
     std::string cleanPath = path;
     while (!cleanPath.empty() && cleanPath.front() == '/') cleanPath.erase(cleanPath.begin());
@@ -98,6 +100,7 @@ core::FtpOperationResult CurlFtpClient::connect(const core::FtpConnectParams& pa
     curl_easy_setopt(curl, CURLOPT_CONNECT_ONLY, 1L);
     if (useTls_) {
         curl_easy_setopt(curl, CURLOPT_USE_SSL, static_cast<long>(CURLUSESSL_ALL));
+        curl_easy_setopt(curl, CURLOPT_SSLVERSION, static_cast<long>(CURL_SSLVERSION_TLSv1_2));
     }
 
     const CURLcode res = curl_easy_perform(curl);
@@ -126,7 +129,10 @@ std::vector<core::FtpDirectoryEntry> CurlFtpClient::listDirectory(const std::str
     curl_easy_setopt(curl, CURLOPT_PASSWORD, params_.password.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, appendToString);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-    if (useTls_) curl_easy_setopt(curl, CURLOPT_USE_SSL, static_cast<long>(CURLUSESSL_ALL));
+    if (useTls_) {
+        curl_easy_setopt(curl, CURLOPT_USE_SSL, static_cast<long>(CURLUSESSL_ALL));
+        curl_easy_setopt(curl, CURLOPT_SSLVERSION, static_cast<long>(CURL_SSLVERSION_TLSv1_2));
+    }
 
     curl_easy_perform(curl);
     curl_easy_cleanup(curl);
@@ -160,7 +166,10 @@ core::FtpOperationResult CurlFtpClient::upload(const std::string& localPath, con
     curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progressCallback);
     curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &ctx);
     curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
-    if (useTls_) curl_easy_setopt(curl, CURLOPT_USE_SSL, static_cast<long>(CURLUSESSL_ALL));
+    if (useTls_) {
+        curl_easy_setopt(curl, CURLOPT_USE_SSL, static_cast<long>(CURLUSESSL_ALL));
+        curl_easy_setopt(curl, CURLOPT_SSLVERSION, static_cast<long>(CURL_SSLVERSION_TLSv1_2));
+    }
 
     const CURLcode res = curl_easy_perform(curl);
     curl_easy_cleanup(curl);
@@ -195,7 +204,10 @@ core::FtpOperationResult CurlFtpClient::download(const std::string& remotePath, 
     curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progressCallback);
     curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &ctx);
     curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
-    if (useTls_) curl_easy_setopt(curl, CURLOPT_USE_SSL, static_cast<long>(CURLUSESSL_ALL));
+    if (useTls_) {
+        curl_easy_setopt(curl, CURLOPT_USE_SSL, static_cast<long>(CURLUSESSL_ALL));
+        curl_easy_setopt(curl, CURLOPT_SSLVERSION, static_cast<long>(CURL_SSLVERSION_TLSv1_2));
+    }
 
     const CURLcode res = curl_easy_perform(curl);
     curl_easy_cleanup(curl);

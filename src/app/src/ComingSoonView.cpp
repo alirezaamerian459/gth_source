@@ -1,5 +1,7 @@
 #include "ComingSoonView.h"
 
+#include <bit>
+
 LRESULT ComingSoonView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     CRect placeholderRect(0, 0, 100, 100);
     titleLabel_.Create(m_hWnd, placeholderRect, L"", WS_CHILD | WS_VISIBLE | SS_CENTER);
@@ -19,12 +21,12 @@ LRESULT ComingSoonView::OnSize(UINT, WPARAM, LPARAM, BOOL&) {
 }
 
 LRESULT ComingSoonView::OnCtlColorStatic(UINT, WPARAM wParam, LPARAM lParam, BOOL&) {
-    HDC hdc = reinterpret_cast<HDC>(wParam);
+    const auto hdc = std::bit_cast<HDC>(wParam);
     ::SetBkMode(hdc, TRANSPARENT);
-    ::SetTextColor(hdc, reinterpret_cast<HWND>(lParam) == subtitleLabel_.m_hWnd ? theme::TextSecondary()
-                                                                                 : theme::TextPrimary());
+    ::SetTextColor(hdc, std::bit_cast<HWND>(lParam) == subtitleLabel_.m_hWnd ? theme::TextSecondary()
+                                                                             : theme::TextPrimary());
     HBRUSH pageBrush = theme::ContentBgBrush();
-    return reinterpret_cast<LRESULT>(pageBrush);
+    return std::bit_cast<LRESULT>(pageBrush);
 }
 
 void ComingSoonView::layout() {

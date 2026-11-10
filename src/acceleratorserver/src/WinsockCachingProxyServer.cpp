@@ -15,6 +15,7 @@
 #include <cctype>
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -276,15 +277,21 @@ private:
         hints.ai_socktype = SOCK_STREAM;
         addrinfo* result = nullptr;
         if (::getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &result) != 0 || !result) return false;
-        out = *reinterpret_cast<sockaddr_in*>(result->ai_addr);
+        const bool hasIpv4Address = result->ai_addr != nullptr && result->ai_family == AF_INET &&
+                                    result->ai_addrlen >= sizeof(sockaddr_in);
+        if (hasIpv4Address) std::memcpy(&out, result->ai_addr, sizeof(out));
         ::freeaddrinfo(result);
-        return true;
+        return hasIpv4Address;
     }
 
     void sendStatusOnly(int code, const char* reason) {
-        char buf[128];
-        std::snprintf(buf, sizeof(buf), "HTTP/1.1 %d %s\r\nConnection: close\r\n\r\n", code, reason);
-        sendAll(client_, buf, static_cast<int>(std::strlen(buf)));
+        std::array<char, 128> buf{};
+        const int length = std::snprintf(buf.data(), buf.size(), "HTTP/1.1 %d %s\r\nConnection: close\r\n\r\n", code,
+                                         reason);
+        if (length <= 0) return;
+        const auto requestedBytes = static_cast<size_t>(length);
+        const auto bytesToSend = requestedBytes < buf.size() - 1 ? requestedBytes : buf.size() - 1;
+        sendAll(client_, buf.data(), static_cast<int>(bytesToSend));
     }
 
     void handleConnect(const ParsedRequest& req) {
@@ -332,7 +339,7 @@ private:
         ::ioctlsocket(a, FIONBIO, &nonBlocking);
         ::ioctlsocket(b, FIONBIO, &nonBlocking);
 
-        char buf[16384];
+        std::array<char, 16384> buf;
         while (true) {
             fd_set readSet;
             FD_ZERO(&readSet);
@@ -344,12 +351,12 @@ private:
 
             bool alive = true;
             if (FD_ISSET(a, &readSet)) {
-                const int n = ::recv(a, buf, sizeof(buf), 0);
-                if (n <= 0 || !sendAll(b, buf, n)) alive = false;
+                const int n = ::recv(a, buf.data(), static_cast<int>(buf.size()), 0);
+                if (n <= 0 || !sendAll(b, buf.data(), n)) alive = false;
             }
             if (alive && FD_ISSET(b, &readSet)) {
-                const int n = ::recv(b, buf, sizeof(buf), 0);
-                if (n <= 0 || !sendAll(a, buf, n)) alive = false;
+                const int n = ::recv(b, buf.data(), static_cast<int>(buf.size()), 0);
+                if (n <= 0 || !sendAll(a, buf.data(), n)) alive = false;
             }
             if (!alive) break;
         }
@@ -363,12 +370,12 @@ private:
     bool relayBody(SOCKET from, long long length, std::string already, Sink sink) {
         long long remaining = length - static_cast<long long>(already.size());
         if (!already.empty()) sink(already.data(), static_cast<int>(already.size()));
-        char buf[16384];
+        std::array<char, 16384> buf;
         while (remaining > 0) {
-            const int toRead = static_cast<int>(std::min<long long>(remaining, sizeof(buf)));
-            const int n = ::recv(from, buf, toRead, 0);
+            const int toRead = static_cast<int>(std::min<long long>(remaining, buf.size()));
+            const int n = ::recv(from, buf.data(), toRead, 0);
             if (n <= 0) return false;
-            sink(buf, n);
+            sink(buf.data(), n);
             remaining -= n;
         }
         return true;
@@ -489,9 +496,9 @@ private:
             resp << "Connection: close\r\n\r\n";
             if (!sendAll(client_, resp.str())) return;
 
-            char buf[65536];
-            while (body.read(buf, sizeof(buf)) || body.gcount() > 0) {
-                if (!sendAll(client_, buf, static_cast<int>(body.gcount()))) return;
+            std::array<char, 65536> buf;
+            while (body.read(buf.data(), static_cast<std::streamsize>(buf.size())) || body.gcount() > 0) {
+                if (!sendAll(client_, buf.data(), static_cast<int>(body.gcount()))) return;
             }
             return;
         }
@@ -557,11 +564,11 @@ private:
         // as they arrive, starting with whatever's already in `leftover`,
         // until the origin closes the connection.
         if (!leftover.empty()) sendAll(client_, leftover);
-        char buf[16384];
+        std::array<char, 16384> buf;
         while (true) {
-            const int n = ::recv(upstream, buf, sizeof(buf), 0);
+            const int n = ::recv(upstream, buf.data(), static_cast<int>(buf.size()), 0);
             if (n <= 0) break;
-            if (!sendAll(client_, buf, n)) break;
+            if (!sendAll(client_, buf.data(), n)) break;
         }
     }
 
@@ -597,7 +604,7 @@ void WinsockCachingProxyServer::start(const core::AcceleratorServerConfig& confi
     }
     std::error_code ec;
     if (!config.cacheDir.empty()) fs::create_directories(config.cacheDir, ec);
-    acceptThread_ = std::thread(&WinsockCachingProxyServer::acceptLoop, this, config);
+    acceptThread_ = std::jthread(&WinsockCachingProxyServer::acceptLoop, this, config);
 }
 
 void WinsockCachingProxyServer::stop() {
@@ -645,8 +652,7 @@ void WinsockCachingProxyServer::clearCache() {
 }
 
 void WinsockCachingProxyServer::acceptLoop(core::AcceleratorServerConfig config) {
-    WSADATA wsaData;
-    if (::WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+    if (WSADATA wsaData{}; ::WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
         running_.store(false);
         return;
     }
@@ -683,7 +689,7 @@ void WinsockCachingProxyServer::acceptLoop(core::AcceleratorServerConfig config)
     ::ioctlsocket(listenSocket, FIONBIO, &nonBlocking);
 
     std::vector<std::jthread> connectionThreads;
-    const std::string cacheDir = config.cacheDir;
+    const auto cacheDir = config.cacheDir;
     const bool cacheEnabled = config.cacheEnabled;
 
     while (running_.load()) {

@@ -56,6 +56,11 @@ bool IsSonyAutomationDue(const SonyAutomationSettings& settings, std::chrono::st
 // ---- The report a run leaves behind, for reading in the morning --------------
 
 struct SonyRunReportInput {
+    SonyRunReportInput() = default;
+    SonyRunReportInput(const SonyRunReportInput&) = default;
+    SonyRunReportInput& operator=(const SonyRunReportInput&) = default;
+    SonyRunReportInput(SonyRunReportInput&&) noexcept = default;
+    SonyRunReportInput& operator=(SonyRunReportInput&&) noexcept = default;
     std::time_t when = 0;                   // when the run started
     bool automatic = false;
     std::chrono::seconds duration{0};

@@ -60,6 +60,7 @@ public:
         COMMAND_ID_HANDLER(IDC_ACCEL_CACHE_BROWSE_BUTTON, OnCacheBrowseClick)
         COMMAND_ID_HANDLER(IDC_ACCEL_CLEAR_CACHE_BUTTON, OnClearCacheClick)
         COMMAND_ID_HANDLER(IDC_CDN_URL_COPY_BUTTON, OnCopyUrlClick)
+        COMMAND_ID_HANDLER(IDC_FTP_ADVANCED_TOOLS_BUTTON, OnAdvancedToolsClick)
         COMMAND_ID_HANDLER(IDC_FTP_HOST_COPY_ADDRESS_BUTTON, OnHostCopyAddressClick)
         COMMAND_ID_HANDLER(IDC_CDN_URL_ADD_BUTTON, OnAddCdnUrlClick)
         COMMAND_ID_HANDLER(IDC_CDN_URL_REMOVE_BUTTON, OnRemoveCdnUrlClick)
@@ -153,6 +154,7 @@ private:
     LRESULT OnCdnUrlLocalPathChanged(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnAddMitmInstanceClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnMitmInstanceButtonClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnAdvancedToolsClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
 
     // Hides the admin-only sections (FTP connection manager, Host a
     // Server/browse pane, the Accelerator's mirror list) for a signed-out
@@ -170,6 +172,7 @@ private:
     // CDN's position now depends on instance count too, not just admin
     // state.
     void relayoutMitmAndCdnSections();
+    void applyAdvancedToolsVisibility();
     void addMitmInstance();
     void removeMitmInstance(size_t index);
 
@@ -219,7 +222,9 @@ private:
     // values.
     int httpProxyTopFull_ = 0;
     int httpProxyTopCompact_ = 0;
+    int advancedToolsTop_ = 0;
     bool sections45Compact_ = false;
+    bool advancedToolsExpanded_ = false;
 
     // Set once during OnCreate - every section below the FTP fields stacks
     // on a fixed height rather than filling to the bottom (the page can run
@@ -230,6 +235,7 @@ private:
     ScrollSupport scroll_;
 
     CStatic titleLabel_;
+    ModernButton advancedToolsButton_;
 
     CStatic nameCaption_, hostCaption_, portCaption_, protocolCaption_, userCaption_, passCaption_, pathCaption_;
     CEdit nameEdit_, hostEdit_, portEdit_, userEdit_, passEdit_, pathEdit_;

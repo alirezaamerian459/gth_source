@@ -8,7 +8,7 @@ void CentralServerService::start(int port) {
     listener_.start(port, [this](const std::string& nodeId, const std::string& name, const std::string& summary,
                                   const std::string& peerAddress) {
         core::RemoteNode node;
-        if (auto existing = repository_.getById(nodeId)) {
+        if (auto existing = repository_.getById(nodeId); existing.has_value()) {
             node = *existing;
         } else {
             node.nodeId = nodeId;

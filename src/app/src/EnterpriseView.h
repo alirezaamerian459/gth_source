@@ -24,6 +24,7 @@ public:
         COMMAND_ID_HANDLER(IDC_SERVER_TOGGLE_BUTTON, OnServerToggleClick)
         COMMAND_ID_HANDLER(IDC_AGENT_TOGGLE_BUTTON, OnAgentToggleClick)
         COMMAND_ID_HANDLER(IDC_REFRESH_NODES_BUTTON, OnRefreshClick)
+        COMMAND_ID_HANDLER(IDC_ENTERPRISE_AGENT_PANEL_BUTTON, OnAgentPanelClick)
     END_MSG_MAP()
 
     void init(gth::application::ICentralServerService& serverService, gth::application::IAgentService& agentService) {
@@ -41,6 +42,8 @@ private:
     LRESULT OnServerToggleClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnAgentToggleClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnRefreshClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnAgentPanelClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    void layoutControls();
 
     std::wstring getEditText(CEdit& edit);
     void refreshNodesList();
@@ -57,7 +60,7 @@ private:
     ModernButton serverToggleButton_;
     CStatic serverStatusLabel_;
 
-    CStatic agentSectionLabel_;
+    ModernButton agentPanelButton_;
     CStatic agentAddressCaption_, agentPortCaption_, agentNameCaption_, agentIntervalCaption_;
     CEdit agentAddressEdit_, agentPortEdit_, agentNameEdit_, agentIntervalEdit_;
     ModernButton agentToggleButton_;
@@ -66,4 +69,5 @@ private:
     CStatic nodesLabel_;
     ModernButton refreshNodesButton_;
     CListViewCtrl nodesListView_;
+    bool agentExpanded_ = false;
 };

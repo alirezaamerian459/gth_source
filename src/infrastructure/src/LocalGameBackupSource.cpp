@@ -3,11 +3,14 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <windows.h>
+#include <Windows.h>
 
 #include <algorithm>
+#include <cstring>
+#include <format>
 #include <fstream>
 #include <limits>
+#include <ranges>
 #include <system_error>
 #include <vector>
 
@@ -28,7 +31,9 @@ fs::path fromUtf8(const std::string& text) {
 
 std::string toUtf8(const fs::path& path) {
     const auto value = path.generic_u8string();
-    return {reinterpret_cast<const char*>(value.data()), value.size()};
+    std::string result(value.size(), '\0');
+    std::memcpy(result.data(), value.data(), value.size());
+    return result;
 }
 
 bool hasReparsePoint(const fs::path& path) {
@@ -46,22 +51,19 @@ struct SourceFile {
 bool insideRoot(const fs::path& root, const fs::path& path) {
     const fs::path relative = path.lexically_relative(root);
     if (relative.empty() || relative.is_absolute()) return false;
-    for (const auto& part : relative) {
-        if (part == L"..") return false;
-    }
-    return true;
+    return std::ranges::none_of(relative, [](const auto& part) { return part == L".."; });
 }
 
 bool copyFile(const fs::path& source, const fs::path& target, long long& done, long long total,
               const application::BackupCallbacks& callbacks, std::string& error) {
     std::ifstream in(source, std::ios::binary);
     if (!in) {
-        error = "Couldn't open a local game file: " + toUtf8(source.filename());
+        error = std::format("Couldn't open a local game file: {}", toUtf8(source.filename()));
         return false;
     }
     std::ofstream out(target, std::ios::binary | std::ios::trunc);
     if (!out) {
-        error = "Couldn't create a staged game file: " + toUtf8(target.filename());
+        error = std::format("Couldn't create a staged game file: {}", toUtf8(target.filename()));
         return false;
     }
 
@@ -92,42 +94,36 @@ bool copyFile(const fs::path& source, const fs::path& target, long long& done, l
     return true;
 }
 
-}  // namespace
-
-bool LocalGameBackupSource::downloadGame(const application::BackupGame& game, const fs::path& destination,
-                                         const application::BackupCallbacks& callbacks, std::string& error) {
-    const auto variant = variants_.getById(game.id);
-    if (!variant || variant->status != core::GameVariantStatus::Active) {
-        error = "This game is no longer available in the GTH library.";
-        return false;
-    }
-    const auto storage = storages_.getById(variant->storageId);
-    if (!storage || !storage->isAvailable) {
-        error = "The storage containing this game is currently unavailable.";
-        return false;
-    }
-
-    const fs::path relative = fromUtf8(variant->relativePath);
+bool resolveGameRoot(const std::string& storageRootPath, const std::string& relativePath, fs::path& gameRoot,
+                     std::string& error) {
+    const fs::path relative = fromUtf8(relativePath);
     if (relative.empty() || relative.is_absolute() || relative.has_root_name() || relative.has_root_directory()) {
         error = "The GTH library contains an invalid game path.";
         return false;
     }
-    for (const auto& part : relative) {
-        if (part == L"." || part == L"..") {
-            error = "The GTH library contains an unsafe game path.";
-            return false;
-        }
+    if (std::ranges::any_of(relative, [](const auto& part) { return part == L"." || part == L".."; })) {
+        error = "The GTH library contains an unsafe game path.";
+        return false;
     }
 
     std::error_code ec;
-    const fs::path root = fs::canonical(fromUtf8(storage->rootPath), ec);
-    if (ec || !fs::is_directory(root, ec) || ec) {
+    const fs::path root = fs::canonical(fromUtf8(storageRootPath), ec);
+    if (ec) {
         error = "The storage root can't be reached.";
         return false;
     }
+    if (!fs::is_directory(root, ec) || ec) {
+        error = "The storage root can't be reached.";
+        return false;
+    }
+
     const fs::path candidate = root / relative;
-    const fs::path gameRoot = fs::canonical(candidate, ec);
-    if (ec || !insideRoot(root, gameRoot) || !fs::is_directory(gameRoot, ec) || ec) {
+    gameRoot = fs::canonical(candidate, ec);
+    if (ec || !insideRoot(root, gameRoot)) {
+        error = "The game's GTH folder can't be reached or is outside its registered storage.";
+        return false;
+    }
+    if (!fs::is_directory(gameRoot, ec) || ec) {
         error = "The game's GTH folder can't be reached or is outside its registered storage.";
         return false;
     }
@@ -146,50 +142,56 @@ bool LocalGameBackupSource::downloadGame(const application::BackupGame& game, co
             return false;
         }
     }
+    return true;
+}
 
-    std::vector<SourceFile> files;
-    long long total = 0;
-    fs::recursive_directory_iterator it(gameRoot, fs::directory_options::none, ec), end;
-    for (; it != end; it.increment(ec)) {
+bool collectFiles(const fs::path& gameRoot, const application::BackupCallbacks& callbacks,
+                  std::vector<SourceFile>& files, long long& total, std::string& error) {
+    std::error_code ec;
+    fs::recursive_directory_iterator it(gameRoot, fs::directory_options::none, ec);
+    fs::recursive_directory_iterator end;
+    while (it != end) {
         if (callbacks.shouldCancel && callbacks.shouldCancel()) {
             error = "Backup cancelled.";
             return false;
         }
         if (ec) {
-            error = "Couldn't enumerate the local game folder: " + ec.message();
+            error = std::format("Couldn't enumerate the local game folder: {}", ec.message());
             return false;
         }
         const auto status = it->symlink_status(ec);
         if (ec) {
-            error = "Couldn't inspect a local game path: " + ec.message();
+            error = std::format("Couldn't inspect a local game path: {}", ec.message());
             return false;
         }
         if (fs::is_symlink(status) || hasReparsePoint(it->path())) {
             error = "The local game folder contains a symbolic link or junction; backup stopped to avoid reading outside it.";
             return false;
         }
-        if (!fs::is_regular_file(status)) continue;
-        const auto size = it->file_size(ec);
-        if (ec || size > static_cast<uintmax_t>(std::numeric_limits<long long>::max()) ||
-            total > std::numeric_limits<long long>::max() - static_cast<long long>(size)) {
-            error = "A local game file has an invalid or overflowing size.";
-            return false;
+        if (fs::is_regular_file(status)) {
+            const auto size = it->file_size(ec);
+            if (ec || size > static_cast<uintmax_t>(std::numeric_limits<long long>::max()) ||
+                total > std::numeric_limits<long long>::max() - static_cast<long long>(size)) {
+                error = "A local game file has an invalid or overflowing size.";
+                return false;
+            }
+            const fs::path rel = it->path().lexically_relative(gameRoot);
+            if (!insideRoot(gameRoot, it->path())) {
+                error = "A local game file resolved outside its GTH folder.";
+                return false;
+            }
+            const auto modified = it->last_write_time(ec);
+            if (ec) {
+                error = "Couldn't read a local game's file timestamp.";
+                return false;
+            }
+            total += static_cast<long long>(size);
+            files.emplace_back(it->path(), rel, size, modified);
         }
-        const fs::path rel = it->path().lexically_relative(gameRoot);
-        if (!insideRoot(gameRoot, it->path())) {
-            error = "A local game file resolved outside its GTH folder.";
-            return false;
-        }
-        const auto modified = it->last_write_time(ec);
-        if (ec) {
-            error = "Couldn't read a local game's file timestamp.";
-            return false;
-        }
-        total += static_cast<long long>(size);
-        files.push_back({it->path(), rel, size, modified});
+        it.increment(ec);
     }
     if (ec) {
-        error = "Couldn't finish enumerating the local game folder: " + ec.message();
+        error = std::format("Couldn't finish enumerating the local game folder: {}", ec.message());
         return false;
     }
     if (files.empty()) {
@@ -197,7 +199,12 @@ bool LocalGameBackupSource::downloadGame(const application::BackupGame& game, co
         return false;
     }
     std::sort(files.begin(), files.end(), [](const auto& a, const auto& b) { return a.relative < b.relative; });
+    return true;
+}
 
+bool stageFiles(const std::vector<SourceFile>& files, const fs::path& destination, long long total,
+                const application::BackupCallbacks& callbacks, std::string& error) {
+    std::error_code ec;
     long long done = 0;
     for (const auto& file : files) {
         if (callbacks.shouldCancel && callbacks.shouldCancel()) {
@@ -211,7 +218,7 @@ bool LocalGameBackupSource::downloadGame(const application::BackupGame& game, co
         const fs::path target = destination / file.relative;
         fs::create_directories(target.parent_path(), ec);
         if (ec) {
-            error = "Couldn't create the local backup staging folder: " + ec.message();
+            error = std::format("Couldn't create the local backup staging folder: {}", ec.message());
             return false;
         }
         if (!copyFile(file.path, target, done, total, callbacks, error)) {
@@ -226,6 +233,29 @@ bool LocalGameBackupSource::downloadGame(const application::BackupGame& game, co
         }
     }
     return true;
+}
+
+}  // namespace
+
+bool LocalGameBackupSource::downloadGame(const application::BackupGame& game, const fs::path& destination,
+                                         const application::BackupCallbacks& callbacks, std::string& error) {
+    const auto variant = variants_.getById(game.id);
+    if (!variant || variant->status != core::GameVariantStatus::Active) {
+        error = "This game is no longer available in the GTH library.";
+        return false;
+    }
+    const auto storage = storages_.getById(variant->storageId);
+    if (!storage || !storage->isAvailable) {
+        error = "The storage containing this game is currently unavailable.";
+        return false;
+    }
+
+    fs::path gameRoot;
+    if (!resolveGameRoot(storage->rootPath, variant->relativePath, gameRoot, error)) return false;
+    std::vector<SourceFile> files;
+    long long total = 0;
+    if (!collectFiles(gameRoot, callbacks, files, total, error)) return false;
+    return stageFiles(files, destination, total, callbacks, error);
 }
 
 }  // namespace gth::infrastructure

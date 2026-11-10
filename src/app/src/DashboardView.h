@@ -17,6 +17,7 @@ public:
         MESSAGE_HANDLER(WM_CTLCOLORSTATIC, OnCtlColorStatic)
         COMMAND_ID_HANDLER(IDC_SCAN_BUTTON, OnScanClick)
         COMMAND_ID_HANDLER(IDC_COPY_IP_BUTTON, OnCopyIPClick)
+        COMMAND_ID_HANDLER(IDC_DASHBOARD_NETWORK_PANEL_BUTTON, OnNetworkPanelClick)
     END_MSG_MAP()
 
     void init(gth::application::IStorageService& service) { service_ = &service; }
@@ -46,9 +47,12 @@ private:
     // other side of a transfer (another PC, a console's FTP client) can be
     // pointed at it without the user having to go find it themselves via
     // ipconfig.
-    CStatic networkLabel_;
+    ModernButton networkLabel_;
     CStatic ipAddressCaption_, ipAddressValue_;
     CStatic portCaption_, portValue_;
     ModernButton copyIPButton_;
     CStatic networkStatusLabel_;
+    bool networkDetailsExpanded_ = false;
+    LRESULT OnNetworkPanelClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    void layoutNetworkDetails();
 };

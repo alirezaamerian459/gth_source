@@ -73,7 +73,7 @@ private:
                 break;
             case Kind::Secondary:
             default:
-                fill = (pressed_ || hovering_) ? theme::HoverBg() : theme::ContentBg();
+                fill = (pressed_ || hovering_) ? theme::HoverBg() : theme::SurfaceBg();
                 textColor = !enabled ? theme::TextDisabled() : theme::TextPrimary();
                 border = theme::Border();
                 break;

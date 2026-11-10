@@ -1,3 +1,4 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <cstdint>
@@ -22,7 +23,7 @@ const std::string kScUrl = kInfoFolder + "EP0006-PPSA02343_00-NUTSEU0000000000_s
 const std::string kManifestUrl = kInfoFolder + "EP0006-PPSA02343_00-NUTSEU0000000000.json";
 const std::string kCrcUrl = kInfoFolder + "EP0006-PPSA02343_00-NUTSEU0000000000.crc";
 const std::string kPieceUrl =
-    "http://gst.prod.dl.playstation.net/gst/prod/00/PPSA02343_00/app/pkg/7/f_bdc44b4d0b53/EP0006-PPSA02343_00-NUTSEU0000000000_0.pkg";
+    "http://gst.prod.dl.playstation.net/gst/prod/00/PPSA02343_00/app/pkg/7/f_bdc44b4d0b53/EP0006-PPSA02343_00-NUTSEU0000000000_0.pkg";  // NOSONAR: fake response fixture; importer uses an injected fetcher.
 
 std::string ParamJson(const std::string& titleId, const std::string& versionUri) {
     // Sony pads the value with spaces inside the quotes.
@@ -105,7 +106,7 @@ struct FakeSony {
 
 class TempDir {
 public:
-    explicit TempDir(const std::string& name) : path_(std::filesystem::temp_directory_path() / ("gth_link_import_" + name)) {
+    explicit TempDir(const std::string& name) : path_(gth::test::testTempRoot() / ("gth_link_import_" + name)) {
         std::filesystem::remove_all(path_);
         std::filesystem::create_directories(path_);
     }
@@ -161,7 +162,7 @@ TEST(SonyAddressExtractionTest, ReadsAddressesOutOfMarkupAndTabSeparatedLists) {
 }
 
 TEST(SonyAddressExtractionTest, UpgradesPlainHttpVersionFileLinksToHttps) {
-    const auto found = ExtractSonyAddresses("http://sgst.prod.dl.playstation.net/sgst/prod/00/np/PPSA02343_00/x-version.xml");
+    const auto found = ExtractSonyAddresses("http://sgst.prod.dl.playstation.net/sgst/prod/00/np/PPSA02343_00/x-version.xml");  // NOSONAR: this verifies legacy-link upgrade; it never fetches the URL.
     ASSERT_EQ(found.size(), 1u);
     EXPECT_EQ(found[0].url.rfind("https://", 0), 0u);
 }
@@ -240,7 +241,7 @@ TEST(SonyLinkImporterTest, LearnsTheLinkFromAMetadataPieceAndSavesIt) {
 
     SonyLinkImporter importer(links, {links}, sony.fetcher());
     std::vector<std::string> progress;
-    const auto result = importer.import(kManifestUrl, {}, [&progress](const std::string& line) { progress.push_back(line); });
+    const auto result = importer.importLinks(kManifestUrl, {}, [&progress](const std::string& line) { progress.push_back(line); });
 
     EXPECT_EQ(result.learned, 1u);
     EXPECT_EQ(result.titleIdsLearned, std::vector<std::string>{kTitle});
@@ -261,7 +262,7 @@ TEST(SonyLinkImporterTest, AVersionFileLinkIsSavedWithoutAskingSony) {
     FakeSony sony;
 
     SonyLinkImporter importer(links, {links}, sony.fetcher());
-    const auto result = importer.import(kVersionUrl);
+    const auto result = importer.importLinks(kVersionUrl);
 
     EXPECT_EQ(result.learned, 1u);
     EXPECT_TRUE(sony.asked.empty());
@@ -281,7 +282,7 @@ TEST(SonyLinkImporterTest, KnownTitlesAreNotLookedUpAgainAndOthersAreKept) {
     const std::string knownSc = "https://sgst.prod.dl.playstation.net/sgst/prod/00/PPSA20050_00/app/info/3/f_aa/EP0006-PPSA20050_00-EASPORTSFC2025BG_sc.pkg";
 
     SonyLinkImporter importer(links, {other, links}, sony.fetcher());
-    const auto result = importer.import(knownSc + "\n" + kScUrl);
+    const auto result = importer.importLinks(knownSc + "\n" + kScUrl);
 
     EXPECT_EQ(result.alreadyKnown, 1u);  // PPSA20050 - already in another links file
     EXPECT_EQ(result.learned, 1u);
@@ -302,14 +303,14 @@ TEST(SonyLinkImporterTest, ExplainsEachTitleThatDidNotWork) {
     const std::string notPiece = "https://sgst.prod.dl.playstation.net/sgst/prod/00/PPSA00002_00/app/info/1/f_b/EP0001-PPSA00002_00-AAAAAAAAAAAAAAAA_sc.pkg";
     const std::string otherGame = "https://sgst.prod.dl.playstation.net/sgst/prod/00/PPSA00003_00/app/info/1/f_c/EP0001-PPSA00003_00-AAAAAAAAAAAAAAAA_sc.pkg";
     const std::string foreignLink = "https://sgst.prod.dl.playstation.net/sgst/prod/00/PPSA00004_00/app/info/1/f_d/EP0001-PPSA00004_00-AAAAAAAAAAAAAAAA_sc.pkg";
-    const std::string onlyPieces = "http://gst.prod.dl.playstation.net/gst/prod/00/PPSA00005_00/app/pkg/1/f_e/EP0001-PPSA00005_00-AAAAAAAAAAAAAAAA_0.pkg";
+    const std::string onlyPieces = "http://gst.prod.dl.playstation.net/gst/prod/00/PPSA00005_00/app/pkg/1/f_e/EP0001-PPSA00005_00-AAAAAAAAAAAAAAAA_0.pkg";  // NOSONAR: invalid-link test fixture; injected fetcher only.
     sony.answers[expired] = Answer(403);
     sony.answers[notPiece] = Answer(200, std::string(70000, 'z'));
     sony.answers[otherGame] = Answer(206, BuildMetadataPiece(ParamJson("PPSA99999", kVersionUrl)));
     sony.answers[foreignLink] = Answer(206, BuildMetadataPiece(ParamJson("PPSA00004", "https://evil.example.com/PPSA00004_00/x-version.xml")));
 
     SonyLinkImporter importer(links, {links}, sony.fetcher());
-    const auto result = importer.import(expired + "\n" + notPiece + "\n" + otherGame + "\n" + foreignLink + "\n" + onlyPieces);
+    const auto result = importer.importLinks(expired + "\n" + notPiece + "\n" + otherGame + "\n" + foreignLink + "\n" + onlyPieces);
 
     EXPECT_EQ(result.learned, 0u);
     EXPECT_EQ(result.failed, 4u);
@@ -332,7 +333,7 @@ TEST(SonyLinkImporterTest, TriesAnotherPatchsMetadataPieceWhenTheFirstIsGone) {
     sony.answers[kScUrl] = Answer(206, BuildMetadataPiece(ParamJson(kTitle, kVersionUrl)));
 
     SonyLinkImporter importer(links, {links}, sony.fetcher());
-    const auto result = importer.import(olderSc + "\n" + kScUrl);
+    const auto result = importer.importLinks(olderSc + "\n" + kScUrl);
 
     EXPECT_EQ(result.learned, 1u);
     EXPECT_EQ(sony.asked.size(), 2u);
@@ -351,7 +352,7 @@ TEST(SonyLinkImporterTest, StopsWhenSonyStopsAnswering) {
     }
 
     SonyLinkImporter importer(links, {links}, sony.fetcher());
-    const auto result = importer.import(text);
+    const auto result = importer.importLinks(text);
 
     EXPECT_EQ(result.learned, 0u);
     EXPECT_EQ(sony.asked.size(), 3u);  // gave up after three silent answers, not eight
@@ -369,7 +370,7 @@ TEST(SonyLinkImporterTest, CancelStopsBetweenTitlesButKeepsWhatWasLearned) {
 
     int asks = 0;
     SonyLinkImporter importer(links, {links}, sony.fetcher());
-    const auto result = importer.import(kScUrl + "\n" + secondSc, [&asks] { return asks++ >= 1; });
+    const auto result = importer.importLinks(kScUrl + "\n" + secondSc, [&asks] { return asks++ >= 1; });
 
     EXPECT_TRUE(result.cancelled);
     EXPECT_EQ(result.learned, 1u);

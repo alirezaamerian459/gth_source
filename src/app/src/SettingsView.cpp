@@ -1,6 +1,11 @@
 #include "SettingsView.h"
 
-#include <shlobj.h>
+#include <ShlObj.h>
+
+#include <array>
+#include <bit>
+#include <format>
+#include <stdexcept>
 
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "ole32.lib")
@@ -20,7 +25,7 @@ LRESULT SettingsView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     HFONT body = theme::BodyFont();
 
     CRect titleRect(kMargin, 24, kMargin + 300, 56);
-    titleLabel_.Create(m_hWnd, titleRect, L"Settings", WS_CHILD | WS_VISIBLE);
+    titleLabel_.Create(m_hWnd, titleRect, L"Settings & Preferences", WS_CHILD | WS_VISIBLE);
     titleLabel_.SetFont(theme::TitleFont());
 
     // --- Appearance ---
@@ -40,6 +45,13 @@ LRESULT SettingsView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
                         IDC_SETTINGS_THEME_DARK_BUTTON);
     darkButton_.SetFont(body);
     y += 32 + 34;
+
+    CRect moreRect(kMargin, 140, kMargin + 188, 168);
+    moreOptionsButton_.Create(m_hWnd, moreRect, L"More settings  \x25B8",
+                              WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
+                              IDC_SETTINGS_MORE_OPTIONS_BUTTON);
+    moreOptionsButton_.SetFont(body);
+    moreOptionsButton_.setKind(ModernButton::Kind::Subtle);
 
     // --- Sidebar Tabs ---
     CRect tabsCapRect(kMargin, y, kMargin + 300, y + 22);
@@ -79,7 +91,7 @@ LRESULT SettingsView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 
         tabCheckboxes_.emplace_back();
         ModernCheckBox& box = tabCheckboxes_.back();
-        box.Create(m_hWnd, boxRect, kSidebarTabs[static_cast<size_t>(logicalIndex)],
+        box.Create(m_hWnd, boxRect, SidebarDisplayName(logicalIndex),
                    WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 0,
                    IDC_SETTINGS_TAB_CHECKBOX_FIRST + checkboxIndex);
         box.SetFont(body);
@@ -205,6 +217,7 @@ LRESULT SettingsView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     CRect signInStatusRect(kMargin, sy, kMargin + 500, sy + 20);
     signInStatusLabel_.Create(m_hWnd, signInStatusRect, L"", WS_CHILD | WS_VISIBLE);
     signInStatusLabel_.SetFont(body);
+    signInStatusLabel_.SetWindowText(L"First use: enter the username and password you want to save.");
 
     // Signed-in form (occupies the same slot as the block above)
     sy = signInSectionTop;
@@ -279,6 +292,7 @@ LRESULT SettingsView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     y += 24 + 34;
 
     // --- Reset + status ---
+    resetTop_ = y;
     CRect resetRect(kMargin, y, kMargin + 160, y + 30);
     resetButton_.Create(m_hWnd, resetRect, L"Reset to Defaults", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
                          IDC_SETTINGS_RESET_BUTTON);
@@ -290,10 +304,51 @@ LRESULT SettingsView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     statusLabel_.SetFont(body);
     y += 30 + kMargin;
 
-    scroll_.setContentHeight(y);
-
+    expandedContentHeight_ = y;
     refresh();
+    layoutOptions();
     return 0;
+}
+
+void SettingsView::layoutOptions() {
+    if (!moreOptionsButton_.IsWindow()) return;
+    moreOptionsButton_.SetWindowText(moreOptionsExpanded_ ? L"Hide other settings  \x25BE"
+                                                         : L"More settings  \x25B8");
+    const auto show = [this](CWindow& control, bool visible) {
+        if (control.IsWindow()) control.ShowWindow(visible ? SW_SHOW : SW_HIDE);
+    };
+    const bool expanded = moreOptionsExpanded_;
+    for (CWindow* control : {static_cast<CWindow*>(&tabsCaption_), static_cast<CWindow*>(&tabsHintCaption_),
+                             static_cast<CWindow*>(&defaultsCaption_), static_cast<CWindow*>(&folderCaption_),
+                             static_cast<CWindow*>(&folderEdit_), static_cast<CWindow*>(&folderBrowseButton_),
+                             static_cast<CWindow*>(&folderSaveButton_), static_cast<CWindow*>(&loggingCaption_),
+                             static_cast<CWindow*>(&logLevelCaption_), static_cast<CWindow*>(&logLevelCombo_),
+                             static_cast<CWindow*>(&firewallCaption_), static_cast<CWindow*>(&firewallStatusLabel_),
+                             static_cast<CWindow*>(&firewallAllowButton_), static_cast<CWindow*>(&firewallRemoveButton_),
+                             static_cast<CWindow*>(&firewallHintLabel_), static_cast<CWindow*>(&signInCaption_),
+                             static_cast<CWindow*>(&signInUserCaption_), static_cast<CWindow*>(&signInPassCaption_),
+                             static_cast<CWindow*>(&signInUserEdit_), static_cast<CWindow*>(&signInPassEdit_),
+                             static_cast<CWindow*>(&signInButton_), static_cast<CWindow*>(&signInStatusLabel_),
+                             static_cast<CWindow*>(&signedInAsLabel_), static_cast<CWindow*>(&signOutButton_),
+                             static_cast<CWindow*>(&changeCredCaption_), static_cast<CWindow*>(&currentPassCaption_),
+                             static_cast<CWindow*>(&newUserCaption_), static_cast<CWindow*>(&newPassCaption_),
+                             static_cast<CWindow*>(&currentPassEdit_), static_cast<CWindow*>(&newUserEdit_),
+                             static_cast<CWindow*>(&newPassEdit_), static_cast<CWindow*>(&changeCredButton_),
+                             static_cast<CWindow*>(&consoleLimitsCaption_), static_cast<CWindow*>(&maxConsolesCaption_),
+                             static_cast<CWindow*>(&maxConsolesEdit_), static_cast<CWindow*>(&maxConsolesSaveButton_)}) {
+        show(*control, expanded);
+    }
+    for (auto& checkbox : tabCheckboxes_) show(checkbox, expanded);
+
+    if (!expanded) {
+        resetButton_.MoveWindow(kMargin, 188, 160, 30, FALSE);
+        statusLabel_.MoveWindow(kMargin + 174, 191, 526, 24, FALSE);
+        scroll_.setContentHeight(232);
+    } else {
+        resetButton_.MoveWindow(kMargin, resetTop_, 160, 30, FALSE);
+        statusLabel_.MoveWindow(kMargin + 174, resetTop_ + 3, 526, 27, FALSE);
+        scroll_.setContentHeight(expandedContentHeight_);
+    }
 }
 
 LRESULT SettingsView::OnSize(UINT, WPARAM, LPARAM, BOOL&) {
@@ -302,8 +357,8 @@ LRESULT SettingsView::OnSize(UINT, WPARAM, LPARAM, BOOL&) {
 }
 
 LRESULT SettingsView::OnCtlColorStatic(UINT, WPARAM wParam, LPARAM lParam, BOOL&) {
-    HDC hdc = reinterpret_cast<HDC>(wParam);
-    HWND ctrl = reinterpret_cast<HWND>(lParam);
+    const auto hdc = std::bit_cast<HDC>(wParam);
+    const auto ctrl = std::bit_cast<HWND>(lParam);
     ::SetBkMode(hdc, TRANSPARENT);
     const bool secondary = ctrl == tabsHintCaption_.m_hWnd || ctrl == folderCaption_.m_hWnd ||
                             ctrl == logLevelCaption_.m_hWnd || ctrl == signInUserCaption_.m_hWnd ||
@@ -311,7 +366,7 @@ LRESULT SettingsView::OnCtlColorStatic(UINT, WPARAM wParam, LPARAM lParam, BOOL&
                             ctrl == newUserCaption_.m_hWnd || ctrl == newPassCaption_.m_hWnd ||
                             ctrl == maxConsolesCaption_.m_hWnd;
     ::SetTextColor(hdc, secondary ? theme::TextSecondary() : theme::TextPrimary());
-    return reinterpret_cast<LRESULT>(theme::ContentBgBrush());
+    return std::bit_cast<LRESULT>(theme::ContentBgBrush());
 }
 
 LRESULT SettingsView::OnCtlColorEdit(UINT, WPARAM wParam, LPARAM, BOOL&) { return HandleCtlColorEdit(wParam); }
@@ -328,9 +383,10 @@ void SettingsView::showStatus(const std::wstring& text) {
 }
 
 void SettingsView::updateThemeButtons() {
+    using enum ModernButton::Kind;
     const bool dark = current_.theme == ThemeMode::Dark;
-    lightButton_.setKind(dark ? ModernButton::Kind::Secondary : ModernButton::Kind::Primary);
-    darkButton_.setKind(dark ? ModernButton::Kind::Primary : ModernButton::Kind::Secondary);
+    lightButton_.setKind(dark ? Secondary : Primary);
+    darkButton_.setKind(dark ? Primary : Secondary);
     if (lightButton_.IsWindow()) lightButton_.Invalidate();
     if (darkButton_.IsWindow()) darkButton_.Invalidate();
 }
@@ -356,7 +412,7 @@ void SettingsView::refresh() {
         if (!IsSidebarTabHideable(logicalIndex)) continue;
         if (checkboxIndex < static_cast<int>(tabCheckboxes_.size())) {
             const std::string label = WideToUtf8(kSidebarTabs[static_cast<size_t>(logicalIndex)]);
-            const bool visible = current_.hiddenTabs.find(label) == current_.hiddenTabs.end();
+            const bool visible = !current_.hiddenTabs.contains(label);
             tabCheckboxes_[static_cast<size_t>(checkboxIndex)].SetCheck(visible ? BST_CHECKED : BST_UNCHECKED);
         }
         ++checkboxIndex;
@@ -377,6 +433,13 @@ void SettingsView::refresh() {
 
     refreshSignInSection();
     refreshFirewallSection();
+    layoutOptions();
+}
+
+LRESULT SettingsView::OnMoreOptionsClick(WORD, WORD, HWND, BOOL&) {
+    moreOptionsExpanded_ = !moreOptionsExpanded_;
+    layoutOptions();
+    return 0;
 }
 
 namespace {
@@ -393,17 +456,18 @@ void SettingsView::refreshFirewallSection() {
 
     std::wstring text;
     if (!status.available) {
-        text = L"Windows Firewall can't be read on this PC, so nothing can be changed from here. " +
-               Utf8ToWide(status.detail);
+        text = std::format(L"Windows Firewall can't be read on this PC, so nothing can be changed from here. {}",
+                           Utf8ToWide(status.detail));
     } else if (status.appAllowed) {
         text = status.firewallEnabled
                    ? L"Allowed: devices on your local network can connect to this app while Windows Firewall is on."
                    : L"The rules are in place, but Windows Firewall is currently turned off. Turn it back on in "
                      L"Windows Security - this app will keep working.";
     } else if (status.blockingRules > 0) {
-        text = std::to_wstring(status.blockingRules) +
-               L" Windows firewall rule(s) are blocking this app (Windows creates these when its \"allow this app?\" "
-               L"prompt is closed without allowing it). Click Allow to switch them off.";
+        text = std::format(
+            L"{} Windows firewall rule(s) are blocking this app (Windows creates these when its \"allow this app?\" "
+            L"prompt is closed without allowing it). Click Allow to switch them off.",
+            status.blockingRules);
     } else {
         text = status.firewallEnabled
                    ? L"Not allowed yet: while Windows Firewall is on, other devices (consoles, other PCs) can be "
@@ -447,7 +511,7 @@ void SettingsView::refreshSignInSection() {
                         signedIn);
 
     if (signedIn && signedInAsLabel_.IsWindow()) {
-        signedInAsLabel_.SetWindowText((L"Signed in as " + Utf8ToWide(adminAuthService_->currentUsername())).c_str());
+        signedInAsLabel_.SetWindowText(std::format(L"Signed in as {}", Utf8ToWide(adminAuthService_->currentUsername())).c_str());
     }
 
     // Never leave a typed password sitting in a field after a click.
@@ -501,18 +565,18 @@ LRESULT SettingsView::OnFolderBrowseClick(WORD, WORD, HWND, BOOL&) {
     const HRESULT comResult = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     const bool comInitializedHere = SUCCEEDED(comResult);
 
-    wchar_t displayName[MAX_PATH]{};
+    std::array<wchar_t, MAX_PATH> displayName{};
     BROWSEINFOW bi{};
     bi.hwndOwner = m_hWnd;
-    bi.pszDisplayName = displayName;
+    bi.pszDisplayName = displayName.data();
     bi.lpszTitle = L"Choose a default local folder";
     bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
 
     LPITEMIDLIST pidl = ::SHBrowseForFolderW(&bi);
     if (pidl != nullptr) {
-        wchar_t path[MAX_PATH]{};
-        if (::SHGetPathFromIDListW(pidl, path)) {
-            folderEdit_.SetWindowText(path);
+        std::array<wchar_t, MAX_PATH> path{};
+        if (::SHGetPathFromIDListW(pidl, path.data())) {
+            folderEdit_.SetWindowText(path.data());
         }
         ::CoTaskMemFree(pidl);
     }
@@ -531,7 +595,7 @@ LRESULT SettingsView::OnFolderSaveClick(WORD, WORD, HWND, BOOL&) {
 
 LRESULT SettingsView::OnLogLevelChange(WORD, WORD, HWND, BOOL&) {
     const int sel = logLevelCombo_.GetCurSel();
-    const wchar_t* levels[] = {L"Error", L"Warning", L"Info", L"Debug"};
+    const std::array<const wchar_t*, 4> levels{L"Error", L"Warning", L"Info", L"Debug"};
     if (sel < 0 || sel >= 4) return 0;
 
     AppSettings updated = current_;
@@ -604,7 +668,10 @@ LRESULT SettingsView::OnMaxConsolesSaveClick(WORD, WORD, HWND, BOOL&) {
     int value = 0;
     try {
         value = std::stoi(text);
-    } catch (...) {
+    } catch (const std::invalid_argument&) {
+        showStatus(L"Enter a whole number.");
+        return 0;
+    } catch (const std::out_of_range&) {
         showStatus(L"Enter a whole number.");
         return 0;
     }

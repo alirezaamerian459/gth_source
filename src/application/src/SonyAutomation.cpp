@@ -96,13 +96,13 @@ SonyAutomationSettings ParseSonyAutomationSettings(const std::string& text) {
         const std::string value = line.substr(equals + 1);
 
         if (key == "checkforupdates") {
-            if (const auto on = parseSwitch(value)) settings.checkForUpdates = *on;
+            if (const auto on = parseSwitch(value); on.has_value()) settings.checkForUpdates = *on;
         } else if (key == "addmissingmetadata") {
-            if (const auto on = parseSwitch(value)) settings.addMissingMetadata = *on;
+            if (const auto on = parseSwitch(value); on.has_value()) settings.addMissingMetadata = *on;
         } else if (key == "downloadupdates") {
-            if (const auto on = parseSwitch(value)) settings.downloadUpdates = *on;
+            if (const auto on = parseSwitch(value); on.has_value()) settings.downloadUpdates = *on;
         } else if (key == "scanfornewgames") {
-            if (const auto on = parseSwitch(value)) settings.scanForNewGames = *on;
+            if (const auto on = parseSwitch(value); on.has_value()) settings.scanForNewGames = *on;
         } else if (key == "intervalhours") {
             try {
                 settings.intervalHours = std::clamp(std::stoi(trimmedLower(value)), 1, 168);
@@ -115,18 +115,21 @@ SonyAutomationSettings ParseSonyAutomationSettings(const std::string& text) {
 
 std::string SerializeSonyAutomationSettings(const SonyAutomationSettings& settings) {
     const auto onOff = [](bool on) { return on ? "on" : "off"; };
-    return std::string("# Game Transfer Hub - Sony automation. Edit here or in the Updates tab.\n") +
-           "# checkForUpdates:    ask Sony whether each game is up to date\n" +
-           "# addMissingMetadata: download the small metadata piece PS5 downloads lack, so titles and versions can be read\n" +
-           "# downloadUpdates:    also download out-of-date packages automatically (many GB)\n" +
-           "# scanForNewGames:    before each run, look through the storages for games added since the last scan\n" +
-           "# intervalHours:      how often, while the app is open (1-168)\n" +
-           "settingsVersion=2\n" +
-           "checkForUpdates=" + onOff(settings.checkForUpdates) + "\n" +
-           "addMissingMetadata=" + onOff(settings.addMissingMetadata) + "\n" +
-           "downloadUpdates=" + onOff(settings.downloadUpdates) + "\n" +
-           "scanForNewGames=" + onOff(settings.scanForNewGames) + "\n" +
-           "intervalHours=" + std::to_string(std::clamp(settings.intervalHours, 1, 168)) + "\n";
+    return std::format(
+        "# Game Transfer Hub - Sony automation. Edit here or in the Updates tab.\n"
+        "# checkForUpdates:    ask Sony whether each game is up to date\n"
+        "# addMissingMetadata: download the small metadata piece PS5 downloads lack, so titles and versions can be read\n"
+        "# downloadUpdates:    also download out-of-date packages automatically (many GB)\n"
+        "# scanForNewGames:    before each run, look through the storages for games added since the last scan\n"
+        "# intervalHours:      how often, while the app is open (1-168)\n"
+        "settingsVersion=2\n"
+        "checkForUpdates={}\n"
+        "addMissingMetadata={}\n"
+        "downloadUpdates={}\n"
+        "scanForNewGames={}\n"
+        "intervalHours={}\n",
+        onOff(settings.checkForUpdates), onOff(settings.addMissingMetadata), onOff(settings.downloadUpdates),
+        onOff(settings.scanForNewGames), std::clamp(settings.intervalHours, 1, 168));
 }
 
 SonyAutomationSettings SonyAutomationSettingsStore::load() const {
@@ -157,7 +160,7 @@ bool IsSonyAutomationDue(const SonyAutomationSettings& settings, std::chrono::st
                          std::optional<std::chrono::steady_clock::time_point> lastRun,
                          std::chrono::steady_clock::time_point now, std::chrono::seconds startupDelay) {
     if (!settings.anythingEnabled()) return false;
-    if (!lastRun) return now - appStarted >= startupDelay;
+    if (!lastRun.has_value()) return now - appStarted >= startupDelay;
     return now - *lastRun >= std::chrono::hours(std::clamp(settings.intervalHours, 1, 168));
 }
 

@@ -8,7 +8,7 @@ UpdateJobService::UpdateJobService(core::IUpdateJobRepository& jobRepository) : 
 
 UpdateJob UpdateJobService::queueUpdate(const std::string& gameVariantId, const std::string& oldVersion,
                                          const std::string& newVersion) {
-    if (auto existing = jobRepository_.getActiveJobForVariant(gameVariantId, newVersion)) {
+    if (auto existing = jobRepository_.getActiveJobForVariant(gameVariantId, newVersion); existing.has_value()) {
         return *existing;
     }
 

@@ -46,7 +46,7 @@ private:
     std::deque<std::string> pendingItemIds_;
     std::unordered_map<std::string, std::shared_ptr<std::atomic<bool>>> cancelFlags_;
 
-    std::vector<std::thread> workers_;
+    std::vector<std::jthread> workers_;
     std::atomic<bool> running_{false};
 
     void recoverIncompleteItemsFromPreviousRun();

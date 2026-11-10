@@ -4,6 +4,7 @@
 #include <array>
 #include <cctype>
 #include <cstdio>
+#include <format>
 #include <map>
 
 #include "gth/application/indexing/ContentIds.h"
@@ -127,10 +128,10 @@ UpdateCheckSummary UpdateCheckService::checkAll() {
                 if (!current->version.empty()) {
                     if (core::compareVersions(current->version, latest.release.version) >= 0) {
                         entry.state = UpdateState::UpToDate;
-                        entry.detail = "version " + current->version + " is Sony's latest";
+                        entry.detail = std::format("version {} is Sony's latest", current->version);
                     } else {
                         entry.state = UpdateState::UpdateAvailable;
-                        entry.detail = "you have " + current->version + ", Sony's latest is " + latest.release.version;
+                        entry.detail = std::format("you have {}, Sony's latest is {}", current->version, latest.release.version);
                     }
                     break;
                 }
@@ -143,15 +144,15 @@ UpdateCheckSummary UpdateCheckService::checkAll() {
                         entry.state = UpdateState::UpToDate;
                         entry.installedVersion = latest.release.version;
                         entry.installedVersionInferred = true;
-                        entry.detail = "same file sizes as Sony's latest package (" + latest.release.version + ")";
+                        entry.detail = std::format("same file sizes as Sony's latest package ({})", latest.release.version);
                     } else {
                         entry.state = UpdateState::UpdateAvailable;
-                        entry.detail = "package differs from Sony's latest (" + latest.release.version + ", " +
-                                       formatGigabytes(latest.release.packageSizeBytes) + ") - an older or different build";
+                        entry.detail = std::format("package differs from Sony's latest ({}, {}) - an older or different build",
+                                                   latest.release.version, formatGigabytes(latest.release.packageSizeBytes));
                     }
                 } else {
                     entry.state = UpdateState::InstalledVersionUnknown;
-                    entry.detail = "Sony's latest is " + latest.release.version + "; this copy's version isn't known";
+                    entry.detail = std::format("Sony's latest is {}; this copy's version isn't known", latest.release.version);
                 }
                 break;
             }
@@ -164,7 +165,7 @@ UpdateCheckSummary UpdateCheckService::checkAll() {
             case UpdateState::NoSonyData: ++summary.noSonyData; break;
             case UpdateState::CheckFailed:
                 ++summary.failed;
-                if (summary.firstFailure.empty()) summary.firstFailure = titleId + ": " + entry.detail;
+                if (summary.firstFailure.empty()) summary.firstFailure = std::format("{}: {}", titleId, entry.detail);
                 break;
         }
         summary.entries.push_back(std::move(entry));

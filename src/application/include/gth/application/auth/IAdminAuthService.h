@@ -14,6 +14,8 @@ class IAdminAuthService {
 public:
     virtual ~IAdminAuthService() = default;
 
+    // If no credential has been saved yet, the first non-empty pair is stored
+    // in the OS credential store and signs the user in.
     virtual bool signIn(const std::string& username, const std::string& password) = 0;
     virtual void signOut() = 0;
     virtual bool isSignedIn() const = 0;

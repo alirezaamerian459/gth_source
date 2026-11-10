@@ -30,7 +30,7 @@ void CdnUrlService::captureUrl(const std::string& url, const std::string& host, 
     if (localFileIndex_) {
         const std::string fileName = packageFileNameFromUrl(url);
         if (isServablePackageName(fileName)) {
-            if (const auto found = localFileIndex_->findByFileName(fileName)) {
+            if (const auto found = localFileIndex_->findByFileName(fileName); found.has_value()) {
                 const auto u8 = found->u8string();
                 newUrl.localPath = std::string(reinterpret_cast<const char*>(u8.data()), u8.size());
                 newUrl.markText = "Local: " + fileName;

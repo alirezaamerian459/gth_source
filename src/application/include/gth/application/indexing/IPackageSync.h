@@ -89,6 +89,12 @@ struct SyncCallbacks {
 };
 
 struct SyncBatchResult {
+    SyncBatchResult() = default;
+    SyncBatchResult(const SyncBatchResult&) = default;
+    SyncBatchResult& operator=(const SyncBatchResult&) = default;
+    SyncBatchResult(SyncBatchResult&&) noexcept = default;
+    SyncBatchResult& operator=(SyncBatchResult&&) noexcept = default;
+
     int completed = 0;      // metadata piece added
     int updated = 0;        // package brought up to date
     int alreadyFine = 0;

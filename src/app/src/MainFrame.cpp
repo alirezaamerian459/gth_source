@@ -29,18 +29,18 @@ constexpr int kReportsIndex = 11;
 constexpr int kEnterpriseIndex = 12;
 constexpr int kBackupsIndex = 13;
 constexpr int kSettingsIndex = kSidebarSettingsIndex;
-constexpr int kSidebarWidth = 216;
-constexpr int kSidebarItemHeight = 36;
-constexpr int kSidebarPadding = 8;
-constexpr int kShellHeaderHeight = 64;
+constexpr int kSidebarWidth = 256;
+constexpr int kSidebarItemHeight = 40;
+constexpr int kSidebarPadding = 10;
+constexpr int kShellHeaderHeight = 72;
 // Two lines of small text beneath the nav list - the credit/rights footer.
 constexpr int kFooterHeight = 34;
 
 const wchar_t* groupLabel(SidebarGroup group) {
     switch (group) {
-        case SidebarGroup::Workspace: return L"Workspace";
-        case SidebarGroup::Devices: return L"Devices";
-        case SidebarGroup::LibraryData: return L"Library data";
+        case SidebarGroup::Workspace: return L"Library";
+        case SidebarGroup::Devices: return L"Storage & devices";
+        case SidebarGroup::LibraryData: return L"Operations";
         case SidebarGroup::Administration: return L"Administration";
         case SidebarGroup::Settings: return L"Preferences";
     }
@@ -149,17 +149,21 @@ LRESULT MainFrame::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
                    WS_CHILD | WS_VISIBLE | SS_CENTER);
     footer_.SetFont(theme::SmallFont());
 
-    CRect navButtonRect(12, 16, 90, 48);
-    navToggleButton_.Create(m_hWnd, navButtonRect, L"\x2630 Hide",
+    CRect navButtonRect(14, 18, 54, 54);
+    navToggleButton_.Create(m_hWnd, navButtonRect, L"\x2630",
                             WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0, IDC_NAV_TOGGLE_BUTTON);
-    navToggleButton_.SetFont(theme::BodyFont());
-    navToggleButton_.setKind(ModernButton::Kind::Secondary);
+    navToggleButton_.SetFont(theme::SectionFont());
+    navToggleButton_.setKind(ModernButton::Kind::Subtle);
 
-    CRect contextRect(100, 12, clientRect.right - 350, 36);
+    CRect brandRect(68, 14, 274, 58);
+    brandLabel_.Create(m_hWnd, brandRect, L"GTH  /  GAME TRANSFER HUB", WS_CHILD | WS_VISIBLE);
+    brandLabel_.SetFont(theme::BodyFontBold());
+
+    CRect contextRect(292, 14, clientRect.right - 350, 38);
     pageContextLabel_.Create(m_hWnd, contextRect, L"Game Transfer Hub", WS_CHILD | WS_VISIBLE);
     pageContextLabel_.SetFont(theme::SectionFont());
 
-    CRect hintRect(100, 37, clientRect.right - 350, 56);
+    CRect hintRect(292, 42, clientRect.right - 350, 62);
     pageContextHint_.Create(m_hWnd, hintRect,
                             L"Manage games, consoles, transfers, and backups from one workspace.",
                             WS_CHILD | WS_VISIBLE);
@@ -169,14 +173,14 @@ LRESULT MainFrame::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     shellStatusLabel_.Create(m_hWnd, statusRect, L"Ready", WS_CHILD | WS_VISIBLE | SS_RIGHT);
     shellStatusLabel_.SetFont(theme::SmallFont());
 
-    CRect notificationRect(clientRect.right - 240, 13, clientRect.right - 118, 45);
+    CRect notificationRect(clientRect.right - 240, 16, clientRect.right - 118, 52);
     notificationButton_.Create(m_hWnd, notificationRect, L"\xE7F4 Updates",
                                 WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
                                 IDC_GLOBAL_NOTIFICATIONS_BUTTON);
     notificationButton_.SetFont(theme::BodyFont());
     notificationButton_.setKind(ModernButton::Kind::Secondary);
 
-    CRect queueButtonRect(clientRect.right - 108, 13, clientRect.right - 28, 45);
+    CRect queueButtonRect(clientRect.right - 108, 16, clientRect.right - 28, 52);
     globalQueueButton_.Create(m_hWnd, queueButtonRect, L"Queue", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
                               0, IDC_GLOBAL_QUEUE_BUTTON);
     globalQueueButton_.SetFont(theme::BodyFont());
@@ -404,7 +408,7 @@ LRESULT MainFrame::OnCtlColorStatic(UINT, WPARAM wParam, LPARAM lParam, BOOL&) {
     // are painted by OnEraseBkgnd, so return the matching brush on refresh.
     HWND source = std::bit_cast<HWND>(lParam);
     const bool sidebarControl = source == footer_.m_hWnd;
-    const bool primaryText = source == pageContextLabel_.m_hWnd;
+    const bool primaryText = source == pageContextLabel_.m_hWnd || source == brandLabel_.m_hWnd;
     ::SetTextColor(hdc, primaryText ? theme::TextPrimary() : theme::TextSecondary());
     return std::bit_cast<LRESULT>(sidebarControl ? theme::SidebarBgBrush() : theme::ContentBgBrush());
 }
@@ -503,7 +507,7 @@ LRESULT MainFrame::OnNavToggleClick(WORD, WORD, HWND, BOOL&) {
     if (sidebarVisible_) {
         expandedSidebarGroups_[static_cast<size_t>(SidebarGroupForLogicalIndex(currentLogicalIndex_))] = true;
     }
-    navToggleButton_.SetWindowText(sidebarVisible_ ? L"\x2630 Hide" : L"\x2630 Menu");
+    navToggleButton_.SetWindowText(L"\x2630");
     if (sidebar_.IsWindow()) sidebar_.ShowWindow(sidebarVisible_ ? SW_SHOW : SW_HIDE);
     if (footer_.IsWindow()) footer_.ShowWindow(sidebarVisible_ ? SW_SHOW : SW_HIDE);
     layout();
@@ -518,7 +522,7 @@ LRESULT MainFrame::OnGlobalQueueClick(WORD, WORD, HWND, BOOL&) {
         shellStatusLabel_.SetWindowText(L"Sign in to use the transfer queue.");
         return 0;
     }
-    expandedSidebarGroups_[static_cast<size_t>(SidebarGroup::Workspace)] = true;
+    expandedSidebarGroups_[static_cast<size_t>(SidebarGroup::LibraryData)] = true;
     populateSidebar(currentLogicalIndex_);
     selectSidebarLogical(kTransfersIndex);
     showView(kTransfersIndex);
@@ -569,7 +573,7 @@ void MainFrame::populateSidebar(int keepLogicalIndex) {
         }
 
         if (rowValue == keepLogicalIndex) keepPosition = static_cast<int>(row);
-        sidebar_.AddString(kSidebarTabs[static_cast<size_t>(rowValue)]);
+        sidebar_.AddString(SidebarDisplayName(rowValue));
     }
 
     sidebar_.SetCurSel(keepPosition);
@@ -653,7 +657,7 @@ void MainFrame::showView(int index) {
         settingsView_.refresh();
         newView = settingsView_.m_hWnd;
     } else {
-        comingSoonView_.setTitle(kSidebarTabs[static_cast<size_t>(index)]);
+        comingSoonView_.setTitle(SidebarDisplayName(index));
         newView = comingSoonView_.m_hWnd;
     }
 
@@ -664,7 +668,7 @@ void MainFrame::showView(int index) {
 
     // Keep the shell context consistent even when a view is opened from a
     // global shortcut rather than by clicking the sidebar.
-    const wchar_t* title = kSidebarTabs[static_cast<size_t>(index)];
+    const wchar_t* title = SidebarDisplayName(index);
     pageContextLabel_.SetWindowText(title);
     if (index == kDashboardIndex) {
         pageContextHint_.SetWindowText(L"A quick view of your library, storage, and connection status.");
@@ -710,15 +714,16 @@ void MainFrame::layout() {
     }
 
     if (navToggleButton_.IsWindow()) {
-        navToggleButton_.SetWindowText(sidebarVisible_ ? L"\x2630 Hide" : L"\x2630 Menu");
-        navToggleButton_.MoveWindow(12, 16, 78, 32);
+        navToggleButton_.SetWindowText(L"\x2630");
+        navToggleButton_.MoveWindow(14, 18, 40, 36);
     }
-    const int contextWidth = std::max(0, static_cast<int>(clientRect.right) - 350 - 100);
-    if (pageContextLabel_.IsWindow()) pageContextLabel_.MoveWindow(100, 12, contextWidth, 24);
-    if (pageContextHint_.IsWindow()) pageContextHint_.MoveWindow(100, 37, contextWidth, 20);
+    const int contextWidth = std::max(0, static_cast<int>(clientRect.right) - 350 - 292);
+    if (brandLabel_.IsWindow()) brandLabel_.MoveWindow(68, 14, 206, 44);
+    if (pageContextLabel_.IsWindow()) pageContextLabel_.MoveWindow(292, 14, contextWidth, 24);
+    if (pageContextHint_.IsWindow()) pageContextHint_.MoveWindow(292, 42, contextWidth, 20);
     if (shellStatusLabel_.IsWindow()) shellStatusLabel_.MoveWindow(clientRect.right - 335, 15, 85, 23);
-    if (notificationButton_.IsWindow()) notificationButton_.MoveWindow(clientRect.right - 240, 13, 122, 32);
-    if (globalQueueButton_.IsWindow()) globalQueueButton_.MoveWindow(clientRect.right - 108, 13, 80, 32);
+    if (notificationButton_.IsWindow()) notificationButton_.MoveWindow(clientRect.right - 240, 16, 122, 36);
+    if (globalQueueButton_.IsWindow()) globalQueueButton_.MoveWindow(clientRect.right - 108, 16, 80, 36);
 
     const int contentLeft = sidebarVisible_ ? kSidebarWidth : 0;
     CRect contentRect(contentLeft, kShellHeaderHeight, clientRect.right, clientRect.bottom);

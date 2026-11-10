@@ -3,7 +3,10 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <bit>
 #include <cctype>
+#include <cstdint>
+#include <format>
 #include <filesystem>
 #include <unordered_map>
 #include <unordered_set>
@@ -92,7 +95,7 @@ void applyDetection(Storage& storage, const DetectedStorageInfo& info, core::ISt
         // One reading per physical disk when the provider can give them: a drive letter over several disks is
         // then as healthy as its worst disk and as hot as its hottest, instead of "unknown".
         core::StorageHealthInfo health;
-        if (auto disks = healthProvider->queryDisks(info.rootPath)) {
+        if (auto disks = healthProvider->queryDisks(info.rootPath); disks.has_value()) {
             health = core::summarizeDisks(*disks);
             disksOut = std::move(*disks);
         } else {
@@ -103,18 +106,18 @@ void applyDetection(Storage& storage, const DetectedStorageInfo& info, core::ISt
 
         std::string reason;
         if (storage.healthPercent && *storage.healthPercent < core::kHealthAlertBelowPercent) {
-            reason = "Health " + std::to_string(*storage.healthPercent) + "%";
+            reason = std::format("Health {}%", *storage.healthPercent);
             if (health.healthDetail) reason += ": " + *health.healthDetail;
         }
         if (previousHealthPercent && storage.healthPercent && *previousHealthPercent != *storage.healthPercent) {
             if (!reason.empty()) reason += "; ";
-            reason += "Health changed from " + std::to_string(*previousHealthPercent) + "% to " +
-                      std::to_string(*storage.healthPercent) + "%";
+            reason += std::format("Health changed from {}% to {}%", *previousHealthPercent,
+                                  *storage.healthPercent);
         }
         if (storage.temperatureCelsius && *storage.temperatureCelsius > kOverheatThresholdCelsius) {
             if (!reason.empty()) reason += "; ";
-            reason += "Temperature " + std::to_string(*storage.temperatureCelsius) + "C exceeds " +
-                       std::to_string(kOverheatThresholdCelsius) + "C";
+            reason += std::format("Temperature {}C exceeds {}C", *storage.temperatureCelsius,
+                                  kOverheatThresholdCelsius);
         }
         if (!reason.empty()) storage.healthAlertReason = reason;
     }
@@ -220,7 +223,7 @@ AddStorageResult StorageService::addManualStorage(const std::string& path) {
 
     std::error_code ec;
     if (!std::filesystem::exists(trimmed, ec) || !std::filesystem::is_directory(trimmed, ec)) {
-        result.errorMessage = "Path doesn't exist or isn't reachable: " + trimmed;
+        result.errorMessage = std::format("Path doesn't exist or isn't reachable: {}", trimmed);
         return result;
     }
 
@@ -241,8 +244,8 @@ AddStorageResult StorageService::addManualStorage(const std::string& path) {
     ULARGE_INTEGER freeBytes{};
     ULARGE_INTEGER totalBytes{};
     if (::GetDiskFreeSpaceExW(utf8ToWide(trimmed).c_str(), &freeBytes, &totalBytes, nullptr)) {
-        storage.totalCapacityBytes = static_cast<long long>(totalBytes.QuadPart);
-        storage.freeSpaceBytes = static_cast<long long>(freeBytes.QuadPart);
+        storage.totalCapacityBytes = static_cast<long long>(std::bit_cast<std::uint64_t>(totalBytes));
+        storage.freeSpaceBytes = static_cast<long long>(std::bit_cast<std::uint64_t>(freeBytes));
         storage.usedSpaceBytes = std::max<long long>(0, storage.totalCapacityBytes - storage.freeSpaceBytes);
     }
 

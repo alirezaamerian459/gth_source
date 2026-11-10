@@ -4,7 +4,7 @@
 
 #include <ws2tcpip.h>
 
-#include <cstring>
+#include <array>
 #include <string>
 #include <vector>
 
@@ -33,9 +33,9 @@ std::string peerAddressOf(SOCKET clientSocket) {
     int addrLen = sizeof(addr);
     if (::getpeername(clientSocket, reinterpret_cast<sockaddr*>(&addr), &addrLen) != 0) return "unknown";
 
-    char buffer[INET_ADDRSTRLEN]{};
-    if (!::InetNtopA(AF_INET, &addr.sin_addr, buffer, sizeof(buffer))) return "unknown";
-    return buffer;
+    std::array<char, INET_ADDRSTRLEN> buffer{};
+    if (!::InetNtopA(AF_INET, &addr.sin_addr, buffer.data(), static_cast<DWORD>(buffer.size()))) return "unknown";
+    return buffer.data();
 }
 }  // namespace
 
@@ -44,7 +44,7 @@ CentralServerListener::~CentralServerListener() { stop(); }
 void CentralServerListener::start(int port, ReportHandler onReport) {
     if (running_.exchange(true)) return;  // already running
     onReport_ = std::move(onReport);
-    acceptThread_ = std::thread(&CentralServerListener::acceptLoop, this, port);
+    acceptThread_ = std::jthread(&CentralServerListener::acceptLoop, this, port);
 }
 
 void CentralServerListener::stop() {
@@ -53,8 +53,7 @@ void CentralServerListener::stop() {
 }
 
 void CentralServerListener::acceptLoop(int port) {
-    WSADATA wsaData;
-    if (::WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+    if (WSADATA wsaData; ::WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
         running_.store(false);
         return;
     }
@@ -87,7 +86,7 @@ void CentralServerListener::acceptLoop(int port) {
     u_long nonBlocking = 1;
     ::ioctlsocket(listenSocket, FIONBIO, &nonBlocking);
 
-    std::vector<std::thread> connectionThreads;
+    std::vector<std::jthread> connectionThreads;
 
     while (running_.load()) {
         fd_set readSet;
@@ -122,11 +121,11 @@ void CentralServerListener::handleConnection(std::uintptr_t clientSocketHandle) 
     ::setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeoutMs), sizeof(timeoutMs));
 
     std::string line;
-    char buffer[512];
+    std::array<char, 512> buffer{};
     while (line.find('\n') == std::string::npos && line.size() < 8192) {
-        const int received = ::recv(clientSocket, buffer, sizeof(buffer), 0);
+        const int received = ::recv(clientSocket, buffer.data(), static_cast<int>(buffer.size()), 0);
         if (received <= 0) break;
-        line.append(buffer, static_cast<size_t>(received));
+        line.append(buffer.data(), static_cast<size_t>(received));
     }
 
     const auto newline = line.find('\n');
@@ -138,11 +137,11 @@ void CentralServerListener::handleConnection(std::uintptr_t clientSocketHandle) 
         const std::string peerAddress = peerAddressOf(clientSocket);
         if (onReport_) onReport_(nodeId, name, summary, peerAddress);
 
-        const char* ack = "OK\n";
-        ::send(clientSocket, ack, static_cast<int>(strlen(ack)), 0);
+        constexpr char ack[] = "OK\n";
+        ::send(clientSocket, ack, static_cast<int>(sizeof(ack) - 1), 0);
     } else {
-        const char* err = "ERROR\tmalformed report\n";
-        ::send(clientSocket, err, static_cast<int>(strlen(err)), 0);
+        constexpr char err[] = "ERROR\tmalformed report\n";
+        ::send(clientSocket, err, static_cast<int>(sizeof(err) - 1), 0);
     }
 
     ::closesocket(clientSocket);

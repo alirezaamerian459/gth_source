@@ -1,3 +1,4 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <filesystem>
@@ -17,7 +18,7 @@ protected:
     fs::path manifestPath;
 
     void SetUp() override {
-        manifestPath = fs::temp_directory_path() / ("gth_manifest_" + Guid::newGuid() + ".txt");
+        manifestPath = gth::test::testTempRoot() / ("gth_manifest_" + Guid::newGuid() + ".txt");
     }
 
     void TearDown() override { fs::remove(manifestPath); }
@@ -81,7 +82,7 @@ TEST_F(LocalMetadataSourceTest, IgnoresCommentsAndBlankLines) {
 }
 
 TEST_F(LocalMetadataSourceTest, MissingManifestFileIsNotAnErrorJustNoInformation) {
-    LocalMetadataSource source((fs::temp_directory_path() / "does-not-exist.txt").string());
+    LocalMetadataSource source((gth::test::testTempRoot() / "does-not-exist.txt").string());
     auto result = source.checkForUpdate(makeVariant("PS5\\Spider-Man 2\\Europe"), "1.04");
 
     EXPECT_FALSE(result.has_value());

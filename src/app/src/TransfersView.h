@@ -22,6 +22,7 @@ public:
         COMMAND_ID_HANDLER(IDC_ENQUEUE_TRANSFER_BUTTON, OnEnqueueClick)
         COMMAND_ID_HANDLER(IDC_CANCEL_TRANSFER_BUTTON, OnCancelClick)
         COMMAND_ID_HANDLER(IDC_REFRESH_TRANSFERS_BUTTON, OnRefreshClick)
+        COMMAND_ID_HANDLER(IDC_TRANSFERS_NEW_PANEL_BUTTON, OnNewPanelClick)
     END_MSG_MAP()
 
     void init(gth::application::ITransferQueueService& queue) { queue_ = &queue; }
@@ -36,6 +37,8 @@ private:
     LRESULT OnEnqueueClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnCancelClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnRefreshClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnNewPanelClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    void layoutControls();
 
     std::wstring getEditText(CEdit& edit);
 
@@ -55,9 +58,11 @@ private:
     CStatic nameCaption_, sourceCaption_, destCaption_;
     CEdit nameEdit_, sourceEdit_, destEdit_;
     ModernButton enqueueButton_;
+    ModernButton newPanelButton_;
 
     ModernButton cancelButton_;
     ModernButton refreshButton_;
     CStatic statusLabel_;
     CListViewCtrl listView_;
+    bool newTransferExpanded_ = false;
 };

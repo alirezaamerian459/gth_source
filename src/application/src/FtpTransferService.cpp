@@ -9,10 +9,10 @@ FtpTransferService::FtpTransferService(core::IFtpConnectionRepository& repositor
 
 core::FtpOperationResult FtpTransferService::connectTo(const std::string& connectionId) {
     auto connection = repository_.getById(connectionId);
-    if (!connection) return {false, "Connection not found."};
+    if (!connection.has_value()) return {false, "Connection not found."};
 
     auto credential = credentialStore_.read(connection->credentialTarget);
-    if (!credential) return {false, "Saved credentials not found - re-add this connection."};
+    if (!credential.has_value()) return {false, "Saved credentials not found - re-add this connection."};
 
     activeClient_ = clientFactory_.create(connection->protocol);
 

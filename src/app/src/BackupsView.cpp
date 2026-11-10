@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <fstream>
+#include <format>
 #include <memory>
 #include <sstream>
 
@@ -56,7 +57,7 @@ void BackupsView::init(gth::application::BackupService& backupService,
 LRESULT BackupsView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     HFONT body = theme::BodyFont();
     CRect placeholderRect(0, 0, 100, 30);
-    titleLabel_.Create(m_hWnd, placeholderRect, L"Backups", WS_CHILD | WS_VISIBLE);
+    titleLabel_.Create(m_hWnd, placeholderRect, L"Backups & Cloud Vault", WS_CHILD | WS_VISIBLE);
     titleLabel_.SetFont(theme::TitleFont());
     setupLabel_.Create(m_hWnd, placeholderRect,
         L"Use a private Telegram channel. Create a bot with @BotFather, add it as a channel administrator, then enter its token and the channel @username or numeric chat ID.",
@@ -85,6 +86,10 @@ LRESULT BackupsView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     makeButton(browseButton_, L"Browse...", IDC_BACKUPS_BROWSE_BUTTON, ModernButton::Kind::Subtle);
     makeButton(restoreButton_, L"Restore backup", IDC_BACKUPS_RESTORE_BUTTON, ModernButton::Kind::Primary);
     makeButton(copyIdButton_, L"Copy selected restore ID", IDC_BACKUPS_COPY_ID_BUTTON, ModernButton::Kind::Subtle);
+    makeButton(setupPanelButton_, L"Telegram setup  \x25B8", IDC_BACKUPS_SETUP_PANEL_BUTTON,
+               ModernButton::Kind::Subtle);
+    makeButton(restorePanelButton_, L"Restore a backup  \x25B8", IDC_BACKUPS_RESTORE_PANEL_BUTTON,
+               ModernButton::Kind::Subtle);
 
     gamesCaption_.Create(m_hWnd, placeholderRect, L"Games in this GTH library", WS_CHILD | WS_VISIBLE);
     gamesCaption_.SetFont(theme::SectionFont());
@@ -119,7 +124,7 @@ LRESULT BackupsView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 
     if (credentialStore_) {
         const auto credential = credentialStore_->read(kCredentialTarget);
-        if (credential && !credential->secret.empty()) {
+        if (credential.has_value() && !credential->secret.empty()) {
             statusLabel_.SetWindowText(L"A bot token is saved in Windows Credential Manager. Leave the token field blank to keep it.");
         }
     }
@@ -131,6 +136,7 @@ LRESULT BackupsView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
         if (!chatId.empty()) chatEdit_.SetWindowText(Utf8ToWide(chatId).c_str());
     }
     restorePathEdit_.SetWindowText(defaultRestoreRoot_.wstring().c_str());
+    layoutControls();
     configureTransport();
     ::SetTimer(m_hWnd, kTimerId, kTimerIntervalMs, nullptr);
     refresh();
@@ -146,39 +152,94 @@ LRESULT BackupsView::OnDestroy(UINT, WPARAM, LPARAM, BOOL& bHandled) {
 }
 
 LRESULT BackupsView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {
-    const int width = LOWORD(lParam);
-    const int height = HIWORD(lParam);
-    const int usable = std::max(300, width - 2 * kMargin);
-    const int gap = 20;
-    const int half = std::max(140, (usable - gap) / 2);
-    titleLabel_.MoveWindow(kMargin, 18, 320, 34);
-    setupLabel_.MoveWindow(kMargin, 55, usable, 42);
-    tokenCaption_.MoveWindow(kMargin, 102, 160, 20);
-    tokenEdit_.MoveWindow(kMargin, 124, std::max(200, usable / 2 - 8), 25);
-    chatCaption_.MoveWindow(kMargin + half + gap, 102, half, 20);
-    chatEdit_.MoveWindow(kMargin + half + gap, 124, half, 25);
-    saveButton_.MoveWindow(kMargin, 156, 180, 28);
-    testButton_.MoveWindow(kMargin + 190, 156, 140, 28);
-    backupSelectedButton_.MoveWindow(kMargin + 350, 156, 150, 28);
-    backupAllButton_.MoveWindow(kMargin + 510, 156, 210, 28);
-    cancelButton_.MoveWindow(kMargin + 730, 156, 90, 28);
-    refreshButton_.MoveWindow(kMargin + 830, 156, 100, 28);
+    layoutControls();
+    return 0;
+}
 
-    const int listsTop = 224;
-    const int restoreHeight = 136;
-    const int listHeight = std::max(100, height - listsTop - restoreHeight - 62);
-    gamesCaption_.MoveWindow(kMargin, 194, half, 24);
-    backupsCaption_.MoveWindow(kMargin + half + gap, 194, half, 24);
-    gamesList_.MoveWindow(kMargin, listsTop, half, listHeight);
-    backupsList_.MoveWindow(kMargin + half + gap, listsTop, half, listHeight);
-    manifestIdCaption_.MoveWindow(kMargin, listsTop + listHeight + 7, std::max(300, usable - half), 20);
-    manifestIdEdit_.MoveWindow(kMargin, listsTop + listHeight + 29, half, 25);
-    copyIdButton_.MoveWindow(kMargin + half + gap, listsTop + listHeight + 29, 180, 25);
-    restorePathCaption_.MoveWindow(kMargin, listsTop + listHeight + 61, 300, 20);
-    restorePathEdit_.MoveWindow(kMargin, listsTop + listHeight + 83, std::max(200, usable - 330), 25);
-    browseButton_.MoveWindow(kMargin + std::max(200, usable - 320), listsTop + listHeight + 83, 90, 25);
-    restoreButton_.MoveWindow(kMargin + std::max(300, usable - 220), listsTop + listHeight + 83, 150, 25);
-    statusLabel_.MoveWindow(kMargin, height - 29, usable, 24);
+void BackupsView::layoutControls() {
+    if (!gamesList_.IsWindow()) return;
+    CRect client;
+    GetClientRect(&client);
+    const int width = std::max(360, static_cast<int>(client.right) - 2 * kMargin);
+    const int height = static_cast<int>(client.bottom);
+    const int gap = 16;
+    const int half = std::max(150, (width - gap) / 2);
+    auto show = [](auto& control, bool visible) {
+        if (control.IsWindow()) control.ShowWindow(visible ? SW_SHOW : SW_HIDE);
+    };
+    auto move = [](auto& control, int x, int y, int w, int h) {
+        if (control.IsWindow()) control.MoveWindow(x, y, std::max(0, w), h, FALSE);
+    };
+
+    move(titleLabel_, kMargin, 20, 300, 36);
+    int x = kMargin + 320;
+    move(backupSelectedButton_, x, 24, 150, 28); x += 158;
+    move(backupAllButton_, x, 24, 194, 28); x += 202;
+    move(refreshButton_, x, 24, 90, 28); x += 98;
+    show(cancelButton_, running_.load());
+    if (running_.load()) move(cancelButton_, x, 24, 82, 28);
+
+    setupPanelButton_.SetWindowText(setupExpanded_ ? L"Telegram setup  \x25BE" : L"Telegram setup  \x25B8");
+    move(setupPanelButton_, kMargin, 64, 180, 28);
+    const bool setup = setupExpanded_;
+    for (CWindow* control : {static_cast<CWindow*>(&setupLabel_), static_cast<CWindow*>(&tokenCaption_),
+                             static_cast<CWindow*>(&tokenEdit_), static_cast<CWindow*>(&chatCaption_),
+                             static_cast<CWindow*>(&chatEdit_), static_cast<CWindow*>(&saveButton_),
+                             static_cast<CWindow*>(&testButton_)}) show(*control, setup);
+
+    int contentTop = 102;
+    if (setup) {
+        move(setupLabel_, kMargin, contentTop, width, 38);
+        contentTop += 42;
+        move(tokenCaption_, kMargin, contentTop, half, 20);
+        move(chatCaption_, kMargin + half + gap, contentTop, half, 20);
+        move(tokenEdit_, kMargin, contentTop + 20, half, 26);
+        move(chatEdit_, kMargin + half + gap, contentTop + 20, half, 26);
+        move(saveButton_, kMargin, contentTop + 54, 176, 28);
+        move(testButton_, kMargin + 184, contentTop + 54, 136, 28);
+        contentTop += 90;
+    }
+
+    const int statusTop = contentTop;
+    move(statusLabel_, kMargin, statusTop, width, 24);
+    const int captionsTop = statusTop + 27;
+    const int listsTop = captionsTop + 23;
+    const int restoreArea = restoreExpanded_ ? 160 : 40;
+    const int listHeight = std::max(100, height - listsTop - restoreArea - kMargin);
+    move(gamesCaption_, kMargin, captionsTop, half, 22);
+    move(backupsCaption_, kMargin + half + gap, captionsTop, half, 22);
+    move(gamesList_, kMargin, listsTop, half, listHeight);
+    move(backupsList_, kMargin + half + gap, listsTop, half, listHeight);
+
+    const int restoreTop = listsTop + listHeight + 7;
+    restorePanelButton_.SetWindowText(restoreExpanded_ ? L"Hide restore options  \x25BE"
+                                                      : L"Restore a backup  \x25B8");
+    move(restorePanelButton_, kMargin, restoreTop, 220, 28);
+    const bool restore = restoreExpanded_;
+    for (CWindow* control : {static_cast<CWindow*>(&manifestIdCaption_), static_cast<CWindow*>(&manifestIdEdit_),
+                             static_cast<CWindow*>(&copyIdButton_), static_cast<CWindow*>(&restorePathCaption_),
+                             static_cast<CWindow*>(&restorePathEdit_), static_cast<CWindow*>(&browseButton_),
+                             static_cast<CWindow*>(&restoreButton_)}) show(*control, restore);
+    if (restore) {
+        move(manifestIdCaption_, kMargin, restoreTop + 32, width, 18);
+        move(manifestIdEdit_, kMargin, restoreTop + 52, std::max(180, width - 200), 25);
+        move(copyIdButton_, kMargin + std::max(180, width - 190), restoreTop + 51, 180, 27);
+        move(restorePathCaption_, kMargin, restoreTop + 82, 300, 18);
+        move(restorePathEdit_, kMargin, restoreTop + 101, std::max(180, width - 280), 25);
+        move(browseButton_, kMargin + std::max(180, width - 270), restoreTop + 100, 88, 27);
+        move(restoreButton_, kMargin + std::max(280, width - 170), restoreTop + 100, 150, 27);
+    }
+}
+
+LRESULT BackupsView::OnSetupPanelClick(WORD, WORD, HWND, BOOL&) {
+    setupExpanded_ = !setupExpanded_;
+    layoutControls();
+    return 0;
+}
+
+LRESULT BackupsView::OnRestorePanelClick(WORD, WORD, HWND, BOOL&) {
+    restoreExpanded_ = !restoreExpanded_;
+    layoutControls();
     return 0;
 }
 
@@ -258,12 +319,14 @@ LRESULT BackupsView::OnBackupSelected(WORD, WORD, HWND, BOOL&) {
         callbacks.shouldCancel = [this] { return cancel_.load(); };
         callbacks.onProgress = [this](const std::string& stage, long long done, long long total) {
             std::wstring message = Utf8ToWide(stage);
-            if (total > 0) message += L" - " + displayBytes(done) + L" / " + displayBytes(total);
+            if (total > 0) message += std::format(L" - {} / {}", displayBytes(done), displayBytes(total));
             std::lock_guard lock(statusMutex_);
             workerStatus_ = std::move(message);
         };
         auto result = backupService_->createBackup(game, callbacks);
-        if (result.success) return L"Backup complete: " + Utf8ToWide(game.title) + L" (" + displayBytes(result.bytesTransferred) + L").";
+        if (result.success) {
+            return std::format(L"Backup complete: {} ({}).", Utf8ToWide(game.title), displayBytes(result.bytesTransferred));
+        }
         return Utf8ToWide(result.error.empty() ? "Backup failed." : result.error);
     });
     return 0;
@@ -281,16 +344,19 @@ LRESULT BackupsView::OnBackupAll(WORD, WORD, HWND, BOOL&) {
         callbacks.shouldCancel = [this] { return cancel_.load(); };
         callbacks.onProgress = [this](const std::string& stage, long long done, long long total) {
             std::wstring message = Utf8ToWide(stage);
-            if (total > 0) message += L" - " + displayBytes(done) + L" / " + displayBytes(total);
+            if (total > 0) message += std::format(L" - {} / {}", displayBytes(done), displayBytes(total));
             std::lock_guard lock(statusMutex_);
             workerStatus_ = std::move(message);
         };
         const auto batch = backupService_->createBackups(games, callbacks);
-        std::wstring message = L"Backup run finished: " + std::to_wstring(batch.backedUp) + L" complete, " +
-            std::to_wstring(batch.failed) + L" failed.";
+        std::wstring message = std::format(L"Backup run finished: {} complete, {} failed.", batch.backedUp,
+                                           batch.failed);
         if (batch.cancelled) message += L" Cancelled.";
         for (const auto& item : batch.games) {
-            if (!item.success && !item.error.empty()) { message += L"\r\n" + Utf8ToWide(item.error); break; }
+            if (!item.success && !item.error.empty()) {
+                message += std::format(L"\r\n{}", Utf8ToWide(item.error));
+                break;
+            }
         }
         return message;
     });
@@ -358,7 +424,7 @@ LRESULT BackupsView::OnRestoreClick(WORD, WORD, HWND, BOOL&) {
         callbacks.shouldCancel = [this] { return cancel_.load(); };
         callbacks.onProgress = [this](const std::string& stage, long long done, long long total) {
             std::wstring message = Utf8ToWide(stage);
-            if (total > 0) message += L" - " + displayBytes(done) + L" / " + displayBytes(total);
+            if (total > 0) message += std::format(L" - {} / {}", displayBytes(done), displayBytes(total));
             std::lock_guard lock(statusMutex_);
             workerStatus_ = std::move(message);
         };
@@ -465,6 +531,7 @@ void BackupsView::setBusy(bool busy) {
     restoreButton_.EnableWindow(enabled);
     browseButton_.EnableWindow(enabled);
     cancelButton_.EnableWindow(busy ? TRUE : FALSE);
+    layoutControls();
 }
 
 void BackupsView::setStatus(const std::wstring& text) { statusLabel_.SetWindowText(text.c_str()); }

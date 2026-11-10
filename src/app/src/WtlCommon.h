@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bit>
 #include <initializer_list>
 #include <string>
 
@@ -73,10 +74,10 @@ HBRUSH EditBgBrush();
 }  // namespace theme
 
 inline LRESULT HandleCtlColorStatic(WPARAM wParam) {
-    HDC hdc = reinterpret_cast<HDC>(wParam);
+    HDC hdc = std::bit_cast<HDC>(wParam);
     ::SetBkMode(hdc, TRANSPARENT);
     ::SetTextColor(hdc, theme::TextPrimary());
-    return reinterpret_cast<LRESULT>(theme::ContentBgBrush());
+    return std::bit_cast<LRESULT>(theme::ContentBgBrush());
 }
 
 // Same idea as HandleCtlColorStatic but for CEdit/editable-combo surfaces -
@@ -85,11 +86,11 @@ inline LRESULT HandleCtlColorStatic(WPARAM wParam) {
 // text fields go dark with the rest of the page instead of staying a fixed
 // white rectangle regardless of theme.
 inline LRESULT HandleCtlColorEdit(WPARAM wParam) {
-    HDC hdc = reinterpret_cast<HDC>(wParam);
+    HDC hdc = std::bit_cast<HDC>(wParam);
     ::SetBkMode(hdc, OPAQUE);
     ::SetBkColor(hdc, theme::EditBg());
     ::SetTextColor(hdc, theme::TextPrimary());
-    return reinterpret_cast<LRESULT>(theme::EditBgBrush());
+    return std::bit_cast<LRESULT>(theme::EditBgBrush());
 }
 
 // WM_CTLCOLORSTATIC/EDIT only theme a *control's own* rectangle - none of
@@ -102,7 +103,7 @@ inline LRESULT HandleCtlColorEdit(WPARAM wParam) {
 // one view that already paints something fancier than a flat fill here) so
 // the *whole* client area is the page background, not just its controls.
 inline LRESULT HandleEraseBkgndWithContentBg(HWND hwnd, WPARAM wParam) {
-    HDC hdc = reinterpret_cast<HDC>(wParam);
+    HDC hdc = std::bit_cast<HDC>(wParam);
     RECT rect{};
     ::GetClientRect(hwnd, &rect);
     ::FillRect(hdc, &rect, theme::ContentBgBrush());

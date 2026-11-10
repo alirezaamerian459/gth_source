@@ -1,10 +1,13 @@
 #include "DashboardView.h"
 
+#include <array>
+#include <bit>
+
 namespace {
 std::wstring formatGb(long long bytes) {
-    wchar_t buf[64];
-    swprintf_s(buf, L"%.2f GB", bytes / 1024.0 / 1024.0 / 1024.0);
-    return buf;
+    std::array<wchar_t, 64> buffer{};
+    swprintf_s(buffer.data(), buffer.size(), L"%.2f GB", static_cast<double>(bytes) / 1024.0 / 1024.0 / 1024.0);
+    return buffer.data();
 }
 
 constexpr int kCardWidth = 220;
@@ -20,7 +23,7 @@ LRESULT DashboardView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     // lvalue, not a temporary - so every rect below needs a local variable,
     // not an inline CRect(...) at the call site.
     CRect rc(left, top, left + 400, top + 44);
-    titleLabel_.Create(m_hWnd, rc, L"Dashboard", WS_CHILD | WS_VISIBLE);
+    titleLabel_.Create(m_hWnd, rc, L"Home", WS_CHILD | WS_VISIBLE);
     titleLabel_.SetFont(theme::TitleFont());
     top += 68;
 
@@ -57,9 +60,12 @@ LRESULT DashboardView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 
     // --- Network Connection section ---
     top += 80;
-    CRect networkLabelRect(left, top, left + 400, top + 44);
-    networkLabel_.Create(m_hWnd, networkLabelRect, L"Network Connection", WS_CHILD | WS_VISIBLE);
-    networkLabel_.SetFont(theme::TitleFont());
+    CRect networkLabelRect(left, top + 4, left + 220, top + 34);
+    networkLabel_.Create(m_hWnd, networkLabelRect, L"Connection details  \x25B8",
+                         WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
+                         IDC_DASHBOARD_NETWORK_PANEL_BUTTON);
+    networkLabel_.SetFont(theme::BodyFont());
+    networkLabel_.setKind(ModernButton::Kind::Subtle);
     top += 48;
 
     CRect ipCaptionRect(left + 20, top + 18, left + kCardWidth - 16, top + 38);
@@ -97,11 +103,12 @@ LRESULT DashboardView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 
     refresh();
     refreshNetworkInfo();
+    layoutNetworkDetails();
     return 0;
 }
 
 LRESULT DashboardView::OnEraseBkgnd(UINT, WPARAM wParam, LPARAM, BOOL&) {
-    HDC hdc = reinterpret_cast<HDC>(wParam);
+    auto hdc = std::bit_cast<HDC>(wParam);
     CRect clientRect;
     GetClientRect(&clientRect);
 
@@ -115,13 +122,15 @@ LRESULT DashboardView::OnEraseBkgnd(UINT, WPARAM wParam, LPARAM, BOOL&) {
     for (int i = 0; i < 3; i++) {
         CRect cardRect(theme::kMargin + i * (kCardWidth + kCardGap), cardsTop_,
                         theme::kMargin + i * (kCardWidth + kCardGap) + kCardWidth, cardsTop_ + kCardHeight);
-        theme::FillRoundRect(hdc, cardRect, 10, theme::SidebarBg(), theme::Border());
+        theme::FillRoundRect(hdc, cardRect, 10, theme::SurfaceBg(), theme::Border());
     }
 
-    for (int i = 0; i < 2; i++) {
-        CRect cardRect(theme::kMargin + i * (kCardWidth + kCardGap), networkCardsTop_,
-                        theme::kMargin + i * (kCardWidth + kCardGap) + kCardWidth, networkCardsTop_ + kCardHeight);
-        theme::FillRoundRect(hdc, cardRect, 10, theme::SidebarBg(), theme::Border());
+    if (networkDetailsExpanded_) {
+        for (int i = 0; i < 2; i++) {
+            CRect cardRect(theme::kMargin + i * (kCardWidth + kCardGap), networkCardsTop_,
+                            theme::kMargin + i * (kCardWidth + kCardGap) + kCardWidth, networkCardsTop_ + kCardHeight);
+            theme::FillRoundRect(hdc, cardRect, 10, theme::SurfaceBg(), theme::Border());
+        }
     }
 
     return 1;
@@ -133,11 +142,11 @@ LRESULT DashboardView::OnCtlColorStatic(UINT, WPARAM wParam, LPARAM lParam, BOOL
     // result) leaves stale glyphs behind from the old text - every branch
     // here must return a real, opaque brush matching whatever's actually
     // behind that control (the white page or a gray card).
-    HBRUSH cardBrush = theme::SidebarBgBrush();
+    HBRUSH cardBrush = theme::SurfaceBgBrush();
     HBRUSH pageBrush = theme::ContentBgBrush();
 
-    HDC hdc = reinterpret_cast<HDC>(wParam);
-    HWND ctrl = reinterpret_cast<HWND>(lParam);
+    auto hdc = std::bit_cast<HDC>(wParam);
+    auto ctrl = std::bit_cast<HWND>(lParam);
     ::SetBkMode(hdc, TRANSPARENT);
 
     const bool isCaption = ctrl == storagesCaption_.m_hWnd || ctrl == capacityCaption_.m_hWnd ||
@@ -148,7 +157,7 @@ LRESULT DashboardView::OnCtlColorStatic(UINT, WPARAM wParam, LPARAM lParam, BOOL
                            ctrl == portValue_.m_hWnd;
 
     ::SetTextColor(hdc, isCaption ? theme::TextSecondary() : theme::TextPrimary());
-    return reinterpret_cast<LRESULT>(isInCard ? cardBrush : pageBrush);
+    return std::bit_cast<LRESULT>(isInCard ? cardBrush : pageBrush);
 }
 
 void DashboardView::refresh() {
@@ -157,9 +166,9 @@ void DashboardView::refresh() {
 
     storagesValue_.SetWindowText(std::to_wstring(summary.totalStorages).c_str());
 
-    wchar_t buf[128];
-    swprintf_s(buf, L"%d online / %d offline", summary.onlineStorages, summary.offlineStorages);
-    onlineOfflineValue_.SetWindowText(buf);
+    std::array<wchar_t, 128> buffer{};
+    swprintf_s(buffer.data(), buffer.size(), L"%d online / %d offline", summary.onlineStorages, summary.offlineStorages);
+    onlineOfflineValue_.SetWindowText(buffer.data());
 
     capacityValue_.SetWindowText(formatGb(summary.totalCapacityBytes).c_str());
     freeValue_.SetWindowText(formatGb(summary.freeSpaceBytes).c_str());
@@ -175,10 +184,10 @@ LRESULT DashboardView::OnScanClick(WORD, WORD, HWND, BOOL&) {
     const auto result = service_->detectAndSyncLocalStorages();
     refresh();
 
-    wchar_t buf[256];
-    swprintf_s(buf, L"Scan complete: %d added, %d updated, %d marked offline.", result.added, result.updated,
-               result.markedOffline);
-    statusLabel_.SetWindowText(buf);
+    std::array<wchar_t, 256> buffer{};
+    swprintf_s(buffer.data(), buffer.size(), L"Scan complete: %d added, %d updated, %d marked offline.", result.added,
+               result.updated, result.markedOffline);
+    statusLabel_.SetWindowText(buffer.data());
     scanButton_.EnableWindow(TRUE);
     return 0;
 }
@@ -192,6 +201,24 @@ LRESULT DashboardView::OnCopyIPClick(WORD, WORD, HWND, BOOL&) {
         networkStatusLabel_.SetWindowText(L"Failed to get network information.");
     }
     return 0;
+}
+
+LRESULT DashboardView::OnNetworkPanelClick(WORD, WORD, HWND, BOOL&) {
+    networkDetailsExpanded_ = !networkDetailsExpanded_;
+    layoutNetworkDetails();
+    return 0;
+}
+
+void DashboardView::layoutNetworkDetails() {
+    networkLabel_.SetWindowText(networkDetailsExpanded_ ? L"Hide connection details  \x25BE"
+                                                        : L"Connection details  \x25B8");
+    const int show = networkDetailsExpanded_ ? SW_SHOW : SW_HIDE;
+    for (CWindow* control : {static_cast<CWindow*>(&ipAddressCaption_), static_cast<CWindow*>(&ipAddressValue_),
+                             static_cast<CWindow*>(&portCaption_), static_cast<CWindow*>(&portValue_),
+                             static_cast<CWindow*>(&copyIPButton_), static_cast<CWindow*>(&networkStatusLabel_)}) {
+        if (control->IsWindow()) control->ShowWindow(show);
+    }
+    Invalidate();
 }
 
 void DashboardView::refreshNetworkInfo() {

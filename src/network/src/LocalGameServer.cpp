@@ -165,7 +165,7 @@ std::optional<LocalGameServer::Resolved> LocalGameServer::resolve(const std::str
 
     // 2. The exact file name, anywhere in the indexed library.
     if (localFileIndex_ && gth::application::isServablePackageName(resolved.fileName)) {
-        if (auto found = localFileIndex_->findByFileName(resolved.fileName)) {
+        if (auto found = localFileIndex_->findByFileName(resolved.fileName); found.has_value()) {
             resolved.file = std::move(*found);
             resolved.autoMatched = true;
             return resolved;

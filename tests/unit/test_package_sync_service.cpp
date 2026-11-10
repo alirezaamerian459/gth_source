@@ -1,7 +1,9 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <chrono>
 #include <filesystem>
+#include <system_error>
 #include <fstream>
 #include <map>
 #include <set>
@@ -101,7 +103,7 @@ public:
 };
 
 std::string sha256Of(const std::string& bytes) {
-    const fs::path path = fs::temp_directory_path() / "gth_sync_hash_scratch.bin";
+    const fs::path path = gth::test::testTempRoot() / "gth_sync_hash_scratch.bin";
     {
         std::ofstream out(path, std::ios::binary | std::ios::trunc);
         out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
@@ -122,7 +124,7 @@ void writeFile(const fs::path& path, const std::string& bytes) {
 }
 
 const std::string kContentId = "EP0006-PPSA02343_00-NUTSEU0000000000";
-const std::string kBaseUrl = "http://gst.prod.dl.playstation.net/gst/prod/00/PPSA02343_00/app/pkg/7/f_abc/";
+const std::string kBaseUrl = "http://gst.prod.dl.playstation.net/gst/prod/00/PPSA02343_00/app/pkg/7/f_abc/";  // NOSONAR: fake Sony response fixture; no network request is made.
 const std::string kInfoUrl = "https://sgst.prod.dl.playstation.net/sgst/prod/00/PPSA02343_00/app/info/9/f_def/";
 
 // The game piece bytes: part 0 starts with a FIH wrapper carrying `digest` at 0x30.
@@ -160,7 +162,7 @@ struct SyncFixture {
     PackageSyncService sync{storageRepository, variantRepository, versionRepository, fileRepository,
                             sony,              downloader,        verifier,          scanner};
 
-    fs::path root = fs::temp_directory_path() / "gth_package_sync_test";
+    fs::path root = gth::test::testTempRoot() / "gth_package_sync_test";
     std::string storageId;
     std::string variantId;
 
@@ -175,7 +177,10 @@ struct SyncFixture {
         storageRepository.add(storage);
         storageId = storage.storageId;
     }
-    ~SyncFixture() { fs::remove_all(root); }
+    ~SyncFixture() {
+        std::error_code ignored;
+        fs::remove_all(root, ignored);
+    }
 
     // Puts the given pieces on disk as "<contentId>_<n>.pkg" (and the metadata piece, if given) and scans them in.
     void installArchive(const std::vector<std::string>& pieces, const std::string& metadata = {},
@@ -623,7 +628,7 @@ TEST(PackageSyncServiceTest, RunAllStopsWhenCancelled) {
 }
 
 TEST(MetadataPieceBelongsToPackageTest, NeedsTheImageDigestFromThePartHeaderInsideTheMetadata) {
-    const fs::path dir = fs::temp_directory_path() / "gth_metadata_belongs_test";
+    const fs::path dir = gth::test::testTempRoot() / "gth_metadata_belongs_test";
     fs::remove_all(dir);
     fs::create_directories(dir);
     writeFile(dir / "part0.pkg", gamePiece(0, 600));
@@ -687,7 +692,7 @@ TEST(PackageSyncServiceTest, ABatchListsWhatWasDoneAndWhatFailedPerGame) {
 namespace {
 
 const std::string kSecondContentId = "EP0006-PPSA20050_00-EASPORTSFC2025BG";
-const std::string kSecondBaseUrl = "http://gst.prod.dl.playstation.net/gst/prod/00/PPSA20050_00/app/pkg/3/f_xyz/";
+const std::string kSecondBaseUrl = "http://gst.prod.dl.playstation.net/gst/prod/00/PPSA20050_00/app/pkg/3/f_xyz/";  // NOSONAR: fake Sony response fixture; no network request is made.
 const std::string kSecondInfoUrl = "https://sgst.prod.dl.playstation.net/sgst/prod/00/PPSA20050_00/app/info/2/f_uvw/";
 
 // Two games in the archive, PPSA02343 and PPSA20050, each with the given pieces (and metadata piece, if any).
@@ -842,7 +847,7 @@ TEST(PackageSyncQueueTest, AGameThatFailsDoesNotStopTheLine) {
 namespace {
 
 const std::string kPs4ContentId = "EP9000-CUSA07410_00-00000000GODOFWAR";
-const std::string kPs4UpdateBase = "http://gs2.ww.prod.dl.playstation.net/gs2/ppkgo/prod/CUSA07410_00/30/f_1d7b/f/";
+const std::string kPs4UpdateBase = "http://gs2.ww.prod.dl.playstation.net/gs2/ppkgo/prod/CUSA07410_00/30/f_1d7b/f/";  // NOSONAR: fake Sony response fixture; no network request is made.
 
 struct Ps4Fixture : SyncFixture {
     fs::path gameFolder = root / "God of War";

@@ -33,21 +33,21 @@ ReplacementOutcome ArchiveUpdater::applyVerifiedUpdate(const std::string& update
 
     auto jobOpt = jobRepository_.getById(updateJobId);
     if (!jobOpt.has_value()) {
-        outcome.errorMessage = "UpdateJob not found: " + updateJobId;
+        outcome.errorMessage = std::format("UpdateJob not found: {}", updateJobId);
         return outcome;
     }
     const UpdateJob job = *jobOpt;
 
     auto variantOpt = variantRepository_.getById(job.gameVariantId);
     if (!variantOpt.has_value()) {
-        outcome.errorMessage = "GameVariant not found: " + job.gameVariantId;
+        outcome.errorMessage = std::format("GameVariant not found: {}", job.gameVariantId);
         return outcome;
     }
     const GameVariant variant = *variantOpt;
 
     auto storageOpt = storageRepository_.getById(variant.storageId);
     if (!storageOpt.has_value()) {
-        outcome.errorMessage = "Storage not found: " + variant.storageId;
+        outcome.errorMessage = std::format("Storage not found: {}", variant.storageId);
         return outcome;
     }
     const Storage storage = *storageOpt;
@@ -55,7 +55,7 @@ ReplacementOutcome ArchiveUpdater::applyVerifiedUpdate(const std::string& update
     // --- Safety checks (Section 53) - nothing is written to the archive until all of these pass. ---
     std::error_code ec;
     if (!fs::exists(verifiedPath, ec)) {
-        outcome.errorMessage = "Verified content missing at: " + verifiedPath;
+        outcome.errorMessage = std::format("Verified content missing at: {}", verifiedPath);
         return outcome;
     }
 
@@ -74,7 +74,7 @@ ReplacementOutcome ArchiveUpdater::applyVerifiedUpdate(const std::string& update
 
     const fs::path destinationPath = fs::path(storage.rootPath) / variant.relativePath / job.newVersion;
     if (fs::exists(destinationPath, ec)) {
-        outcome.errorMessage = "Destination already exists, refusing to overwrite: " + destinationPath.string();
+        outcome.errorMessage = std::format("Destination already exists, refusing to overwrite: {}", destinationPath.string());
         return outcome;
     }
 
@@ -87,7 +87,7 @@ ReplacementOutcome ArchiveUpdater::applyVerifiedUpdate(const std::string& update
         ec.clear();
         fs::copy(verifiedPath, destinationPath, fs::copy_options::recursive, ec);
         if (ec) {
-            outcome.errorMessage = "Failed to place new version at '" + destinationPath.string() + "': " + ec.message();
+            outcome.errorMessage = std::format("Failed to place new version at '{}': {}", destinationPath.string(), ec.message());
             return outcome;
         }
         fs::remove_all(verifiedPath, ec);  // best-effort temp cleanup; failure here doesn't undo the copy

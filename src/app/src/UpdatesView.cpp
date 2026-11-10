@@ -340,7 +340,7 @@ LRESULT UpdatesBoardWindow::OnSetFocus(UINT, WPARAM, LPARAM, BOOL&) {
 
 LRESULT UpdatesView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     CRect titleRect(kMargin, kMainRowTop - 2, kMargin + 260, kMainRowTop + 36);
-    titleLabel_.Create(m_hWnd, titleRect, L"Game Updates & Library", WS_CHILD | WS_VISIBLE);
+    titleLabel_.Create(m_hWnd, titleRect, L"Game Updates", WS_CHILD | WS_VISIBLE);
     titleLabel_.SetFont(theme::TitleFont());
 
     const auto makeButton = [&](ModernButton& button, const wchar_t* text, UINT id,
@@ -672,7 +672,7 @@ void UpdatesView::paintGameBoard(HDC hdc, const RECT& clientRect, int verticalOf
 
     CRect summary(kBoardSpacing, 10 - verticalOffset,
                   clientRect.right - clientRect.left - kBoardSpacing, kBoardSummaryHeight - verticalOffset);
-    theme::FillRoundRect(hdc, summary, 10, theme::SidebarBg(), theme::Border());
+    theme::FillRoundRect(hdc, summary, 10, theme::SurfaceBg(), theme::Border());
     drawText(L"LIBRARY", summary.left + 16, summary.top + 10, 120, 18, theme::SmallFont(),
              theme::TextSecondary(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     drawText(std::format(L"{} games", entries_.size()), summary.left + 16, summary.top + 30, 160, 26,
@@ -694,7 +694,7 @@ void UpdatesView::paintGameBoard(HDC hdc, const RECT& clientRect, int verticalOf
         const int y = kBoardSummaryHeight + kBoardSpacing + row * (boardCardHeight() + kBoardSpacing) - verticalOffset;
         CRect card(x, y, x + width, y + boardCardHeight());
         const bool selected = listView_.GetSelectedIndex() == static_cast<int>(index);
-        theme::FillRoundRect(hdc, card, 10, theme::SidebarBg(), selected ? theme::Accent() : theme::Border());
+        theme::FillRoundRect(hdc, card, 10, theme::SurfaceBg(), selected ? theme::Accent() : theme::Border());
 
         CRect art(card.left, card.top, card.right, card.top + 132);
         if (index < posterTiles_.size()) {

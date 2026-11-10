@@ -6,7 +6,6 @@
 #include "gth/core/devices/Console.h"
 
 namespace {
-constexpr int kTopAreaHeight = 148;
 constexpr int kMargin = 24;
 }  // namespace
 
@@ -14,8 +13,14 @@ LRESULT ConsolesView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     HFONT g_normalFont = theme::BodyFont();
 
     CRect titleRect(kMargin, 24, kMargin + 200, 56);
-    titleLabel_.Create(m_hWnd, titleRect, L"Consoles", WS_CHILD | WS_VISIBLE);
+    titleLabel_.Create(m_hWnd, titleRect, L"Connected Consoles", WS_CHILD | WS_VISIBLE);
     titleLabel_.SetFont(theme::TitleFont());
+
+    CRect addPanelRect(kMargin + 190, 27, kMargin + 340, 55);
+    addPanelButton_.Create(m_hWnd, addPanelRect, L"Add console", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+                           0, IDC_CONSOLES_ADD_PANEL_BUTTON);
+    addPanelButton_.SetFont(g_normalFont);
+    addPanelButton_.setKind(ModernButton::Kind::Primary);
 
     int x = kMargin;
     const int inputTop = 62;
@@ -65,7 +70,7 @@ LRESULT ConsolesView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 
     CRect clientRect;
     GetClientRect(&clientRect);
-    CRect listRect(kMargin, kTopAreaHeight, clientRect.right - kMargin, clientRect.bottom - kMargin);
+    CRect listRect(kMargin, 104, clientRect.right - kMargin, clientRect.bottom - kMargin);
     listView_.Create(m_hWnd, listRect, L"", WS_CHILD | WS_VISIBLE | WS_BORDER | LVS_REPORT | LVS_SINGLESEL, 0,
                       IDC_CONSOLES_LISTVIEW);
     listView_.SetExtendedListViewStyle(LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
@@ -80,6 +85,7 @@ LRESULT ConsolesView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     listView_.InsertColumn(5, L"Last Connected", LVCFMT_LEFT, 160);
     listView_.InsertColumn(6, L"Source", LVCFMT_LEFT, 100);
 
+    layoutControls();
     refresh();
     SetTimer(kLiveRefreshTimerId, kLiveRefreshIntervalMs, nullptr);
     return 0;
@@ -92,13 +98,56 @@ LRESULT ConsolesView::OnTimer(UINT, WPARAM wParam, LPARAM, BOOL&) {
 }
 
 LRESULT ConsolesView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {
-    const int width = LOWORD(lParam);
-    const int height = HIWORD(lParam);
-    if (listView_.IsWindow()) {
-        listView_.MoveWindow(kMargin, kTopAreaHeight, std::max(100, width - 2 * kMargin),
-                              std::max(100, height - kTopAreaHeight - kMargin));
-    }
+    layoutControls();
     return 0;
+}
+
+void ConsolesView::layoutControls() {
+    if (!listView_.IsWindow()) return;
+    CRect client;
+    GetClientRect(&client);
+    const int width = std::max(450, static_cast<int>(client.right) - 2 * kMargin);
+    auto show = [](auto& control, bool visible) {
+        if (control.IsWindow()) control.ShowWindow(visible ? SW_SHOW : SW_HIDE);
+    };
+    auto move = [](auto& control, int x, int y, int w, int h) {
+        if (control.IsWindow()) control.MoveWindow(x, y, std::max(0, w), h, FALSE);
+    };
+
+    move(titleLabel_, kMargin, 22, 180, 36);
+    move(addPanelButton_, kMargin + 190, 26, 150, 28);
+    addPanelButton_.SetWindowText(addConsoleExpanded_ ? L"Hide new console" : L"Add console");
+    for (CWindow* control : {static_cast<CWindow*>(&nameCaption_), static_cast<CWindow*>(&nameEdit_),
+                             static_cast<CWindow*>(&platformCaption_), static_cast<CWindow*>(&platformEdit_),
+                             static_cast<CWindow*>(&ipCaption_), static_cast<CWindow*>(&ipEdit_),
+                             static_cast<CWindow*>(&portCaption_), static_cast<CWindow*>(&portEdit_),
+                             static_cast<CWindow*>(&addButton_)}) show(*control, addConsoleExpanded_);
+
+    int actionTop = 66;
+    if (addConsoleExpanded_) {
+        const int nameW = std::min(180, width / 4);
+        const int platformW = std::min(140, width / 5);
+        const int ipW = std::min(180, width / 4);
+        const int portW = 80;
+        int x = kMargin;
+        const auto field = [&](CStatic& caption, CEdit& edit, int fieldWidth) {
+            move(caption, x, 66, fieldWidth, 18);
+            move(edit, x, 85, fieldWidth, 24);
+            x += fieldWidth + 12;
+        };
+        field(nameCaption_, nameEdit_, nameW);
+        field(platformCaption_, platformEdit_, platformW);
+        field(ipCaption_, ipEdit_, ipW);
+        field(portCaption_, portEdit_, portW);
+        move(addButton_, x, 84, 120, 28);
+        actionTop = 120;
+    }
+    move(checkButton_, kMargin, actionTop, 130, 28);
+    move(removeButton_, kMargin + 142, actionTop, 150, 28);
+    move(statusLabel_, kMargin + 306, actionTop + 4, std::max(120, width - 306), 22);
+    const int listTop = actionTop + 38;
+    move(listView_, kMargin, listTop, width,
+         std::max(100, static_cast<int>(client.bottom) - listTop - kMargin));
 }
 
 LRESULT ConsolesView::OnCtlColorStatic(UINT, WPARAM wParam, LPARAM, BOOL&) { return HandleCtlColorStatic(wParam); }
@@ -232,5 +281,11 @@ LRESULT ConsolesView::OnRemoveClick(WORD, WORD, HWND, BOOL&) {
     manager_->removeConsole(id);
     statusLabel_.SetWindowText(L"Console removed.");
     refresh();
+    return 0;
+}
+
+LRESULT ConsolesView::OnAddPanelClick(WORD, WORD, HWND, BOOL&) {
+    addConsoleExpanded_ = !addConsoleExpanded_;
+    layoutControls();
     return 0;
 }

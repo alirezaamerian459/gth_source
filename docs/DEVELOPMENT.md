@@ -23,6 +23,12 @@ The application executable is expected at build/src/app/Debug/GameTransferHub.ex
 
 Tests are built by default. To configure without the C++ tests, set GTH_BUILD_TESTS=OFF when configuring. The commands above describe the configured workflow; they do not imply that a build or test has been run.
 
+## Last verified local source
+
+On 2026-11-03, the project configured and built with Windows 10.0.19045.6466, Visual Studio Build Tools 2022 17.14.39 (MSVC 19.44.35228.0), Windows SDK 10.0.26100.0, and CMake 4.4.3. After the local Sonar remediation changes, Debug and Release CTest runs each completed with 499 passed, 6 skipped, and 0 failed out of 505 registered tests. The separate browser suite passed all 12 unit tests and 7 integration tests with Node.js 24.21.0. See [report 03](../reports/03-code-audit-and-test-results.md) for the original baseline and [report 04](../reports/04-sonarqube-remediation.md) for this pass and its scan limitation.
+
+On 2026-11-07, the Release build completed with `cmake --build build --config Release --parallel 2` after adding storage categories. `ctest --test-dir build -C Release --output-on-failure` completed in 14.23 seconds with 503 passed, 6 skipped, and 0 failed out of 509 registered tests. The skipped tests are listed in [phase 04 tasks](../planning/phases/04-storage-categories/tasks.md).
+
 ## Run
 
 Run the executable produced by the build. The application stores its default database and logs under the user's local application data directory. Do not use a real archive or personal database as a test fixture.

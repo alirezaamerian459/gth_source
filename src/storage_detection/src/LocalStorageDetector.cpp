@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <chrono>
+#include <array>
 #include <future>
 #include <memory>
 #include <thread>
@@ -32,8 +33,9 @@ std::string wideToUtf8(const std::wstring& wide) {
 // each call rather than cached once, since it's one cheap API call and the
 // result should never realistically change within a process lifetime anyway.
 std::wstring systemDriveRoot() {
-    wchar_t windowsDir[MAX_PATH];
-    if (::GetWindowsDirectoryW(windowsDir, MAX_PATH) == 0 || wcslen(windowsDir) < 2 || windowsDir[1] != L':') {
+    std::array<wchar_t, MAX_PATH> windowsDir{};
+    const UINT windowsDirLength = ::GetWindowsDirectoryW(windowsDir.data(), static_cast<UINT>(windowsDir.size()));
+    if (windowsDirLength < 2 || windowsDirLength >= windowsDir.size() || windowsDir[1] != L':') {
         return L"";
     }
     return std::wstring(1, windowsDir[0]) + L":\\";
@@ -67,17 +69,17 @@ DriveProbeResult probeDriveWithTimeout(const std::wstring& rootPath) {
         r.spaceOk =
             ::GetDiskFreeSpaceExW(rootPath.c_str(), &r.freeBytesAvailable, &r.totalBytes, &totalFreeBytes) != 0;
 
-        wchar_t volumeName[MAX_PATH + 1] = {};
-        wchar_t fileSystemName[MAX_PATH + 1] = {};
-        r.volumeOk = ::GetVolumeInformationW(rootPath.c_str(), volumeName, MAX_PATH, nullptr, nullptr, nullptr,
-                                              fileSystemName, MAX_PATH) != 0;
-        r.volumeName = volumeName;
-        r.fileSystemName = fileSystemName;
+        std::array<wchar_t, MAX_PATH + 1> volumeName{};
+        std::array<wchar_t, MAX_PATH + 1> fileSystemName{};
+        r.volumeOk = ::GetVolumeInformationW(rootPath.c_str(), volumeName.data(), MAX_PATH, nullptr, nullptr, nullptr,
+                                              fileSystemName.data(), MAX_PATH) != 0;
+        r.volumeName = volumeName.data();
+        r.fileSystemName = fileSystemName.data();
         return r;
     });
 
     std::future<DriveProbeResult> future = task->get_future();
-    std::thread([task] { (*task)(); }).detach();
+    std::jthread([task] { (*task)(); }).detach();
 
     if (future.wait_for(kDriveProbeTimeout) != std::future_status::ready) {
         return DriveProbeResult{};  // spaceOk=false, volumeOk=false -> reported unavailable

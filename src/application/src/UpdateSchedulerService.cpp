@@ -18,7 +18,7 @@ void UpdateSchedulerService::checkNow() {
 
 void UpdateSchedulerService::start() {
     if (running_.exchange(true)) return;  // already running
-    thread_ = std::thread(&UpdateSchedulerService::run, this);
+    thread_ = std::jthread(&UpdateSchedulerService::run, this);
 }
 
 void UpdateSchedulerService::stop() {

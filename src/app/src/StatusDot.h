@@ -40,7 +40,7 @@ private:
         CRect rect;
         GetClientRect(&rect);
 
-        HBRUSH bgBrush = ::CreateSolidBrush(theme::ContentBg());
+        HBRUSH bgBrush = ::CreateSolidBrush(theme::SurfaceBg());
         ::FillRect(hdc, &rect, bgBrush);
         ::DeleteObject(bgBrush);
 
@@ -54,7 +54,7 @@ private:
                 fill = theme::Success();
                 break;
             case State::Warning:
-                fill = RGB(214, 155, 20);
+                fill = theme::Warning();
                 break;
             case State::Off:
             default:

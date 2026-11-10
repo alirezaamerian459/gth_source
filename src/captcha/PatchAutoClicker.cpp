@@ -18,6 +18,13 @@
 
 namespace {
 
+void postTitleId(HWND window, UINT message, WPARAM result, const std::wstring& titleId) {
+    if (!window) return;
+    auto payload = std::make_unique<std::wstring>(titleId);
+    if (!::PostMessageW(window, message, result, reinterpret_cast<LPARAM>(payload.get()))) return;
+    payload.release();
+}
+
 // Finds the first open tab (in tab-strip order) whose titleId isn't in `clickedTitles`, switches
 // Chrome to it if it isn't already the active one (a real tab switch via the same UI Automation
 // SelectionItem pattern TryCloseFinishedTab already reads IsSelected from elsewhere in this
@@ -223,7 +230,7 @@ void PatchAutoClicker::Worker() {
         const int count = ++failureCounts_[titleId];
         if (!notifyWindow_) return;
         const WPARAM wParam = (count >= kMaxAttemptsPerTitle) ? 4 : attemptWParam;
-        ::PostMessageW(notifyWindow_, notifyMessage_, wParam, reinterpret_cast<LPARAM>(new std::wstring(titleId)));
+        postTitleId(notifyWindow_, notifyMessage_, wParam, titleId);
     };
 
     while (running_) {
@@ -269,7 +276,7 @@ void PatchAutoClicker::Worker() {
             MouseInput::ClickAtPosition(x, y);
         }
         if (notifyWindow_) {
-            ::PostMessageW(notifyWindow_, notifyMessage_, 0, reinterpret_cast<LPARAM>(new std::wstring(titleId)));
+            postTitleId(notifyWindow_, notifyMessage_, 0, titleId);
         }
 
         // Stay on this tab - don't let the next tick switch away yet - until either the SC link

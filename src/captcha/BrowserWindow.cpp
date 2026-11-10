@@ -1,13 +1,14 @@
 #include "BrowserWindow.h"
 
+#include <array>
 #include <cwchar>
 #include <thread>
 
 HWND ForegroundBrowserWindow() {
     HWND candidate = ::GetForegroundWindow();
-    wchar_t className[64] = {0};
-    if (candidate && ::GetClassNameW(candidate, className, 64) &&
-        wcscmp(className, L"Chrome_WidgetWin_1") == 0) {
+    std::array<wchar_t, 64> className{};
+    if (candidate && ::GetClassNameW(candidate, className.data(), static_cast<int>(className.size())) &&
+        wcscmp(className.data(), L"Chrome_WidgetWin_1") == 0) {
         return candidate;
     }
     return nullptr;

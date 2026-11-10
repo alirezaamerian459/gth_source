@@ -5,6 +5,7 @@
 #include <ws2tcpip.h>
 
 #include <cctype>
+#include <array>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -117,10 +118,10 @@ private:
     bool readLine(std::string& outLine) {
         auto newlinePos = buffer_.find('\n');
         while (newlinePos == std::string::npos) {
-            char chunk[512];
-            const int received = ::recv(controlSocket_, chunk, sizeof(chunk), 0);
+            std::array<char, 512> chunk{};
+            const int received = ::recv(controlSocket_, chunk.data(), static_cast<int>(chunk.size()), 0);
             if (received <= 0) return false;
-            buffer_.append(chunk, static_cast<size_t>(received));
+            buffer_.append(chunk.data(), static_cast<size_t>(received));
             if (buffer_.size() > 16384) return false;  // runaway line - bail out rather than grow forever
             newlinePos = buffer_.find('\n');
         }
@@ -232,10 +233,10 @@ private:
         ::getsockname(controlSocket_, reinterpret_cast<sockaddr*>(&localAddr), &localLen);
         const auto* ipBytes = reinterpret_cast<const unsigned char*>(&localAddr.sin_addr);
 
-        char response[128];
-        std::snprintf(response, sizeof(response), "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d).", ipBytes[0],
+        std::array<char, 128> response{};
+        std::snprintf(response.data(), response.size(), "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d).", ipBytes[0],
                       ipBytes[1], ipBytes[2], ipBytes[3], (dataPort >> 8) & 0xFF, dataPort & 0xFF);
-        sendLine(controlSocket_, response);
+        sendLine(controlSocket_, response.data());
     }
 
     // Accepts exactly one data connection on the PASV listening socket (with
@@ -309,10 +310,10 @@ private:
                 continue;
             }
             const long long size = isDir ? 0 : static_cast<long long>(entry.file_size(entryEc));
-            char lineBuf[768];
-            std::snprintf(lineBuf, sizeof(lineBuf), "%crwxr-xr-x 1 owner group %lld Jan 01 00:00 %s\r\n",
+            std::array<char, 768> lineBuf{};
+            std::snprintf(lineBuf.data(), lineBuf.size(), "%crwxr-xr-x 1 owner group %lld Jan 01 00:00 %s\r\n",
                           isDir ? 'd' : '-', size, name.c_str());
-            listing += lineBuf;
+            listing += lineBuf.data();
         }
 
         sendAll(dataSocket, listing.data(), static_cast<int>(listing.size()));
@@ -347,13 +348,13 @@ private:
             return;
         }
 
-        char chunk[8192];
+        std::array<char, 8192> chunk{};
         bool ok = true;
         while (true) {
-            file.read(chunk, sizeof(chunk));
+            file.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
             const std::streamsize count = file.gcount();
             if (count <= 0) break;
-            if (!sendAll(dataSocket, chunk, static_cast<int>(count))) {
+            if (!sendAll(dataSocket, chunk.data(), static_cast<int>(count))) {
                 ok = false;
                 break;
             }
@@ -393,10 +394,10 @@ private:
             return;
         }
 
-        char chunk[8192];
+        std::array<char, 8192> chunk{};
         int received;
-        while ((received = ::recv(dataSocket, chunk, sizeof(chunk), 0)) > 0) {
-            file.write(chunk, received);
+        while ((received = ::recv(dataSocket, chunk.data(), static_cast<int>(chunk.size()), 0)) > 0) {
+            file.write(chunk.data(), received);
         }
 
         file.close();
@@ -417,7 +418,7 @@ WinsockFtpServer::~WinsockFtpServer() { stop(); }
 
 void WinsockFtpServer::start(const core::FtpServerConfig& config) {
     if (running_.exchange(true)) return;  // already running
-    acceptThread_ = std::thread(&WinsockFtpServer::acceptLoop, this, config);
+    acceptThread_ = std::jthread(&WinsockFtpServer::acceptLoop, this, config);
 }
 
 void WinsockFtpServer::stop() {
@@ -429,13 +430,16 @@ void WinsockFtpServer::stop() {
 void WinsockFtpServer::acceptLoop(core::FtpServerConfig config) {
     std::error_code ec;
     const fs::path root = fs::weakly_canonical(fs::path(config.rootPath), ec);
-    if (ec || !fs::is_directory(root, ec) || ec) {
+    if (ec) {
+        running_.store(false);
+        return;
+    }
+    if (!fs::is_directory(root, ec) || ec) {
         running_.store(false);
         return;
     }
 
-    WSADATA wsaData;
-    if (::WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+    if (WSADATA wsaData; ::WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
         running_.store(false);
         return;
     }
@@ -473,7 +477,7 @@ void WinsockFtpServer::acceptLoop(core::FtpServerConfig config) {
     u_long nonBlocking = 1;
     ::ioctlsocket(listenSocket, FIONBIO, &nonBlocking);
 
-    std::vector<std::thread> connectionThreads;
+    std::vector<std::jthread> connectionThreads;
     const std::string rootString = root.string();
 
     while (running_.load()) {

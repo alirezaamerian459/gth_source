@@ -2,7 +2,7 @@
 #include "MainFrame.h"
 #include "SplashWindow.h"
 
-#include <commctrl.h>
+#include <CommCtrl.h>
 #include <exception>
 
 #include "gth/infrastructure/ServiceContainer.h"

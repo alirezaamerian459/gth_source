@@ -66,13 +66,14 @@ std::optional<std::string> GamePosterService::extractPosterPng(const std::string
     // PS4 game's part 0 - reads directly, no ordering needed. A no-header-here result (a later part
     // of a split package) is normal and just moves on to the next candidate.
     for (const auto& part : parts) {
-        if (auto poster = gth::indexing::PkgFileParser::extractPoster(part.absolutePath)) return poster;
+        if (auto poster = gth::indexing::PkgFileParser::extractPoster(part.absolutePath); poster.has_value())
+            return poster;
     }
 
     // A split PS5 release: the entry table sits past every numbered part, in the "_sc.pkg" metadata
     // piece - read across all of them, in original-file order, as one virtual stream (see
     // PkgFileParser::parseSplitPs5Parts, which this mirrors).
-    if (!metadataPiece) return std::nullopt;
+    if (!metadataPiece.has_value()) return std::nullopt;
 
     std::sort(parts.begin(), parts.end(), [](const Part& a, const Part& b) {
         return std::max(a.splitIndex, 0) < std::max(b.splitIndex, 0);

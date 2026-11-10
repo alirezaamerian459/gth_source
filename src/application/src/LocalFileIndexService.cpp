@@ -105,7 +105,7 @@ std::optional<fs::path> LocalFileIndexService::findByFileName(const std::string&
         return it == index.byName.end() ? std::nullopt : firstExisting(it->second);
     };
 
-    if (auto hit = lookup(*current)) return hit;
+    if (auto hit = lookup(*current); hit.has_value()) return hit;
 
     // A miss on an old snapshot: the library may have been scanned since. Rebuild (rate limited so
     // a burst of unrelated requests can't hammer the database) and look once more.

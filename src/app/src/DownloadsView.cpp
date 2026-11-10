@@ -4,6 +4,7 @@
 
 #include <array>
 #include <fstream>
+#include <format>
 
 #pragma comment(lib, "shell32.lib")
 
@@ -32,9 +33,9 @@ std::wstring formatSize(long long bytes) {
 
 std::wstring formatDuration(long long seconds) {
     if (seconds <= 0) return L"-";
-    if (seconds >= 3600) return std::to_wstring(seconds / 3600) + L"h " + std::to_wstring((seconds % 3600) / 60) + L"m";
-    if (seconds >= 60) return std::to_wstring(seconds / 60) + L"m " + std::to_wstring(seconds % 60) + L"s";
-    return std::to_wstring(seconds) + L"s";
+    if (seconds >= 3600) return std::format(L"{}h {}m", seconds / 3600, (seconds % 3600) / 60);
+    if (seconds >= 60) return std::format(L"{}m {}s", seconds / 60, seconds % 60);
+    return std::format(L"{}s", seconds);
 }
 
 // Only meaningful when both are known: a batch download's per-game duration isn't tracked (the
@@ -42,7 +43,7 @@ std::wstring formatDuration(long long seconds) {
 // read as an implausible speed.
 std::wstring formatSpeed(long long bytes, long long seconds) {
     if (bytes <= 0 || seconds <= 0) return L"-";
-    return formatSize(static_cast<long long>(bytes / static_cast<double>(seconds))) + L"/s";
+    return std::format(L"{}/s", formatSize(static_cast<long long>(bytes / static_cast<double>(seconds))));
 }
 
 std::wstring formatWhen(std::time_t when) {
@@ -191,7 +192,8 @@ LRESULT DownloadsView::OnOpenFileClick(WORD, WORD, HWND, BOOL&) {
             << "# Download history: when, title ID, game, type, status, bytes, duration (s), message - one line per "
                "download. Read by the Downloads tab; safe to archive or clear by hand.\n";
     }
-    ::ShellExecuteW(m_hWnd, L"open", L"notepad.exe", (L"\"" + historyPath_.wstring() + L"\"").c_str(), nullptr, SW_SHOWNORMAL);
+    const std::wstring historyArgument = std::format(L"\"{}\"", historyPath_.wstring());
+    ::ShellExecuteW(m_hWnd, L"open", L"notepad.exe", historyArgument.c_str(), nullptr, SW_SHOWNORMAL);
     return 0;
 }
 
@@ -256,10 +258,10 @@ void DownloadsView::refresh() {
     listView_.Invalidate();
 
     std::wstring summary;
-    if (!live.empty()) summary = std::to_wstring(live.size()) + L" downloading right now. ";
-    if (!queued.empty()) summary += std::to_wstring(queued.size()) + L" queued. ";
-    summary += std::to_wstring(entries.size()) + L" download(s) recorded, " + formatSize(totalBytes) + L" total";
-    if (failed > 0) summary += L", " + std::to_wstring(failed) + L" failed";
+    if (!live.empty()) summary = std::format(L"{} downloading right now. ", live.size());
+    if (!queued.empty()) summary += std::format(L"{} queued. ", queued.size());
+    summary += std::format(L"{} download(s) recorded, {} total", entries.size(), formatSize(totalBytes));
+    if (failed > 0) summary += std::format(L", {} failed", failed);
     summary += L".";
     if (entries.empty() && live.empty() && queued.empty()) {
         summary = L"No downloads recorded yet - they'll show up here as Update All Games, Sync with Sony, "

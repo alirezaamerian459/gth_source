@@ -1,3 +1,4 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <windows.h>
@@ -29,7 +30,7 @@ class LocalFileIndexTest : public ::testing::Test {
 protected:
     void SetUp() override {
         Migrator::applyMigrations(db);
-        root = fs::temp_directory_path() / ("gth_index_test_" + std::to_string(::GetCurrentProcessId()) + "_" +
+        root = gth::test::testTempRoot() / ("gth_index_test_" + std::to_string(::GetCurrentProcessId()) + "_" +
                                             std::to_string(counter++));
         fs::create_directories(root);
 

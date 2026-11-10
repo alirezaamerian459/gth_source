@@ -78,7 +78,7 @@ private:
     CStatic statusLabel_;
     CListViewCtrl listView_;
 
-    std::thread scanThread_;
+    std::jthread scanThread_;
     std::atomic<bool> scanInProgress_{false};
     bool hasScanned_ = false;
     std::vector<Entry> entries_;

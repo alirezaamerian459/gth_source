@@ -174,6 +174,7 @@ private:
     // Rights/credit footer beneath the sidebar's nav list - always visible, unlike the splash
     // screen's own copy of the same wording, which is only up for a couple of seconds at launch.
     CStatic footer_;
+    CStatic brandLabel_;
     CStatic pageContextLabel_;
     CStatic pageContextHint_;
     CStatic shellStatusLabel_;

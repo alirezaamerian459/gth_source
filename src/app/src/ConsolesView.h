@@ -21,6 +21,7 @@ public:
         COMMAND_ID_HANDLER(IDC_ADD_CONSOLE_BUTTON, OnAddClick)
         COMMAND_ID_HANDLER(IDC_CHECK_CONSOLE_BUTTON, OnCheckClick)
         COMMAND_ID_HANDLER(IDC_REMOVE_CONSOLE_BUTTON, OnRemoveClick)
+        COMMAND_ID_HANDLER(IDC_CONSOLES_ADD_PANEL_BUTTON, OnAddPanelClick)
     END_MSG_MAP()
 
     void init(gth::application::IConsoleManager& manager) { manager_ = &manager; }
@@ -49,6 +50,8 @@ private:
     LRESULT OnAddClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnCheckClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnRemoveClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnAddPanelClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    void layoutControls();
 
     std::string selectedConsoleId();
     std::wstring getEditText(CEdit& edit);
@@ -56,6 +59,7 @@ private:
     gth::application::IConsoleManager* manager_ = nullptr;
 
     CStatic titleLabel_;
+    ModernButton addPanelButton_;
 
     // Inline "add console" fields, always visible above the list - avoids
     // needing a modal dialog/resource template for a handful of text inputs.
@@ -73,4 +77,5 @@ private:
     // consoleId without a redundant DB round-trip, and lets refresh() restore
     // the selection it had before a periodic (timer-driven) repopulate.
     std::vector<gth::core::Console> lastConsoles_;
+    bool addConsoleExpanded_ = false;
 };

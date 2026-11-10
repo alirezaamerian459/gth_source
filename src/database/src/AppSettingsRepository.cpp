@@ -56,9 +56,9 @@ AppSettings AppSettingsRepository::load() {
     settings.hiddenTabs = splitHiddenTabs(stmt.columnText(1));
     settings.defaultLocalFolder = stmt.columnText(2);
     const auto logLevel = stmt.columnTextOrNull(3);
-    if (logLevel) settings.logLevel = *logLevel;
+    if (logLevel.has_value()) settings.logLevel = *logLevel;
     const auto maxConsoles = stmt.columnInt64OrNull(4);
-    if (maxConsoles) settings.maxConsoles = static_cast<int>(*maxConsoles);
+    if (maxConsoles.has_value()) settings.maxConsoles = static_cast<int>(*maxConsoles);
 
     return settings;
 }

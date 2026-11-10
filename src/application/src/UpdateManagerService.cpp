@@ -1,6 +1,7 @@
 #include "gth/application/updates/UpdateManagerService.h"
 
 #include <filesystem>
+#include <format>
 
 #include "gth/core/Clock.h"
 
@@ -54,7 +55,7 @@ UpdateManagerResult UpdateManagerService::processJob(const std::string& updateJo
 
     auto jobOpt = jobRepository_.getById(updateJobId);
     if (!jobOpt.has_value()) {
-        result.errorMessage = "UpdateJob not found: " + updateJobId;
+        result.errorMessage = std::format("UpdateJob not found: {}", updateJobId);
         return result;
     }
     UpdateJob job = *jobOpt;

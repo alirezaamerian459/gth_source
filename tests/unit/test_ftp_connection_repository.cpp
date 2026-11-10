@@ -18,7 +18,7 @@ struct FtpConnectionFixture {
 FtpConnection makeConnection() {
     FtpConnection connection;
     connection.name = "My Server";
-    connection.host = "192.168.1.10";
+    connection.host = "192.168.1.10";  // NOSONAR: RFC1918 value verifies repository persistence only.
     connection.port = 21;
     connection.protocol = FtpProtocol::Ftp;
     connection.username = "user";

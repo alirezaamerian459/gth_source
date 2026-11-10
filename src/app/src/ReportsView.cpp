@@ -1,6 +1,8 @@
 #include "ReportsView.h"
 
 #include <algorithm>
+#include <bit>
+#include <format>
 
 namespace {
 constexpr int kTopAreaHeight = 96;
@@ -14,7 +16,7 @@ void addMetricRow(CListViewCtrl& listView, int row, const wchar_t* metric, long 
 
 LRESULT ReportsView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     CRect titleRect(kMargin, 24, kMargin + 260, 56);
-    titleLabel_.Create(m_hWnd, titleRect, L"Reports - Archive Health", WS_CHILD | WS_VISIBLE);
+    titleLabel_.Create(m_hWnd, titleRect, L"Archive Reports", WS_CHILD | WS_VISIBLE);
     titleLabel_.SetFont(theme::TitleFont());
 
     CRect refreshRect(kMargin + 280, 28, kMargin + 400, 60);
@@ -54,12 +56,12 @@ LRESULT ReportsView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {
 }
 
 LRESULT ReportsView::OnCtlColorStatic(UINT, WPARAM wParam, LPARAM lParam, BOOL&) {
-    HDC hdc = reinterpret_cast<HDC>(wParam);
+    const auto hdc = std::bit_cast<HDC>(wParam);
     ::SetBkMode(hdc, TRANSPARENT);
-    ::SetTextColor(hdc, reinterpret_cast<HWND>(lParam) == generatedAtLabel_.m_hWnd ? theme::TextSecondary()
-                                                                                    : theme::TextPrimary());
+    ::SetTextColor(hdc, std::bit_cast<HWND>(lParam) == generatedAtLabel_.m_hWnd ? theme::TextSecondary()
+                                                                                : theme::TextPrimary());
     HBRUSH pageBrush = theme::ContentBgBrush();
-    return reinterpret_cast<LRESULT>(pageBrush);
+    return std::bit_cast<LRESULT>(pageBrush);
 }
 
 void ReportsView::refresh() {
@@ -68,7 +70,7 @@ void ReportsView::refresh() {
     theme::ApplyListViewTheme(listView_);
     const auto report = reportService_->generate();
 
-    generatedAtLabel_.SetWindowText((L"Generated at " + Utf8ToWide(report.generatedAt)).c_str());
+    generatedAtLabel_.SetWindowText(std::format(L"Generated at {}", Utf8ToWide(report.generatedAt)).c_str());
 
     listView_.DeleteAllItems();
     int row = 0;

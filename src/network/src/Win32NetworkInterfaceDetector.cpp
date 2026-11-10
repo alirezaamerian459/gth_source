@@ -6,6 +6,7 @@
 #include <ws2tcpip.h>
 
 #include <array>
+#include <cstddef>
 #include <cstdio>
 #include <vector>
 
@@ -44,8 +45,9 @@ std::string wideToUtf8(const wchar_t* wide) {
     if (!wide) return "";
     const int len = ::WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
     if (len <= 1) return "";
-    std::string result(static_cast<size_t>(len - 1), '\0');
+    std::string result(static_cast<size_t>(len), '\0');
     ::WideCharToMultiByte(CP_UTF8, 0, wide, -1, result.data(), len, nullptr, nullptr);
+    result.resize(static_cast<size_t>(len - 1));
     return result;
 }
 
@@ -65,7 +67,7 @@ std::vector<NetworkInterfaceInfo> Win32NetworkInterfaceDetector::detect() {
     std::vector<NetworkInterfaceInfo> results;
 
     ULONG bufferSize = 15000;
-    std::vector<BYTE> buffer(bufferSize);
+    std::vector<std::byte> buffer(bufferSize);
     auto* addresses = reinterpret_cast<PIP_ADAPTER_ADDRESSES>(buffer.data());
 
     const ULONG flags = GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER;

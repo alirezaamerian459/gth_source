@@ -58,7 +58,7 @@ private:
     application::IConsoleManager& consoleManager_;
     application::ICdnUrlService& cdnUrlService_;
     std::shared_ptr<network::ILocalGameServer> localGameServer_;
-    std::thread acceptThread_;
+    std::jthread acceptThread_;
     std::atomic<bool> running_{false};
     std::atomic<int> port_{0};
     std::atomic<std::uint64_t> hitCount_{0};

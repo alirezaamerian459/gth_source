@@ -13,8 +13,7 @@ namespace gth::network {
 
 bool TcpRemoteReportSender::send(const std::string& serverAddress, int port, const std::string& nodeId,
                                   const std::string& nodeName, const std::string& summaryLine) {
-    WSADATA wsaData;
-    if (::WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) return false;
+    if (WSADATA wsaData; ::WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) return false;
 
     bool success = false;
     const SOCKET sock = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);

@@ -129,7 +129,7 @@ bool MetadataPieceBelongsToPackage(const fs::path& firstPart, const fs::path& me
 
 std::optional<PackageSyncService::Analysis> PackageSyncService::analyze(const std::string& gameVariantId, SyncPlan& plan) {
     const auto variant = variantRepository_.getById(gameVariantId);
-    if (!variant) {
+    if (!variant.has_value()) {
         plan.detail = "That game isn't in the library any more.";
         return std::nullopt;
     }
@@ -143,12 +143,12 @@ std::optional<PackageSyncService::Analysis> PackageSyncService::analyze(const st
         return std::nullopt;
     }
     const auto storage = storageRepository_.getById(variant->storageId);
-    if (!storage) {
+    if (!storage.has_value()) {
         plan.detail = "The storage this game was found on has been removed.";
         return std::nullopt;
     }
     auto version = currentActiveVersion(versionRepository_, gameVariantId);
-    if (!version) {
+    if (!version.has_value()) {
         plan.detail = "The game's files weren't found by the last scan.";
         return std::nullopt;
     }
@@ -241,7 +241,7 @@ std::optional<PackageSyncService::Analysis> PackageSyncService::analyze(const st
     // A missing version string can't distinguish same-sized package builds. In that case, use the
     // small metadata piece's Sony checksum and its embedded image digest to establish which build
     // the local package belongs to; otherwise a same-size old build could be mistaken for current.
-    if (a.version.version.empty() && a.metadata && a.metadataPiece) {
+    if (a.version.version.empty() && a.metadata.has_value() && a.metadataPiece.has_value()) {
         const auto verified = verifier_.verify(a.metadata->path.string(), a.metadataPiece->sizeBytes,
                                                a.metadataPiece->sha256);
         a.metadataMatchesLatest =
@@ -300,9 +300,9 @@ void classify(long long& bytes, SyncKind& kind, std::string& detail, bool pfsMat
     int missingOrDifferent = 0;
     std::map<std::string, long long> localSizes;
     for (const auto& piece : numbered) localSizes[fileNameLower(piece.path)] = piece.size;
-    if (localMetadata) localSizes[fileNameLower(localMetadata->path)] = localMetadata->size;
+    if (localMetadata.has_value()) localSizes[fileNameLower(localMetadata->path)] = localMetadata->size;
     std::vector<core::ReleasePiece> all = pfsPieces;
-    if (sonyMetadata) all.push_back(*sonyMetadata);
+    if (sonyMetadata.has_value()) all.push_back(*sonyMetadata);
     for (const auto& piece : all) {
         const auto found = localSizes.find(lower(leafOfPath(piece.url)));
         if (found == localSizes.end() || found->second != piece.sizeBytes) {
@@ -332,7 +332,7 @@ SyncPlan PackageSyncService::plan(const std::string& gameVariantId) {
     if (isPs4(gameVariantId)) return planPs4(gameVariantId);
     SyncPlan result;
     const auto analysis = analyze(gameVariantId, result);
-    if (!analysis) {
+    if (!analysis.has_value()) {
         result.kind = SyncKind::Unavailable;
         return result;
     }
@@ -407,7 +407,7 @@ SyncResult PackageSyncService::runOnce(const std::string& gameVariantId, SyncMod
         toFetch.push_back(*a.metadataPiece);
     } else {
         std::vector<core::ReleasePiece> all = a.pfsPieces;
-        if (a.metadataPiece) all.push_back(*a.metadataPiece);
+        if (a.metadataPiece.has_value()) all.push_back(*a.metadataPiece);
         int position = 0;
         for (const auto& piece : all) {
             ++position;
@@ -475,7 +475,7 @@ SyncResult PackageSyncService::runOnce(const std::string& gameVariantId, SyncMod
         }
         return std::nullopt;
     };
-    if (a.metadataPiece) {
+    if (a.metadataPiece.has_value()) {
         const auto stagedMetadata = stagedPathFor(leafOfPath(a.metadataPiece->url));
         fs::path metadataPath;
         if (stagedMetadata.has_value()) {
@@ -485,7 +485,7 @@ SyncResult PackageSyncService::runOnce(const std::string& gameVariantId, SyncMod
         }
         const std::string firstLeaf = a.pfsPieces.empty() ? std::string() : leafOfPath(a.pfsPieces.front().url);
         const auto stagedFirst = firstLeaf.empty() ? std::nullopt : stagedPathFor(firstLeaf);
-        const fs::path firstPartPath = stagedFirst ? *stagedFirst : a.numbered.front().path;
+        const fs::path firstPartPath = stagedFirst.has_value() ? *stagedFirst : a.numbered.front().path;
         if (!metadataPath.empty() && !MetadataPieceBelongsToPackage(firstPartPath, metadataPath)) {
             if (result.kind == SyncKind::CompleteMetadata) {
                 // Same sizes as Sony's latest, yet not the same package: it needs a full update after all.
@@ -707,7 +707,7 @@ bool PackageSyncService::isPs4(const std::string& gameVariantId) {
 std::optional<PackageSyncService::Ps4Analysis> PackageSyncService::analyzePs4(const std::string& gameVariantId,
                                                                              SyncPlan& plan) {
     const auto variant = variantRepository_.getById(gameVariantId);
-    if (!variant) {
+    if (!variant.has_value()) {
         plan.detail = "That game isn't in the library any more.";
         return std::nullopt;
     }
@@ -717,12 +717,12 @@ std::optional<PackageSyncService::Ps4Analysis> PackageSyncService::analyzePs4(co
         return std::nullopt;
     }
     const auto storage = storageRepository_.getById(variant->storageId);
-    if (!storage) {
+    if (!storage.has_value()) {
         plan.detail = "The storage this game was found on has been removed.";
         return std::nullopt;
     }
     const auto version = currentActiveVersion(versionRepository_, gameVariantId);
-    if (!version) {
+    if (!version.has_value()) {
         plan.detail = "The game's files weren't found by the last scan.";
         return std::nullopt;
     }
@@ -1197,7 +1197,7 @@ std::vector<std::pair<std::string, std::string>> PackageSyncService::metadataPie
     for (const auto& variant : variantRepository_.getAll()) {
         if (variant.status != core::GameVariantStatus::Active || variant.platform != "PS5") continue;
         const auto version = currentActiveVersion(versionRepository_, variant.gameVariantId);
-        if (!version) continue;
+        if (!version.has_value()) continue;
         const std::string titleId = titleIdFromVersionPath(version->relativePath);
         if (titleId.empty() || seen.contains(titleId)) continue;
 

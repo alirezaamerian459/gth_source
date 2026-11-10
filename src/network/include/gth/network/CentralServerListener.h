@@ -28,7 +28,7 @@ private:
     void handleConnection(std::uintptr_t clientSocket);
 
     ReportHandler onReport_;
-    std::thread acceptThread_;
+    std::jthread acceptThread_;
     std::atomic<bool> running_{false};
 };
 

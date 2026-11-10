@@ -1,3 +1,4 @@
+#include "TestTempPaths.h"
 #include <gtest/gtest.h>
 
 #include <filesystem>
@@ -109,7 +110,7 @@ TEST(StorageServiceTest, DetectAndSyncRemovesLocallyDetectableStorageThatStillEx
     // whose root path is still physically there (so it's not "unplugged"),
     // but the detector deliberately left it out of this run's results - it
     // should be removed rather than parked offline forever.
-    const auto dir = std::filesystem::temp_directory_path() / "gth_storage_service_removed_test";
+    const auto dir = gth::test::testTempRoot() / "gth_storage_service_removed_test";
     std::filesystem::create_directories(dir);
 
     Storage existing;
@@ -131,7 +132,6 @@ TEST(StorageServiceTest, DetectAndSyncRemovesLocallyDetectableStorageThatStillEx
 
     std::filesystem::remove_all(dir);
 }
-
 TEST(StorageServiceTest, DetectAndSyncNeverTouchesNonLocallyDetectableStorage) {
     Database db(":memory:");
     Migrator::applyMigrations(db);
@@ -331,7 +331,7 @@ TEST(StorageServiceTest, AddManualStorageRegistersAnExistingDirectory) {
     Migrator::applyMigrations(db);
     StorageRepository repo(db);
 
-    const auto dir = std::filesystem::temp_directory_path() / "gth_add_manual_storage_test";
+    const auto dir = gth::test::testTempRoot() / "gth_add_manual_storage_test";
     std::filesystem::create_directories(dir);
 
     FakeStorageDetector detector;
@@ -353,7 +353,7 @@ TEST(StorageServiceTest, AddManualStorageClassifiesAnOrdinaryPathAsExternalHdd) 
     Migrator::applyMigrations(db);
     StorageRepository repo(db);
 
-    const auto dir = std::filesystem::temp_directory_path() / "gth_add_manual_storage_test2";
+    const auto dir = gth::test::testTempRoot() / "gth_add_manual_storage_test2";
     std::filesystem::create_directories(dir);
 
     FakeStorageDetector detector;
@@ -386,7 +386,7 @@ TEST(StorageServiceTest, AddManualStorageRejectsDuplicateRootPath) {
     Migrator::applyMigrations(db);
     StorageRepository repo(db);
 
-    const auto dir = std::filesystem::temp_directory_path() / "gth_add_manual_storage_test3";
+    const auto dir = gth::test::testTempRoot() / "gth_add_manual_storage_test3";
     std::filesystem::create_directories(dir);
 
     FakeStorageDetector detector;
@@ -399,3 +399,4 @@ TEST(StorageServiceTest, AddManualStorageRejectsDuplicateRootPath) {
 
     std::filesystem::remove_all(dir);
 }
+

@@ -16,9 +16,23 @@ inline constexpr std::array<const wchar_t*, 15> kSidebarTabs = {
     L"Dashboard", L"Games", L"JB", L"Updates", L"Downloads", L"Storage", L"Consoles", L"Transfers",
     L"FTP", L"Network", L"Logs", L"Reports", L"Enterprise", L"Backups", L"Settings"};
 
+// Presentation labels are intentionally separate from the canonical keys
+// above. Hidden-tab preferences and access rules continue to use the stable
+// keys, while the shell can use the clearer names from the supplied UI
+// reference without invalidating existing settings.
+inline constexpr std::array<const wchar_t*, 15> kSidebarDisplayNames = {
+    L"Home", L"My Games", L"JB Library", L"Updates", L"Downloads", L"Drives & Storage", L"Consoles",
+    L"Quick Transfer", L"FTP Tools", L"Network", L"Activity & Logs", L"Reports", L"Enterprise", L"Backups",
+    L"Settings"};
+
 inline constexpr int kSidebarTabCount = static_cast<int>(kSidebarTabs.size());
 inline constexpr int kSidebarDashboardIndex = 0;
 inline constexpr int kSidebarSettingsIndex = kSidebarTabCount - 1;
+
+inline constexpr const wchar_t* SidebarDisplayName(int logicalIndex) {
+    return logicalIndex >= 0 && logicalIndex < kSidebarTabCount ? kSidebarDisplayNames[static_cast<size_t>(logicalIndex)]
+                                                                 : L"";
+}
 
 inline constexpr int kSidebarGroupCount = 5;
 
@@ -31,13 +45,13 @@ inline constexpr SidebarGroup SidebarGroupForLogicalIndex(int index) {
         case 2:  // JB
         case 3:  // Updates
         case 4:  // Downloads
-        case 7:  // Transfers
             return SidebarGroup::Workspace;
+        case 5:  // Storage
         case 6:  // Consoles
         case 8:  // FTP
         case 9:  // Network
             return SidebarGroup::Devices;
-        case 5:   // Storage
+        case 7:   // Transfers
         case 13:  // Backups
             return SidebarGroup::LibraryData;
         case 10:  // Logs

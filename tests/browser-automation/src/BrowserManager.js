@@ -102,14 +102,6 @@ export class BrowserManager {
     }
   }
 
-  // Get the current page (create if not exists)
-  async getPage() {
-    if (!this.page) {
-      await this.createPage();
-    }
-    return this.page;
-  }
-
   // Close the page
   async closePage() {
     if (this.page) {

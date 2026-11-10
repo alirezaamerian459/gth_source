@@ -183,9 +183,9 @@ struct SidecarField {
 SidecarField resolveSidecarField(const std::optional<std::string>& existingValue,
                                   const std::optional<std::string>& existingSource, const std::string& placeholder,
                                   const std::string& freshValue) {
-    if (existingValue && !existingValue->empty()) {
-        if (existingSource && *existingSource == "manual") return {*existingValue, true};
-        if (!existingSource && *existingValue != placeholder) return {*existingValue, true};
+    if (existingValue.has_value() && !existingValue->empty()) {
+        if (existingSource.has_value() && *existingSource == "manual") return {*existingValue, true};
+        if (!existingSource.has_value() && *existingValue != placeholder) return {*existingValue, true};
     }
     return {freshValue, false};
 }
@@ -212,13 +212,13 @@ struct TitleChoice {
 TitleChoice resolveSidecarTitle(const std::optional<std::string>& existingValue,
                                 const std::optional<std::string>& existingSource, const std::string& titleId,
                                 const std::string& freshValue, const std::string& freshSource) {
-    if (existingValue && !existingValue->empty()) {
-        if (existingSource && *existingSource == "manual") return {*existingValue, "manual"};
+    if (existingValue.has_value() && !existingValue->empty()) {
+        if (existingSource.has_value() && *existingSource == "manual") return {*existingValue, "manual"};
         // No provenance at all and not the placeholder: a value someone typed by hand.
-        if (!existingSource && *existingValue != titleId) return {*existingValue, "manual"};
+        if (!existingSource.has_value() && *existingValue != titleId) return {*existingValue, "manual"};
 
         if (*existingValue != titleId) {
-            const std::string keptSource = existingSource ? *existingSource : std::string("auto");
+            const std::string keptSource = existingSource.has_value() ? *existingSource : std::string("auto");
             const bool freshIsBareId = freshValue.empty() || freshValue == titleId;
             if (freshIsBareId || titleRank(freshSource) < titleRank(keptSource)) return {*existingValue, keptSource};
         }
@@ -238,7 +238,7 @@ bool sidecarHoldsATrustedTitle(const fs::path& path, const std::string& titleId)
     }
     const auto title = readJsonStringField(existing, "title");
     const auto source = readJsonStringField(existing, "titleSource");
-    if (!title || title->empty() || *title == titleId || !source) return false;
+    if (!title.has_value() || title->empty() || *title == titleId || !source.has_value()) return false;
     return titleRank(*source) >= 1;
 }
 
@@ -276,7 +276,7 @@ SidecarResult syncTitleSidecar(const fs::path& directory, const std::string& con
 
         auto existingRegion = readJsonStringField(existing, "region");
         auto existingRegionSource = readJsonStringField(existing, "regionSource");
-        if (existingRegion && !existingRegionSource) {
+        if (existingRegion.has_value() && !existingRegionSource.has_value()) {
             // Legacy sidecar from before regionSource existed (or before
             // this fix at all): for a PS5 title its region can only be
             // "Unknown" or this code's own since-corrected "North America /
@@ -585,7 +585,8 @@ std::vector<ScannedVariant> buildVariantsFromHits(const std::vector<PkgHit>& hit
         }
 
         ++diagnostics.titleLookupsAttempted;
-        if (auto onlineTitle = titleLookup->lookupTitle(platform, titleId); onlineTitle && !onlineTitle->empty()) {
+        if (auto onlineTitle = titleLookup->lookupTitle(platform, titleId);
+            onlineTitle.has_value() && !onlineTitle->empty()) {
             results[variantIdx].title = *onlineTitle;
             needsTitleEnrichment[variantKey] = false;
             titleOrigin[variantKey] = "online";
@@ -703,7 +704,7 @@ std::vector<ScannedVariant> EnhancedStorageScanner::scanForPkgFiles(const std::s
                 const auto pieceSize = static_cast<long long>(entry.file_size(entryEc));
                 auto pieceMetadata = PkgFileParser::parseMetadataPieceFileName(entry.path().string(), pieceSize);
                 auto pieceRelative = fs::relative(entry.path(), root, ec);
-                if (pieceMetadata && !ec && !entryEc) {
+                if (pieceMetadata.has_value() && !ec && !entryEc) {
                     metadataPieces.push_back(PkgHit{std::move(*pieceMetadata), entry.path(), pieceRelative.string()});
                 }
                 continue;
@@ -711,7 +712,7 @@ std::vector<ScannedVariant> EnhancedStorageScanner::scanForPkgFiles(const std::s
 
             // Try to parse the .pkg file
             auto metadata = PkgFileParser::parseFile(entry.path().string());
-            if (!metadata) continue;
+            if (!metadata.has_value()) continue;
 
             // Get relative path from root
             auto relativePath = fs::relative(entry.path(), root, ec);

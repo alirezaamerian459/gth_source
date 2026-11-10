@@ -3,22 +3,24 @@
 namespace gth::core {
 
 std::string toString(DiskStatus status) {
+    using enum DiskStatus;
     switch (status) {
-        case DiskStatus::Healthy: return "Healthy";
-        case DiskStatus::Warning: return "Warning";
-        case DiskStatus::Critical: return "Critical";
-        case DiskStatus::Offline: return "Offline";
-        case DiskStatus::Unknown:
+        case Healthy: return "Healthy";
+        case Warning: return "Warning";
+        case Critical: return "Critical";
+        case Offline: return "Offline";
+        case Unknown:
         default: return "Unknown";
     }
 }
 
 DiskStatus diskStatusFromString(std::string_view text) {
-    if (text == "Healthy") return DiskStatus::Healthy;
-    if (text == "Warning") return DiskStatus::Warning;
-    if (text == "Critical") return DiskStatus::Critical;
-    if (text == "Offline") return DiskStatus::Offline;
-    return DiskStatus::Unknown;
+    using enum DiskStatus;
+    if (text == "Healthy") return Healthy;
+    if (text == "Warning") return Warning;
+    if (text == "Critical") return Critical;
+    if (text == "Offline") return Offline;
+    return Unknown;
 }
 
 }  // namespace gth::core

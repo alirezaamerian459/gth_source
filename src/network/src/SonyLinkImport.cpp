@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <map>
@@ -80,7 +81,7 @@ std::optional<SonyAddress> classify(const std::string& url) {
     if (endsWith(low, "-version.xml")) {
         address.kind = SonyAddressKind::VersionFile;
         // Sony serves these over HTTPS; a link copied as plain http still leads to the same file.
-        if (low.rfind("http://", 0) == 0) address.url = "https://" + url.substr(7);
+        if (low.rfind("http://", 0) == 0) address.url = "https://" + url.substr(7);  // NOSONAR: upgraded before any request.
         return address;
     }
     if (low.find("/app/info/") != std::string::npos) {
@@ -169,7 +170,7 @@ std::vector<SonyAddress> ExtractSonyAddresses(const std::string& text) {
         while (!url.empty() && (url.back() == '.' || url.back() == ':')) url.pop_back();
         at = end;
 
-        if (auto address = classify(url)) {
+        if (auto address = classify(url); address.has_value()) {
             if (seen.emplace(static_cast<int>(address->kind), address->url).second) found.push_back(std::move(*address));
         }
     }
@@ -197,7 +198,7 @@ std::optional<std::string> ReadParamJsonFromMetadataPiece(const std::string& fir
         if (entry.id == kEntryNamesId) names = entry;
         entries.push_back(entry);
     }
-    if (!names || names->size == 0) return std::nullopt;
+    if (!names.has_value() || names->size == 0) return std::nullopt;
 
     for (const auto& entry : entries) {
         if (entry.nameOffset == 0 || entry.nameOffset >= names->size) continue;
@@ -231,8 +232,8 @@ bool IsSonyVersionFileUrl(const std::string& url, const std::string& titleId) {
 SonyLinkImporter::SonyLinkImporter(std::filesystem::path linksFile, std::vector<std::filesystem::path> knownFiles, SonyHeadFetcher fetcher)
     : linksFile_(std::move(linksFile)), knownFiles_(std::move(knownFiles)), fetcher_(std::move(fetcher)) {}
 
-SonyLinkImportResult SonyLinkImporter::import(const std::string& text, const std::function<bool()>& shouldCancel,
-                                              const std::function<void(const std::string&)>& onProgress) {
+SonyLinkImportResult SonyLinkImporter::importLinks(const std::string& text, const std::function<bool()>& shouldCancel,
+                                                   const std::function<void(const std::string&)>& onProgress) {
     SonyLinkImportResult result;
     const auto addresses = ExtractSonyAddresses(text);
     result.addressesFound = addresses.size();
@@ -288,7 +289,7 @@ SonyLinkImportResult SonyLinkImporter::import(const std::string& text, const std
                                              "the piece addresses can't lead to the version file.");
             continue;
         } else {
-            if (onProgress) onProgress("Reading " + titleId + " (" + std::to_string(position) + " of " + std::to_string(order.size()) + ")...");
+            if (onProgress) onProgress(std::format("Reading {} ({} of {})...", titleId, position, order.size()));
             const size_t tries = std::min(group.metadataPieces.size(), kMetadataPiecesTriedPerTitle);
             for (size_t i = 0; i < tries && link.empty(); ++i) {
                 const auto response = fetcher_(group.metadataPieces[i], kHeadBytes);
@@ -299,21 +300,22 @@ SonyLinkImportResult SonyLinkImporter::import(const std::string& text, const std
                 }
                 transportFailures = 0;
                 if (response.status != 200 && response.status != 206) {
-                    why = "Sony answered HTTP " + std::to_string(response.status) + " for that address - it may have expired, or it isn't a metadata piece";
+                    why = std::format("Sony answered HTTP {} for that address - it may have expired, or it isn't a metadata piece",
+                                      response.status);
                     continue;
                 }
                 const auto paramJson = ReadParamJsonFromMetadataPiece(response.body);
-                if (!paramJson) {
+                if (!paramJson.has_value()) {
                     why = "that address isn't a metadata piece (no param.json in its first 64 KB)";
                     continue;
                 }
                 const auto paramTitle = TitleIdFromParamJson(*paramJson);
-                if (paramTitle && uppered(*paramTitle) != titleId) {
+                if (paramTitle.has_value() && uppered(*paramTitle) != titleId) {
                     why = "its param.json is for " + *paramTitle + ", not " + titleId;
                     continue;
                 }
                 const auto uri = VersionFileUriFromParamJson(*paramJson);
-                if (!uri) {
+                if (!uri.has_value()) {
                     why = "its param.json has no versionFileUri";
                     continue;
                 }
@@ -391,19 +393,19 @@ LocalLinkLearnResult LearnLinksFromLocalMetadata(const std::vector<std::pair<std
         // The same checks a link copied from a web page goes through: it has to be this title's own param.json
         // naming a real Sony version file for this title.
         const auto paramJson = ReadParamJsonFromMetadataPiece(head);
-        if (!paramJson) {
+        if (!paramJson.has_value()) {
             ++result.unreadable;
             result.notes.push_back(titleId + ": " + path + " has no param.json in its first 64 KB");
             continue;
         }
         const auto paramTitle = TitleIdFromParamJson(*paramJson);
-        if (paramTitle && uppered(*paramTitle) != titleId) {
+        if (paramTitle.has_value() && uppered(*paramTitle) != titleId) {
             ++result.unreadable;
             result.notes.push_back(titleId + ": its param.json is for " + *paramTitle);
             continue;
         }
         const auto uri = VersionFileUriFromParamJson(*paramJson);
-        if (!uri || !IsSonyVersionFileUrl(*uri, titleId)) {
+        if (!uri.has_value() || !IsSonyVersionFileUrl(*uri, titleId)) {
             ++result.unreadable;
             result.notes.push_back(titleId + ": its param.json has no usable versionFileUri");
             continue;

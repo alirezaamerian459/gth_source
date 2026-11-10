@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <sstream>
+#include <string_view>
 #include <vector>
 
 namespace gth::core {
@@ -17,8 +18,8 @@ std::vector<std::string> splitOnDots(const std::string& version) {
     return parts;
 }
 
-bool isAllDigits(const std::string& s) {
-    return !s.empty() && std::all_of(s.begin(), s.end(), [](unsigned char c) { return std::isdigit(c) != 0; });
+bool isAllDigits(std::string_view s) {
+    return !s.empty() && std::ranges::all_of(s, [](unsigned char c) { return std::isdigit(c) != 0; });
 }
 
 }  // namespace

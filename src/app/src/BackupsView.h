@@ -39,6 +39,8 @@ public:
         COMMAND_ID_HANDLER(IDC_BACKUPS_BROWSE_BUTTON, OnBrowseClick)
         COMMAND_ID_HANDLER(IDC_BACKUPS_RESTORE_BUTTON, OnRestoreClick)
         COMMAND_ID_HANDLER(IDC_BACKUPS_COPY_ID_BUTTON, OnCopyIdClick)
+        COMMAND_ID_HANDLER(IDC_BACKUPS_SETUP_PANEL_BUTTON, OnSetupPanelClick)
+        COMMAND_ID_HANDLER(IDC_BACKUPS_RESTORE_PANEL_BUTTON, OnRestorePanelClick)
     END_MSG_MAP()
 
     void init(gth::application::BackupService& backupService, gth::application::IGameLibraryService& library,
@@ -63,10 +65,13 @@ private:
     LRESULT OnBrowseClick(WORD, WORD, HWND, BOOL&);
     LRESULT OnRestoreClick(WORD, WORD, HWND, BOOL&);
     LRESULT OnCopyIdClick(WORD, WORD, HWND, BOOL&);
+    LRESULT OnSetupPanelClick(WORD, WORD, HWND, BOOL&);
+    LRESULT OnRestorePanelClick(WORD, WORD, HWND, BOOL&);
 
     bool saveConfiguration(std::wstring& message);
     void configureTransport();
     void setBusy(bool busy);
+    void layoutControls();
     void setStatus(const std::wstring& text);
     void startWorker(std::function<std::wstring()> operation);
     std::vector<gth::application::BackupGame> activeGames() const;
@@ -88,6 +93,7 @@ private:
     std::wstring workerResult_;
 
     CStatic titleLabel_;
+    ModernButton setupPanelButton_, restorePanelButton_;
     CStatic setupLabel_;
     CStatic tokenCaption_;
     CEdit tokenEdit_;
@@ -98,4 +104,6 @@ private:
     CStatic gamesCaption_, backupsCaption_, restorePathCaption_, manifestIdCaption_, statusLabel_;
     CEdit restorePathEdit_, manifestIdEdit_;
     CListViewCtrl gamesList_, backupsList_;
+    bool setupExpanded_ = false;
+    bool restoreExpanded_ = false;
 };

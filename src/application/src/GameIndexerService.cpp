@@ -3,7 +3,9 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <format>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -26,8 +28,9 @@ namespace {
 // row on sync: this is the one place actual disk scanning begins, so it's
 // the backstop that can't be bypassed by any code path.
 bool isSystemDrive(const std::string& rootPath) {
-    wchar_t windowsDir[MAX_PATH];
-    if (::GetWindowsDirectoryW(windowsDir, MAX_PATH) == 0 || wcslen(windowsDir) < 2 || windowsDir[1] != L':') {
+    std::array<wchar_t, MAX_PATH> windowsDir{};
+    const UINT windowsDirLength = ::GetWindowsDirectoryW(windowsDir.data(), static_cast<UINT>(windowsDir.size()));
+    if (windowsDirLength < 2 || windowsDirLength >= windowsDir.size() || windowsDir[1] != L':') {
         return false;
     }
 
@@ -131,7 +134,7 @@ std::optional<VersionListEntry> parseVersionListLine(std::string line) {
     // The version is the last thing on the line that reads as one, so a
     // game name between the two ("PPSA02343, It Takes Two, 01.300.000") is fine.
     for (size_t i = tokens.size(); i-- > titleIdAt + 1;) {
-        if (auto version = normalizeVersionText(tokens[i])) {
+        if (auto version = normalizeVersionText(tokens[i]); version.has_value()) {
             entry.version = std::move(*version);
             return entry;
         }
@@ -314,15 +317,15 @@ ScanResult GameIndexerService::scanStorage(const std::string& storageId) {
     ScanResult result;
 
     auto storage = storageRepository_.getById(storageId);
-    if (!storage) {
+    if (!storage.has_value()) {
         result.success = false;
-        result.errorMessage = "Storage not found: " + storageId;
+        result.errorMessage = std::format("Storage not found: {}", storageId);
         return result;
     }
 
     if (isSystemDrive(storage->rootPath)) {
         result.success = false;
-        result.errorMessage = "Refusing to scan the Windows system drive (" + storage->rootPath + ")";
+        result.errorMessage = std::format("Refusing to scan the Windows system drive ({})", storage->rootPath);
         return result;
     }
 
@@ -415,7 +418,7 @@ ScanResult GameIndexerService::scanStorage(const std::string& storageId) {
                     }
 
                     if (!currentGame || currentGame->title != scannedTitle) {
-                        if (auto sameTitle = gameRepository_.getByTitle(scannedTitle)) {
+                        if (auto sameTitle = gameRepository_.getByTitle(scannedTitle); sameTitle.has_value()) {
                             variant.gameId = sameTitle->gameId;
                         } else if (currentGame && variantRepository_.getByGameId(currentGame->gameId).size() <= 1) {
                             currentGame->title = scannedTitle;
@@ -466,7 +469,7 @@ ScanResult GameIndexerService::scanStorage(const std::string& storageId) {
             } catch (const std::exception& ex) {
                 ++result.variantsFailed;
                 if (result.firstVariantError.empty()) {
-                    result.firstVariantError = scannedVariant.title + ": " + ex.what();
+                    result.firstVariantError = std::format("{}: {}", scannedVariant.title, ex.what());
                 }
             }
         }
@@ -522,12 +525,12 @@ SetVersionResult GameIndexerService::setVersion(const std::string& gameVariantId
     }
 
     const auto variant = variantRepository_.getById(gameVariantId);
-    if (!variant) {
+    if (!variant.has_value()) {
         result.errorMessage = "That game isn't in the library any more - refresh the list.";
         return result;
     }
     const auto storage = storageRepository_.getById(variant->storageId);
-    if (!storage) {
+    if (!storage.has_value()) {
         result.errorMessage = "The storage this game was found on has been removed.";
         return result;
     }
@@ -598,7 +601,7 @@ ImportVersionsResult GameIndexerService::importVersions(const std::string& text)
             ++result.applied;
         } else {
             ++result.failed;
-            if (result.firstError.empty()) result.firstError = titleId + ": " + error;
+            if (result.firstError.empty()) result.firstError = std::format("{}: {}", titleId, error);
         }
     }
 

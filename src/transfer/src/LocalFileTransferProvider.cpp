@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <array>
+#include <format>
 #include <filesystem>
 
 namespace gth::transfer {
@@ -82,7 +83,7 @@ core::TransferOutcome LocalFileTransferProvider::copyFile(const std::string& sou
     ::FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, error, 0, buf.data(),
                      static_cast<DWORD>(buf.size() - 1), nullptr);
     const std::string message = wideToUtf8(buf.data());
-    outcome.errorMessage = message.empty() ? ("CopyFileEx failed with error " + std::to_string(error)) : message;
+    outcome.errorMessage = message.empty() ? std::format("CopyFileEx failed with error {}", error) : message;
     return outcome;
 }
 

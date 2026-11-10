@@ -12,6 +12,7 @@
 
 - Never commit tokens, passwords, cookies, signing material, user archives, or real logs.
 - Use Windows Credential Manager or another approved secret store for long-lived credentials. Do not copy credentials into plaintext config or documentation.
+- The local admin sign-in stores and verifies the first non-empty user-selected credential in Windows Credential Manager before unlocking; the application has no built-in default password.
 - Redact tokens, authorization headers, cookies, private identifiers, and sensitive local paths from logs and error reports.
 - Before changing backup, upload, or restore behavior, document exactly what data leaves the machine, its destination, retention, and recovery path.
 - Keep sample environment files free of real values.
@@ -23,6 +24,12 @@
 - Use reasonable retry and rate behavior; honor service terms and access controls.
 - Do not bypass authentication, authorization, DRM, licensing, CAPTCHA, WAF, or anti-bot controls. Automated CAPTCHA testing may pause for a human on an authorized test site.
 - Architecture and browser-test guidance prohibit access-control bypass. Production CAPTCHA-related code and external-site automation scope remain open for owner review; do not change those paths before that review.
+
+### Known transport constraints requiring follow-up
+
+- Sony update and package metadata currently includes legacy HTTP URLs. The app preserves them for compatibility; they do not provide TLS transport integrity. Do not replace them with HTTPS until the endpoint and certificate are verified, and treat this as an unresolved risk.
+- The FTP protocol option can send credentials and data without encryption. FTPS is available and should be selected when the server supports it; plain FTP remains for compatibility and is an unresolved risk.
+- The local caching proxy supports HTTP requests as requested by its client. Those requests are not encrypted by the proxy.
 
 ## Dependencies and release
 

@@ -3,7 +3,9 @@
 #include <shlobj.h>
 
 #include <algorithm>
+#include <array>
 #include <filesystem>
+#include <format>
 
 #include "FtpLayout.h"
 #include "gth/core/ftp/FtpConnection.h"
@@ -51,8 +53,15 @@ LRESULT FtpView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     HFONT g_normalFont = theme::BodyFont();
 
     CRect titleRect(kMargin, 24, kMargin + 200, 56);
-    titleLabel_.Create(m_hWnd, titleRect, L"FTP", WS_CHILD | WS_VISIBLE);
+    titleLabel_.Create(m_hWnd, titleRect, L"FTP Tools", WS_CHILD | WS_VISIBLE);
     titleLabel_.SetFont(theme::TitleFont());
+
+    CRect advancedToolsRect(kMargin + 210, 27, kMargin + 400, 55);
+    advancedToolsButton_.Create(m_hWnd, advancedToolsRect, L"More network tools  \x25B8",
+                                WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
+                                IDC_FTP_ADVANCED_TOOLS_BUTTON);
+    advancedToolsButton_.SetFont(theme::BodyFont());
+    advancedToolsButton_.setKind(ModernButton::Kind::Subtle);
 
     int x = kMargin;
     const int inputTop = 62;
@@ -252,6 +261,7 @@ LRESULT FtpView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     // below the FTP browse pane on this same page rather than a separate
     // sidebar tab, see FtpView's class comment.
     const int accelTop = browseListBottom + 28;
+    advancedToolsTop_ = accelTop;
     CRect accelCapRect(kMargin, accelTop, kMargin + 300, accelTop + 24);
     acceleratorSectionCaption_.Create(m_hWnd, accelCapRect, L"Accelerator", WS_CHILD | WS_VISIBLE);
     acceleratorSectionCaption_.SetFont(theme::TitleFont());
@@ -537,6 +547,9 @@ LRESULT FtpView::OnTimer(UINT, WPARAM wParam, LPARAM, BOOL&) {
 }
 
 LRESULT FtpView::OnSize(UINT, WPARAM, LPARAM, BOOL&) {
+    if (advancedToolsButton_.IsWindow()) {
+        relayoutMitmAndCdnSections();
+    }
     scroll_.onSize();
     return 0;
 }
@@ -577,6 +590,7 @@ void FtpView::applyAccessControl(bool isAdmin) {
 
     sections45Compact_ = !isAdmin;
     relayoutMitmAndCdnSections();
+    applyAdvancedToolsVisibility();
     Invalidate();
 }
 
@@ -670,7 +684,63 @@ void FtpView::relayoutMitmAndCdnSections() {
     moveTo(cdnUrlRemoveButton_, kMargin + 764, markEditTop, 90, kFieldEditHeight);
     moveTo(cdnUrlCopyButton_, kMargin + 866, markEditTop, 90, kFieldEditHeight);
 
-    scroll_.setContentHeight(markEditTop + kFieldEditHeight + kMargin);
+    if (advancedToolsExpanded_) {
+        scroll_.setContentHeight(markEditTop + kFieldEditHeight + kMargin);
+    } else {
+        scroll_.setContentHeight(sections45Compact_ ? 92 : std::max(100, advancedToolsTop_));
+    }
+    applyAdvancedToolsVisibility();
+}
+
+void FtpView::applyAdvancedToolsVisibility() {
+    if (!advancedToolsButton_.IsWindow()) return;
+    advancedToolsButton_.SetWindowText(advancedToolsExpanded_ ? L"Hide network tools  \x25BE"
+                                                             : L"More network tools  \x25B8");
+    const bool showAdminTools = advancedToolsExpanded_ && !sections45Compact_;
+    const bool showSharedTools = advancedToolsExpanded_;
+    const auto setVisible = [](CWindow& control, bool visible) {
+        if (control.IsWindow()) control.ShowWindow(visible ? SW_SHOW : SW_HIDE);
+    };
+    for (CWindow* control : {static_cast<CWindow*>(&acceleratorSectionCaption_),
+                             static_cast<CWindow*>(&acceleratorSectionDot_),
+                             static_cast<CWindow*>(&mirrorHostCaption_), static_cast<CWindow*>(&mirrorHostEdit_),
+                             static_cast<CWindow*>(&mirrorIpCaption_), static_cast<CWindow*>(&mirrorIpEdit_),
+                             static_cast<CWindow*>(&mirrorLabelCaption_), static_cast<CWindow*>(&mirrorLabelEdit_),
+                             static_cast<CWindow*>(&addMirrorButton_), static_cast<CWindow*>(&measureButton_),
+                             static_cast<CWindow*>(&removeMirrorButton_), static_cast<CWindow*>(&mirrorsStatusLabel_),
+                             static_cast<CWindow*>(&mirrorsListView_)}) {
+        setVisible(*control, showAdminTools);
+    }
+    for (CWindow* control : {static_cast<CWindow*>(&httpProxySectionCaption_),
+                             static_cast<CWindow*>(&httpProxyIpLabel_), static_cast<CWindow*>(&httpProxyIpDisplay_),
+                             static_cast<CWindow*>(&httpProxyPortCaption_), static_cast<CWindow*>(&httpProxyPortEdit_),
+                             static_cast<CWindow*>(&proxyStartButton_), static_cast<CWindow*>(&proxyStopButton_),
+                             static_cast<CWindow*>(&cacheFolderCaption_), static_cast<CWindow*>(&cacheFolderEdit_),
+                             static_cast<CWindow*>(&cacheBrowseButton_), static_cast<CWindow*>(&clearCacheButton_),
+                             static_cast<CWindow*>(&httpProxyStatusDot_), static_cast<CWindow*>(&httpProxyStatusLabel_),
+                             static_cast<CWindow*>(&addMitmInstanceButton_), static_cast<CWindow*>(&cdnSectionCaption_),
+                             static_cast<CWindow*>(&cdnUrlEdit_), static_cast<CWindow*>(&cdnUrlAddButton_),
+                             static_cast<CWindow*>(&cdnUrlListView_), static_cast<CWindow*>(&cdnUrlMarkCaption_),
+                             static_cast<CWindow*>(&cdnUrlMarkEdit_), static_cast<CWindow*>(&cdnUrlLocalPathCaption_),
+                             static_cast<CWindow*>(&cdnUrlLocalPathEdit_), static_cast<CWindow*>(&cdnUrlBrowseButton_),
+                             static_cast<CWindow*>(&cdnUrlRemoveButton_), static_cast<CWindow*>(&cdnUrlCopyButton_)}) {
+        setVisible(*control, showSharedTools);
+    }
+    for (auto& instance : mitmInstances_) {
+        for (CWindow* control : {static_cast<CWindow*>(&instance->ipEdit), static_cast<CWindow*>(&instance->portEdit),
+                                 static_cast<CWindow*>(&instance->startButton), static_cast<CWindow*>(&instance->stopButton),
+                                 static_cast<CWindow*>(&instance->removeButton), static_cast<CWindow*>(&instance->statusDot),
+                                 static_cast<CWindow*>(&instance->statusLabel)}) {
+            setVisible(*control, showSharedTools);
+        }
+    }
+}
+
+LRESULT FtpView::OnAdvancedToolsClick(WORD, WORD, HWND, BOOL&) {
+    advancedToolsExpanded_ = !advancedToolsExpanded_;
+    relayoutMitmAndCdnSections();
+    scroll_.onSize();
+    return 0;
 }
 
 void FtpView::refresh() {
@@ -760,7 +830,7 @@ void FtpView::refreshHostStatus() {
         if (info.isValid) {
             lastHostAddress_ = info.connectionUrl;
             hostStatusLabel_.SetWindowText(
-                (L"Not running. When started, consoles connect to: " + lastHostAddress_).c_str());
+                std::format(L"Not running. When started, consoles connect to: {}", lastHostAddress_).c_str());
         } else {
             lastHostAddress_.clear();
             hostStatusLabel_.SetWindowText(L"Not running. Could not determine this machine's LAN IP.");
@@ -777,9 +847,9 @@ void FtpView::refreshHostStatus() {
         lastHostAddress_.clear();
         text += L"No LAN interface detected.";
     } else {
-        lastHostAddress_ = Utf8ToWide(addresses[0]) + L":" + std::to_wstring(port);
+        lastHostAddress_ = std::format(L"{}:{}", Utf8ToWide(addresses[0]), port);
         for (size_t i = 0; i < addresses.size(); ++i) {
-            text += Utf8ToWide(addresses[i]) + L":" + std::to_wstring(port);
+            text += std::format(L"{}:{}", Utf8ToWide(addresses[i]), port);
             if (i + 1 < addresses.size()) text += L"   ";
         }
     }
@@ -850,7 +920,7 @@ LRESULT FtpView::OnConnectClick(WORD, WORD, HWND, BOOL&) {
     const auto result = transferService_->connectTo(id);
     if (!result.success) {
         statusDot_.setState(StatusDot::State::Warning);
-        statusLabel_.SetWindowText((L"Connect failed: " + Utf8ToWide(result.errorMessage)).c_str());
+        statusLabel_.SetWindowText(std::format(L"Connect failed: {}", Utf8ToWide(result.errorMessage)).c_str());
         return 0;
     }
 
@@ -907,7 +977,9 @@ LRESULT FtpView::OnUploadClick(WORD, WORD, HWND, BOOL&) {
     ::UpdateWindow(statusLabel_.m_hWnd);
 
     const auto result = transferService_->upload(WideToUtf8(localPath), remotePath, nullptr, nullptr);
-    statusLabel_.SetWindowText(result.success ? L"Upload complete." : (L"Upload failed: " + Utf8ToWide(result.errorMessage)).c_str());
+    const std::wstring statusText = result.success ? L"Upload complete."
+                                                   : std::format(L"Upload failed: {}", Utf8ToWide(result.errorMessage));
+    statusLabel_.SetWindowText(statusText.c_str());
     refreshBrowseList();
     return 0;
 }
@@ -947,7 +1019,9 @@ LRESULT FtpView::OnDownloadClick(WORD, WORD, HWND, BOOL&) {
     ::UpdateWindow(statusLabel_.m_hWnd);
 
     const auto result = transferService_->download(remotePath, WideToUtf8(localPath), nullptr, nullptr);
-    statusLabel_.SetWindowText(result.success ? L"Download complete." : (L"Download failed: " + Utf8ToWide(result.errorMessage)).c_str());
+    const std::wstring statusText = result.success ? L"Download complete."
+                                                   : std::format(L"Download failed: {}", Utf8ToWide(result.errorMessage));
+    statusLabel_.SetWindowText(statusText.c_str());
     return 0;
 }
 
@@ -965,18 +1039,18 @@ LRESULT FtpView::OnHostBrowseClick(WORD, WORD, HWND, BOOL&) {
     const HRESULT comResult = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     const bool comInitializedHere = SUCCEEDED(comResult);
 
-    wchar_t displayName[MAX_PATH]{};
+    std::array<wchar_t, MAX_PATH> displayName{};
     BROWSEINFOW bi{};
     bi.hwndOwner = m_hWnd;
-    bi.pszDisplayName = displayName;
+    bi.pszDisplayName = displayName.data();
     bi.lpszTitle = L"Choose a folder to share over FTP";
     bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
 
     LPITEMIDLIST pidl = ::SHBrowseForFolderW(&bi);
     if (pidl != nullptr) {
-        wchar_t path[MAX_PATH]{};
-        if (::SHGetPathFromIDListW(pidl, path)) {
-            hostFolderEdit_.SetWindowText(path);
+        std::array<wchar_t, MAX_PATH> path{};
+        if (::SHGetPathFromIDListW(pidl, path.data())) {
+            hostFolderEdit_.SetWindowText(path.data());
         }
         ::CoTaskMemFree(pidl);
     }
@@ -1031,8 +1105,8 @@ void FtpView::refreshMirrorsList() {
         mirrorsListView_.InsertItem(row, Utf8ToWide(mirror.hostPattern).c_str());
         mirrorsListView_.SetItemText(row, 1, Utf8ToWide(mirror.ip).c_str());
         mirrorsListView_.SetItemText(row, 2, Utf8ToWide(mirror.label).c_str());
-        mirrorsListView_.SetItemText(row, 3, mirror.lastRttMs ? (std::to_wstring(*mirror.lastRttMs) + L" ms").c_str()
-                                                                : L"Not measured");
+        const std::wstring rttText = mirror.lastRttMs ? std::format(L"{} ms", *mirror.lastRttMs) : L"Not measured";
+        mirrorsListView_.SetItemText(row, 3, rttText.c_str());
         row++;
     }
 }
@@ -1056,14 +1130,13 @@ void FtpView::refreshAcceleratorStatus() {
         cacheLine = L"\r\nCaching disabled (no cache folder set).";
     } else {
         const auto stats = acceleratorService_->cacheStats();
-        cacheLine = L"\r\nCache: " + std::to_wstring(stats.entryCount) + L" files, " +
-                     std::to_wstring(stats.totalBytes / (1024 * 1024)) + L" MB - " +
-                     std::to_wstring(stats.hitCount) + L" hits / " + std::to_wstring(stats.missCount) + L" misses.";
+        cacheLine = std::format(L"\r\nCache: {} files, {} MB - {} hits / {} misses.", stats.entryCount,
+                                stats.totalBytes / (1024 * 1024), stats.hitCount, stats.missCount);
     }
 
     if (!running) {
         httpProxyStatusLabel_.SetWindowText(
-            (L"Proxy not running. Configure console proxy to: [Your IP]:8080" + cacheLine).c_str());
+            std::format(L"Proxy not running. Configure console proxy to: [Your IP]:8080{}", cacheLine).c_str());
         return;
     }
 
@@ -1075,7 +1148,7 @@ void FtpView::refreshAcceleratorStatus() {
         text += L"No LAN interface detected.";
     } else {
         for (size_t i = 0; i < addresses.size(); ++i) {
-            text += Utf8ToWide(addresses[i]) + L":" + std::to_wstring(port);
+            text += std::format(L"{}:{}", Utf8ToWide(addresses[i]), port);
             if (i + 1 < addresses.size()) text += L"   ";
         }
     }
@@ -1143,18 +1216,18 @@ LRESULT FtpView::OnCacheBrowseClick(WORD, WORD, HWND, BOOL&) {
     const HRESULT comResult = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     const bool comInitializedHere = SUCCEEDED(comResult);
 
-    wchar_t displayName[MAX_PATH]{};
+    std::array<wchar_t, MAX_PATH> displayName{};
     BROWSEINFOW bi{};
     bi.hwndOwner = m_hWnd;
-    bi.pszDisplayName = displayName;
+    bi.pszDisplayName = displayName.data();
     bi.lpszTitle = L"Choose a folder for the accelerator cache";
     bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
 
     LPITEMIDLIST pidl = ::SHBrowseForFolderW(&bi);
     if (pidl != nullptr) {
-        wchar_t path[MAX_PATH]{};
-        if (::SHGetPathFromIDListW(pidl, path)) {
-            cacheFolderEdit_.SetWindowText(path);
+        std::array<wchar_t, MAX_PATH> path{};
+        if (::SHGetPathFromIDListW(pidl, path.data())) {
+            cacheFolderEdit_.SetWindowText(path.data());
         }
         ::CoTaskMemFree(pidl);
     }
@@ -1207,7 +1280,7 @@ LRESULT FtpView::OnHostCopyAddressClick(WORD, WORD, HWND, BOOL&) {
         return 0;
     }
     copyTextToClipboard(lastHostAddress_);
-    hostStatusLabel_.SetWindowText((L"Copied to clipboard: " + lastHostAddress_).c_str());
+    hostStatusLabel_.SetWindowText(std::format(L"Copied to clipboard: {}", lastHostAddress_).c_str());
     return 0;
 }
 
@@ -1308,10 +1381,10 @@ LRESULT FtpView::OnCdnUrlBrowseClick(WORD, WORD, HWND, BOOL&) {
     const HRESULT comResult = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     const bool comInitializedHere = SUCCEEDED(comResult);
 
-    wchar_t displayName[MAX_PATH]{};
+    std::array<wchar_t, MAX_PATH> displayName{};
     BROWSEINFOW bi{};
     bi.hwndOwner = m_hWnd;
-    bi.pszDisplayName = displayName;
+    bi.pszDisplayName = displayName.data();
     bi.lpszTitle = L"Choose the game folder (or a .pkg file) to serve for this URL";
     bi.ulFlags = BIF_BROWSEINCLUDEFILES | BIF_NEWDIALOGSTYLE;
 
@@ -1324,9 +1397,9 @@ LRESULT FtpView::OnCdnUrlBrowseClick(WORD, WORD, HWND, BOOL&) {
     LPITEMIDLIST pidl = ::SHBrowseForFolderW(&bi);
     bool picked = false;
     if (pidl != nullptr) {
-        wchar_t path[MAX_PATH]{};
-        if (::SHGetPathFromIDListW(pidl, path)) {
-            cdnUrlLocalPathEdit_.SetWindowText(path);
+        std::array<wchar_t, MAX_PATH> path{};
+        if (::SHGetPathFromIDListW(pidl, path.data())) {
+            cdnUrlLocalPathEdit_.SetWindowText(path.data());
             picked = true;
         }
         ::CoTaskMemFree(pidl);
@@ -1566,7 +1639,7 @@ LRESULT FtpView::OnMitmInstanceButtonClick(WORD, WORD wID, HWND, BOOL&) {
             instance.lastKnownRunning = instance.service->isRunning();
             if (instance.lastKnownRunning) {
                 instance.statusDot.setState(StatusDot::State::On);
-                instance.statusLabel.SetWindowText((L"Running :" + std::to_wstring(port)).c_str());
+                instance.statusLabel.SetWindowText(std::format(L"Running :{}", port).c_str());
             } else {
                 instance.statusDot.setState(StatusDot::State::Warning);
                 instance.statusLabel.SetWindowText(L"Failed to start (port in use?).");

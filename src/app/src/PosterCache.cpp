@@ -157,7 +157,7 @@ HBITMAP PosterCache::placeholderFor(const std::string& platform) {
 void PosterCache::enableWebFallback(gth::core::ICoverArtClient& client) {
     webClient_ = &client;
     running_.store(true);
-    worker_ = std::thread([this] { workerLoop(); });
+    worker_ = std::jthread([this] { workerLoop(); });
 }
 
 void PosterCache::subscribe(HWND hwnd) { subscribers_.push_back(hwnd); }
@@ -225,7 +225,8 @@ HBITMAP PosterCache::posterFor(const std::string& titleId, const std::string& ti
     if (!fromDisk) queueWebFetch(titleId, title);
 
     if (pngBytes.empty() && posterService) {
-        if (auto extracted = posterService->extractPosterPng(gameVariantId)) pngBytes = std::move(*extracted);
+        if (auto extracted = posterService->extractPosterPng(gameVariantId); extracted.has_value())
+            pngBytes = std::move(*extracted);
     }
 
     HBITMAP bitmap = nullptr;

@@ -1,10 +1,13 @@
 #include "GamesView.h"
 
 #include <algorithm>
+#include <array>
+#include <format>
 #include <memory>
 
 #include "gth/core/enums/GameVariantStatus.h"
 #include "gth/logging/Logging.h"
+#include "UiMessageOwnership.h"
 
 namespace {
 constexpr int kTopAreaHeight = 104;
@@ -19,7 +22,7 @@ constexpr UINT kScanPollIntervalMs = 200;
 
 LRESULT GamesView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     CRect titleRect(kMargin, 24, kMargin + 300, 60);
-    titleLabel_.Create(m_hWnd, titleRect, L"Games", WS_CHILD | WS_VISIBLE);
+    titleLabel_.Create(m_hWnd, titleRect, L"My Games", WS_CHILD | WS_VISIBLE);
     titleLabel_.SetFont(theme::TitleFont());
 
     CRect scanRect(kMargin + 320, 28, kMargin + 480, 60);
@@ -63,6 +66,10 @@ LRESULT GamesView::OnDestroy(UINT, WPARAM, LPARAM, BOOL& bHandled) {
     // touching this object's members after it's destroyed.
     if (scanThread_.joinable()) scanThread_.join();
     if (testThread_.joinable()) testThread_.join();
+    MSG message{};
+    while (::PeekMessageW(&message, m_hWnd, kTestLookupDoneMessage, kTestLookupDoneMessage, PM_REMOVE)) {
+        (void)gth::app::detail::takeOwnedMessage<std::wstring>(message.lParam);
+    }
     bHandled = FALSE;
     return 0;
 }
@@ -131,7 +138,7 @@ void GamesView::refresh() {
         // A poster tile's label has room for two short lines only (see UpdatesView::composeLabel's
         // identical note) - version alone, not the size too, which the Storage/Downloads tabs
         // already cover in their own detail views.
-        const std::wstring label = Utf8ToWide(entry.title) + L"\r\n" + versionText;
+        const std::wstring label = std::format(L"{}\r\n{}", Utf8ToWide(entry.title), versionText);
 
         const int imageIndex = posterCache_
             ? posterImageList_.Add(posterCache_->posterFor(entry.titleId, entry.title, entry.platform,
@@ -160,45 +167,46 @@ LRESULT GamesView::OnTestLookupClick(WORD, WORD, HWND, BOOL&) {
 
     // The main window's title carries the app version - included in the
     // result so it's unambiguous which build produced it.
-    wchar_t appTitle[128]{};
-    ::GetWindowTextW(::GetAncestor(m_hWnd, GA_ROOT), appTitle, 128);
+    std::array<wchar_t, 128> appTitle{};
+    ::GetWindowTextW(::GetAncestor(m_hWnd, GA_ROOT), appTitle.data(), static_cast<int>(appTitle.size()));
 
     testInProgress_.store(true);
     setBusy(true);
     statusLabel_.SetWindowText(L"Testing the online title lookup...");
 
-    testThread_ = std::thread([this, hwnd = m_hWnd, header = std::wstring(appTitle)] {
+    testThread_ = std::jthread([this, hwnd = m_hWnd, header = std::wstring(appTitle.data())] {
         struct Probe {
             const char* platform;
             const char* titleId;
             const wchar_t* site;
         };
-        const Probe probes[] = {{"PS5", "PPSA02343", L"prosperopatches.com"},
-                                {"PS4", "CUSA07410", L"orbispatches.com"}};
+        const std::array<Probe, 2> probes{{{"PS5", "PPSA02343", L"prosperopatches.com"},
+                                           {"PS4", "CUSA07410", L"orbispatches.com"}}};
 
-        std::wstring text = header + L"\r\n\r\n";
+        std::wstring text = std::format(L"{}\r\n\r\n", header);
         for (const auto& probe : probes) {
-            std::wstring line = Utf8ToWide(probe.platform) + L" " + Utf8ToWide(probe.titleId) + L"  (" + probe.site +
-                                L"):  ";
+            std::wstring line = std::format(L"{} {}  ({}):  ", Utf8ToWide(probe.platform), Utf8ToWide(probe.titleId),
+                                            probe.site);
             const auto title = titleLookup_->lookupTitle(probe.platform, probe.titleId);
             if (title) {
-                line += L"found - " + Utf8ToWide(*title);
+                line += std::format(L"found - {}", Utf8ToWide(*title));
             } else if (const auto why = titleLookup_->lastFailureReason(); !why.empty()) {
-                line += L"FAILED - " + Utf8ToWide(why);
+                line += std::format(L"FAILED - {}", Utf8ToWide(why));
             } else {
                 line += L"reached the site, but it has no such title";
             }
-            text += line + L"\r\n";
+            text += std::format(L"{}\r\n", line);
         }
         text += L"\r\nIf both say FAILED, this PC can't get to the title sites, and the reason above says why.";
 
-        ::PostMessageW(hwnd, kTestLookupDoneMessage, 0, reinterpret_cast<LPARAM>(new std::wstring(std::move(text))));
+        gth::app::detail::postOwnedMessage(hwnd, kTestLookupDoneMessage,
+                                           std::make_unique<std::wstring>(std::move(text)));
     });
     return 0;
 }
 
 LRESULT GamesView::OnTestLookupDone(UINT, WPARAM, LPARAM lParam, BOOL&) {
-    std::unique_ptr<std::wstring> text(reinterpret_cast<std::wstring*>(lParam));
+    auto text = gth::app::detail::takeOwnedMessage<std::wstring>(lParam);
     testInProgress_.store(false);
     shared_->endJob();
     setBusy(false);
@@ -218,30 +226,31 @@ LRESULT GamesView::OnTimer(UINT, WPARAM wParam, LPARAM, BOOL&) {
 
     refresh();
 
-    wchar_t buf[256];
-    swprintf_s(buf, L"Scanned %d storage(s): %d games added, %d versions added, %d updated.",
+    std::array<wchar_t, 256> buf{};
+    swprintf_s(buf.data(), buf.size(), L"Scanned %d storage(s): %d games added, %d versions added, %d updated.",
                scanStoragesScanned_, scanTotalGamesAdded_, scanTotalVersionsAdded_, scanTotalVersionsUpdated_);
-    std::wstring status = buf;
+    std::wstring status = buf.data();
     // One fact per line, and the online-titles line is ALWAYS present: when
     // no lookup was attempted it says why, so a missing line can't be
     // mistaken for "the feature isn't there".
     const int attempted = scanLookupsResolved_ + scanLookupsNotFound_ + scanLookupsFailed_;
-    wchar_t lookupBuf[320];
+    std::array<wchar_t, 320> lookupBuf{};
     if (attempted > 0) {
-        swprintf_s(lookupBuf, L"\r\nOnline titles: %d looked up - %d found, %d not listed, %d failed.", attempted,
+        swprintf_s(lookupBuf.data(), lookupBuf.size(), L"\r\nOnline titles: %d looked up - %d found, %d not listed, %d failed.", attempted,
                    scanLookupsResolved_, scanLookupsNotFound_, scanLookupsFailed_);
     } else {
-        swprintf_s(lookupBuf, L"\r\nOnline titles: no lookups were needed (%d named from the game files, %d not PS4/PS5).",
+        swprintf_s(lookupBuf.data(), lookupBuf.size(), L"\r\nOnline titles: no lookups were needed (%d named from the game files, %d not PS4/PS5).",
                    scanReleasesNamedFromFiles_, scanReleasesNotEligible_);
     }
-    status += lookupBuf;
-    if (scanLookupsFailed_ > 0 && !scanLookupFailure_.empty()) status += L"\r\nReason: " + scanLookupFailure_;
+    status += lookupBuf.data();
+    if (scanLookupsFailed_ > 0 && !scanLookupFailure_.empty())
+        status += std::format(L"\r\nReason: {}", scanLookupFailure_);
     if (scanVariantsFailed_ > 0) {
-        status += L"\r\n" + std::to_wstring(scanVariantsFailed_) + L" release(s) couldn't be saved - first: " +
-                  scanFirstVariantError_;
+        status += std::format(L"\r\n{} release(s) couldn't be saved - first: {}", scanVariantsFailed_,
+                              scanFirstVariantError_);
     }
     if (!scanLastError_.empty()) {
-        status += L"\r\nFailed: " + scanLastError_;
+        status += std::format(L"\r\nFailed: {}", scanLastError_);
     }
     statusLabel_.SetWindowText(status.c_str());
 
@@ -263,7 +272,7 @@ void GamesView::startScan() {
     setBusy(true);
     statusLabel_.SetWindowText(L"Scanning...");
 
-    scanThread_ = std::thread([this] {
+    scanThread_ = std::jthread([this] {
         int totalGamesAdded = 0, totalVersionsAdded = 0, totalVersionsUpdated = 0;
         int storagesScanned = 0;
         int lookupsResolved = 0, lookupsNotFound = 0, lookupsFailed = 0;
@@ -302,7 +311,7 @@ void GamesView::startScan() {
                 totalVersionsUpdated += result.versionsUpdated;
                 storagesScanned++;
             } else {
-                lastError = Utf8ToWide(storage.name + ": " + result.errorMessage);
+                lastError = Utf8ToWide(std::format("{}: {}", storage.name, result.errorMessage));
             }
         }
 

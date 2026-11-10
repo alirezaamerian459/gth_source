@@ -6,11 +6,12 @@
 
 namespace {
 
-// Logical indices, per kSidebarTabs: 0 Dashboard, 1 Games, 2 Updates, 3 Downloads,
-// 4 Storage, 5 Consoles, 6 Transfers, 7 FTP, 8 Network, 9 Logs, 10 Reports,
-// 11 Enterprise, 12 Backups, 13 Settings.
-constexpr int kDashboard = 0, kGames = 1, kUpdates = 2, kDownloads = 3, kStorage = 4, kConsoles = 5, kTransfers = 6,
-              kFtp = 7, kNetwork = 8, kEnterprise = 11, kBackups = 12, kSettings = 13;
+// Logical indices, per kSidebarTabs: 0 Dashboard, 1 Games, 2 JB, 3 Updates,
+// 4 Downloads, 5 Storage, 6 Consoles, 7 Transfers, 8 FTP, 9 Network,
+// 10 Logs, 11 Reports, 12 Enterprise, 13 Backups, 14 Settings.
+constexpr int kDashboard = 0, kGames = 1, kJb = 2, kUpdates = 3, kDownloads = 4, kStorage = 5, kConsoles = 6,
+              kTransfers = 7, kFtp = 8, kNetwork = 9, kLogs = 10, kReports = 11, kEnterprise = 12, kBackups = 13,
+              kSettings = 14;
 
 bool contains(const std::vector<int>& indices, int index) {
     return std::find(indices.begin(), indices.end(), index) != indices.end();
@@ -32,7 +33,7 @@ TEST(SidebarTabsTest, ASignedOutUserSeesTheUpdatesTab) {
     const auto visible = VisibleSidebarTabIndices({}, false);
 
     EXPECT_TRUE(contains(visible, kUpdates));
-    EXPECT_EQ(visible, (std::vector<int>{kDashboard, kGames, kUpdates, kDownloads, kStorage, kConsoles, kFtp,
+    EXPECT_EQ(visible, (std::vector<int>{kDashboard, kGames, kJb, kUpdates, kDownloads, kStorage, kConsoles, kFtp,
                                          kBackups, kSettings}));
 }
 
@@ -56,6 +57,8 @@ TEST(SidebarTabsTest, ASignedOutUserStillDoesNotSeeTheAdminOnlyTabs) {
 
     EXPECT_FALSE(contains(visible, kTransfers));
     EXPECT_FALSE(contains(visible, kNetwork));
+    EXPECT_FALSE(contains(visible, kLogs));
+    EXPECT_FALSE(contains(visible, kReports));
     EXPECT_FALSE(contains(visible, kEnterprise));
 }
 
@@ -78,3 +81,4 @@ TEST(SidebarTabsTest, DashboardAndSettingsCanNeverBeHidden) {
     EXPECT_TRUE(contains(visible, kDashboard));
     EXPECT_TRUE(contains(visible, kSettings));
 }
+

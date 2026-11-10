@@ -187,11 +187,11 @@ std::optional<PkgMetadata> PkgFileParser::parseFile(const std::string& pkgFilePa
     // metadata isn't reachable in this file (most commonly: a split-part
     // PS5 package - see parsePs5). The filename still carries a usable
     // Content ID for every part in that case.
-    if (!metadata) metadata = parseFromFilename(pkgFilePath, fileSize);
+    if (!metadata.has_value()) metadata = parseFromFilename(pkgFilePath, fileSize);
 
     // The package's own metadata is the authority on its version; a version
     // tag in the file name is only a fallback when that isn't reachable.
-    if (metadata && metadata->version.empty()) {
+    if (metadata.has_value() && metadata->version.empty()) {
         metadata->version = versionFromFilename(std::filesystem::path(pkgFilePath).filename().string());
     }
     return metadata;
@@ -285,7 +285,7 @@ std::optional<PkgMetadata> PkgFileParser::parsePs4(std::ifstream& file, long lon
         std::string sfoData;
         if (!readExact(file, dataOffset, sfoData, size)) break;
 
-        if (auto entries = parseSfo(sfoData)) {
+        if (auto entries = parseSfo(sfoData); entries.has_value()) {
             // APP_VER is the patch level a console shows as the game's version
             // (01.05); VERSION is the content/master version and only a
             // fallback for packages that lack APP_VER.
@@ -428,22 +428,24 @@ std::optional<PkgMetadata> PkgFileParser::parsePs5Core(const ReadAtFn& readAt, l
                 json.resize(e.size);
                 if (!readAt(e.dataOffset, reinterpret_cast<unsigned char*>(json.data()), e.size)) break;
 
-                if (auto titleId = extractJsonStringField(json, "titleId"); titleId && !titleId->empty()) {
+                if (auto titleId = extractJsonStringField(json, "titleId");
+                    titleId.has_value() && !titleId->empty()) {
                     metadata.titleId = *titleId;
                 }
                 if (auto contentIdJson = extractJsonStringField(json, "contentId");
-                    contentIdJson && !contentIdJson->empty()) {
+                    contentIdJson.has_value() && !contentIdJson->empty()) {
                     metadata.contentId = *contentIdJson;
                 }
-                if (auto titleName = extractJsonStringField(json, "titleName"); titleName && !titleName->empty()) {
+                if (auto titleName = extractJsonStringField(json, "titleName");
+                    titleName.has_value() && !titleName->empty()) {
                     metadata.title = *titleName;
                     metadata.titleIsVerified = true;
                 }
                 if (auto contentVersion = extractJsonStringField(json, "contentVersion");
-                    contentVersion && !contentVersion->empty()) {
+                    contentVersion.has_value() && !contentVersion->empty()) {
                     metadata.version = *contentVersion;
                 } else if (auto masterVersion = extractJsonStringField(json, "masterVersion");
-                           masterVersion && !masterVersion->empty()) {
+                           masterVersion.has_value() && !masterVersion->empty()) {
                     metadata.version = *masterVersion;
                 }
                 break;

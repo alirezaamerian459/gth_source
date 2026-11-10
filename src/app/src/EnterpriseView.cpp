@@ -1,9 +1,9 @@
 #include "EnterpriseView.h"
 
 #include <algorithm>
+#include <format>
 
 namespace {
-constexpr int kTopAreaHeight = 300;
 constexpr int kMargin = 24;
 }  // namespace
 
@@ -12,7 +12,7 @@ LRESULT EnterpriseView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     HFONT g_normalFont = theme::BodyFont();
 
     CRect titleRect(kMargin, 24, kMargin + 260, 56);
-    titleLabel_.Create(m_hWnd, titleRect, L"Enterprise", WS_CHILD | WS_VISIBLE);
+    titleLabel_.Create(m_hWnd, titleRect, L"Enterprise Topology", WS_CHILD | WS_VISIBLE);
     titleLabel_.SetFont(theme::TitleFont());
 
     const int captionHeight = 18;
@@ -47,9 +47,12 @@ LRESULT EnterpriseView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     serverStatusLabel_.SetFont(g_normalFont);
 
     // --- Agent section ---
-    CRect agentSectionRect(kMargin, 132, kMargin + 400, 152);
-    agentSectionLabel_.Create(m_hWnd, agentSectionRect, L"Agent (report to a Central Server)", WS_CHILD | WS_VISIBLE);
-    agentSectionLabel_.SetFont(g_sectionFont);
+    CRect agentSectionRect(kMargin, 136, kMargin + 260, 164);
+    agentPanelButton_.Create(m_hWnd, agentSectionRect, L"Agent settings  \x25B8",
+                             WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
+                             IDC_ENTERPRISE_AGENT_PANEL_BUTTON);
+    agentPanelButton_.SetFont(g_normalFont);
+    agentPanelButton_.setKind(ModernButton::Kind::Subtle);
 
     x = kMargin;
     const int agentCaptionTop = 156;
@@ -96,7 +99,7 @@ LRESULT EnterpriseView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 
     CRect clientRect;
     GetClientRect(&clientRect);
-    CRect listRect(kMargin, kTopAreaHeight, clientRect.right - kMargin, clientRect.bottom - kMargin);
+    CRect listRect(kMargin, 208, clientRect.right - kMargin, clientRect.bottom - kMargin);
     nodesListView_.Create(m_hWnd, listRect, L"", WS_CHILD | WS_VISIBLE | WS_BORDER | LVS_REPORT | LVS_SINGLESEL, 0,
                            IDC_REMOTE_NODES_LISTVIEW);
     nodesListView_.SetExtendedListViewStyle(LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
@@ -110,17 +113,64 @@ LRESULT EnterpriseView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     nodesListView_.InsertColumn(4, L"Summary", LVCFMT_LEFT, 400);
 
     refresh();
+    layoutControls();
     return 0;
 }
 
 LRESULT EnterpriseView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {
-    const int width = LOWORD(lParam);
-    const int height = HIWORD(lParam);
-    if (nodesListView_.IsWindow()) {
-        nodesListView_.MoveWindow(kMargin, kTopAreaHeight, std::max(100, width - 2 * kMargin),
-                                   std::max(100, height - kTopAreaHeight - kMargin));
-    }
+    layoutControls();
     return 0;
+}
+
+void EnterpriseView::layoutControls() {
+    if (!nodesListView_.IsWindow()) return;
+    CRect client;
+    GetClientRect(&client);
+    const int width = std::max(420, static_cast<int>(client.right) - 2 * kMargin);
+    const wchar_t* agentPanelLabel = nullptr;
+    if (agentExpanded_) {
+        agentPanelLabel = L"Hide agent settings  \x25BE";
+    } else if (agentService_ && agentService_->isRunning()) {
+        agentPanelLabel = L"Agent is reporting  \x25B8";
+    } else {
+        agentPanelLabel = L"Agent settings  \x25B8";
+    }
+    agentPanelButton_.SetWindowText(agentPanelLabel);
+    const auto show = [](auto& control, bool visible) {
+        if (control.IsWindow()) control.ShowWindow(visible ? SW_SHOW : SW_HIDE);
+    };
+    const auto move = [](auto& control, int x, int y, int w, int h) {
+        if (control.IsWindow()) control.MoveWindow(x, y, std::max(0, w), h, FALSE);
+    };
+    for (CWindow* control : {static_cast<CWindow*>(&agentAddressCaption_), static_cast<CWindow*>(&agentAddressEdit_),
+                             static_cast<CWindow*>(&agentPortCaption_), static_cast<CWindow*>(&agentPortEdit_),
+                             static_cast<CWindow*>(&agentNameCaption_), static_cast<CWindow*>(&agentNameEdit_),
+                             static_cast<CWindow*>(&agentIntervalCaption_), static_cast<CWindow*>(&agentIntervalEdit_),
+                             static_cast<CWindow*>(&agentToggleButton_), static_cast<CWindow*>(&agentStatusLabel_)}) {
+        show(*control, agentExpanded_);
+    }
+
+    int nodesTop = 178;
+    if (agentExpanded_) {
+        const int fieldCaptionTop = 168;
+        const int fieldEditTop = 186;
+        const int fieldHeight = 24;
+        move(agentAddressCaption_, kMargin, fieldCaptionTop, 160, 18);
+        move(agentAddressEdit_, kMargin, fieldEditTop, 160, fieldHeight);
+        move(agentPortCaption_, kMargin + 172, fieldCaptionTop, 80, 18);
+        move(agentPortEdit_, kMargin + 172, fieldEditTop, 80, fieldHeight);
+        move(agentNameCaption_, kMargin + 264, fieldCaptionTop, 140, 18);
+        move(agentNameEdit_, kMargin + 264, fieldEditTop, 140, fieldHeight);
+        move(agentIntervalCaption_, kMargin + 416, fieldCaptionTop, 90, 18);
+        move(agentIntervalEdit_, kMargin + 416, fieldEditTop, 90, fieldHeight);
+        move(agentToggleButton_, kMargin + 520, fieldEditTop, 150, fieldHeight);
+        move(agentStatusLabel_, kMargin, fieldEditTop + 30, width, 22);
+        nodesTop = 250;
+    }
+    move(nodesLabel_, kMargin, nodesTop, 200, 22);
+    move(refreshNodesButton_, kMargin + 160, nodesTop - 4, 100, 26);
+    move(nodesListView_, kMargin, nodesTop + 28, width,
+         std::max(100, static_cast<int>(client.bottom) - nodesTop - 28 - kMargin));
 }
 
 LRESULT EnterpriseView::OnCtlColorStatic(UINT, WPARAM wParam, LPARAM lParam, BOOL&) {
@@ -181,13 +231,14 @@ void EnterpriseView::updateToggleLabelsAndEnabledState() {
     agentIntervalEdit_.EnableWindow(!agentRunning);
 
     std::wstring status = agentRunning ? L"Running. " : L"Not running. ";
-    status += L"Local node id: " + Utf8ToWide(agentService_->localNodeId());
+    status += std::format(L"Local node id: {}", Utf8ToWide(agentService_->localNodeId()));
     agentStatusLabel_.SetWindowText(status.c_str());
 }
 
 void EnterpriseView::refresh() {
     updateToggleLabelsAndEnabledState();
     refreshNodesList();
+    layoutControls();
 }
 
 LRESULT EnterpriseView::OnServerToggleClick(WORD, WORD, HWND, BOOL&) {
@@ -239,14 +290,19 @@ LRESULT EnterpriseView::OnAgentToggleClick(WORD, WORD, HWND, BOOL&) {
     const bool succeeded = agentService_->start(WideToUtf8(address), port, WideToUtf8(name), intervalSeconds);
     refresh();
     if (!succeeded) {
-        agentStatusLabel_.SetWindowText((L"First report failed - check the address/port. Local node id: " +
-                                          Utf8ToWide(agentService_->localNodeId()))
-                                             .c_str());
+        agentStatusLabel_.SetWindowText(std::format(L"First report failed - check the address/port. Local node id: {}",
+                                                    Utf8ToWide(agentService_->localNodeId())).c_str());
     }
     return 0;
 }
 
 LRESULT EnterpriseView::OnRefreshClick(WORD, WORD, HWND, BOOL&) {
     refresh();
+    return 0;
+}
+
+LRESULT EnterpriseView::OnAgentPanelClick(WORD, WORD, HWND, BOOL&) {
+    agentExpanded_ = !agentExpanded_;
+    layoutControls();
     return 0;
 }

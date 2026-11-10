@@ -13,7 +13,7 @@ LRESULT NetworkView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     HFONT g_normalFont = theme::BodyFont();
 
     CRect titleRect(kMargin, 24, kMargin + 200, 60);
-    titleLabel_.Create(m_hWnd, titleRect, L"Network", WS_CHILD | WS_VISIBLE);
+    titleLabel_.Create(m_hWnd, titleRect, L"Network Interfaces", WS_CHILD | WS_VISIBLE);
     titleLabel_.SetFont(theme::TitleFont());
 
     CRect refreshRect(kMargin + 220, 28, kMargin + 340, 60);

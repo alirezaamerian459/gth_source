@@ -1,120 +1,128 @@
 #pragma once
 
+#include <array>
 #include <string>
+#include <vector>
+
 #include <winsock2.h>
+#include <ws2tcpip.h>
 #include <iphlpapi.h>
-#include <stdio.h>
 
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "iphlpapi.lib")
 
 namespace gth::network {
 
+namespace detail {
+
+class WinsockScope {
+public:
+    WinsockScope() {
+        WSADATA data{};
+        started_ = ::WSAStartup(MAKEWORD(2, 2), &data) == 0;
+    }
+
+    ~WinsockScope() {
+        if (started_) ::WSACleanup();
+    }
+
+    bool started() const noexcept { return started_; }
+
+private:
+    bool started_ = false;
+};
+
+class AddressInfoList {
+public:
+    explicit AddressInfoList(ADDRINFOA* addresses) : addresses_(addresses) {}
+    ~AddressInfoList() {
+        if (addresses_) ::freeaddrinfo(addresses_);
+    }
+
+    ADDRINFOA* get() const noexcept { return addresses_; }
+
+private:
+    ADDRINFOA* addresses_ = nullptr;
+};
+
+inline std::vector<in_addr> localIpv4Addresses() {
+    std::array<char, 256> hostname{};
+    if (::gethostname(hostname.data(), static_cast<int>(hostname.size())) == SOCKET_ERROR) return {};
+    hostname.back() = '\0';
+
+    ADDRINFOA hints{};
+    hints.ai_family = AF_INET;
+    ADDRINFOA* rawAddresses = nullptr;
+    if (::getaddrinfo(hostname.data(), nullptr, &hints, &rawAddresses) != 0) return {};
+
+    const AddressInfoList addresses(rawAddresses);
+    std::vector<in_addr> result;
+    for (const ADDRINFOA* current = addresses.get(); current; current = current->ai_next) {
+        if (current->ai_addrlen < sizeof(sockaddr_in)) continue;
+        const auto* socketAddress = reinterpret_cast<const sockaddr_in*>(current->ai_addr);
+        result.push_back(socketAddress->sin_addr);
+    }
+    return result;
+}
+
+inline std::string ipv4ToString(const in_addr& address) {
+    std::array<char, INET_ADDRSTRLEN> buffer{};
+    return ::InetNtopA(AF_INET, &address, buffer.data(), static_cast<DWORD>(buffer.size()))
+               ? std::string(buffer.data())
+               : std::string();
+}
+
+}  // namespace detail
+
 class NetworkInfoHelper {
 public:
     struct NetworkInfo {
         std::wstring ipAddress;
-        int port;
+        int port = 0;
         std::wstring connectionUrl;  // "ip:port"
-        bool isValid;
+        bool isValid = false;
     };
 
-    /// Gets the local machine's IPv4 address
+    /// Gets the local machine's IPv4 address.
     static NetworkInfo GetLocalNetworkInfo(int servicePort = 5000) {
         NetworkInfo info;
         info.port = servicePort;
-        info.isValid = false;
 
-        // gethostname()/gethostbyname() are Winsock calls - they fail
-        // (SOCKET_ERROR / null) until WSAStartup has been called at least
-        // once for this process. RAII guard so every return path below
-        // (including the early ones) cleans up via WSACleanup automatically
-        // instead of needing it repeated at each return.
-        struct WinsockScope {
-            bool ok;
-            WinsockScope() {
-                WSADATA wsaData;
-                ok = WSAStartup(MAKEWORD(2, 2), &wsaData) == 0;
-            }
-            ~WinsockScope() {
-                if (ok) WSACleanup();
-            }
-        } winsock;
-        if (!winsock.ok) return info;
+        detail::WinsockScope winsock;
+        if (!winsock.started()) return info;
 
-        // Get hostname
-        char hostname[256];
-        if (gethostname(hostname, sizeof(hostname)) == SOCKET_ERROR) {
-            return info;
-        }
+        const auto addresses = detail::localIpv4Addresses();
+        if (addresses.empty()) return info;
 
-        // Get IP from hostname
-        struct hostent* he = gethostbyname(hostname);
-        if (!he || he->h_addrtype != AF_INET) {
-            return info;
-        }
-
-        // Convert IP address
-        struct in_addr** addr_list = (struct in_addr**)he->h_addr_list;
-        if (!addr_list[0]) {
-            return info;
-        }
-
-        // Get first IPv4 address (skip loopback if possible)
-        for (int i = 0; addr_list[i]; i++) {
-            std::string ipStr = inet_ntoa(*addr_list[i]);
-
-            // Skip loopback
-            if (ipStr.find("127.") != 0) {
-                info.ipAddress = std::wstring(ipStr.begin(), ipStr.end());
-                info.isValid = true;
+        auto selected = addresses.begin();
+        for (auto current = addresses.begin(); current != addresses.end(); ++current) {
+            const auto hostAddress = ntohl(current->s_addr);
+            if ((hostAddress >> 24) != 127) {
+                selected = current;
                 break;
             }
         }
 
-        // Fallback to first address if all were loopback
-        if (!info.isValid && addr_list[0]) {
-            std::string ipStr = inet_ntoa(*addr_list[0]);
-            info.ipAddress = std::wstring(ipStr.begin(), ipStr.end());
-            info.isValid = true;
-        }
+        const std::string ip = detail::ipv4ToString(*selected);
+        if (ip.empty()) return info;
+        info.ipAddress.assign(ip.begin(), ip.end());
+        info.isValid = true;
 
-        // Build connection URL
-        if (info.isValid) {
-            wchar_t buf[256];
-            swprintf_s(buf, L"%s:%d", info.ipAddress.c_str(), servicePort);
-            info.connectionUrl = buf;
-        }
-
+        std::array<wchar_t, 256> buffer{};
+        swprintf_s(buffer.data(), buffer.size(), L"%s:%d", info.ipAddress.c_str(), servicePort);
+        info.connectionUrl = buffer.data();
         return info;
     }
 
-    /// Gets local IP using alternative method (Winsock2)
+    /// Gets the first local IPv4 address, including loopback as before.
     static std::wstring GetLocalIPAlternative() {
-        WSADATA wsaData;
-        if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-            return L"";
-        }
+        detail::WinsockScope winsock;
+        if (!winsock.started()) return L"";
 
-        char hostname[256];
-        if (gethostname(hostname, sizeof(hostname)) == SOCKET_ERROR) {
-            WSACleanup();
-            return L"";
-        }
-
-        struct hostent* pHost = gethostbyname(hostname);
-        if (!pHost) {
-            WSACleanup();
-            return L"";
-        }
-
-        struct in_addr ipaddr;
-        ipaddr.s_addr = *(u_long*)pHost->h_addr_list[0];
-        std::string ipStr = inet_ntoa(ipaddr);
-
-        WSACleanup();
-
-        return std::wstring(ipStr.begin(), ipStr.end());
+        const auto addresses = detail::localIpv4Addresses();
+        if (addresses.empty()) return L"";
+        const std::string ip = detail::ipv4ToString(addresses.front());
+        return std::wstring(ip.begin(), ip.end());
     }
 };
 
