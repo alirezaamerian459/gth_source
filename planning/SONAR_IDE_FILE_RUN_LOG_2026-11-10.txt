@@ -238,6 +238,14 @@ Follow-up verification after the initial remediation:
 
 | 10 | `src/app/src/WinMain.cpp` | MSVC C28251 reported that the Windows entry-point parameters lacked the SDK's SAL annotations. | Added the matching `_In_`/`_In_opt_` annotations to the entry point signature; runtime behavior is unchanged. | `GameTransferHubApp` Debug build passed after the change. |
 
+## IDE reconciliation pass — Clock.cpp
+
+`src/core/src/Clock.cpp` was re-opened and analyzed as the current file in VS Code. The editor buffer
+contains unsaved text belonging to `src/captcha/BrowserWindow.cpp`, while the on-disk `Clock.cpp` remains
+the valid, building source. The current Problems view reports two C/C++ parse errors for that unsaved
+buffer, and the SonarQube Findings view still shows the global cached `WinsockCachingProxyServer.cpp`
+findings rather than file-scoped rows. No edit was made and no unsaved user content was discarded.
+
 The follow-up MSVC analysis still reports only excluded/deferred findings: warnings in the
 third-party SQLite/spdlog/WTL code, FTP sources (left untouched), the accelerator proxy networking
 implementation (left untouched per the owner's networking restriction), and one likely analyzer false
@@ -248,3 +256,27 @@ The full CTest run before this pass had 510 passing tests and 2 failures in the 
 tests because the SonarQube Java processes were already holding ports 58231 and 58234. Re-running
 the executable with those two CentralServer suites excluded produced 502 passes and 6 documented
 environment skips. No FTP files or functionality were changed.
+
+## Strict current-file reconciliation — 2026-11-10
+
+The follow-up pass resumed in lexical order and re-opened each file before moving to the next. The
+current-file command completed for the remaining core status/enum sources and for the first app batch:
+
+- Core: `StorageStatus.cpp`, `StorageType.cpp`, `TransferStatus.cpp`, `UpdateJobStatus.cpp`,
+  `UpdateStatus.cpp`, and `VersionComparer.cpp`.
+- App: `BackupsView.cpp`, `ComingSoonView.cpp`, `ConsolesView.cpp`, `DashboardView.cpp`,
+  `DownloadsView.cpp`, `EnterpriseView.cpp`, `GamesView.cpp`, `JbGamesView.cpp`, `LogsView.cpp`,
+  and `MainFrame.cpp`.
+
+SonarQube for IDE's log confirms one compilation unit per file analysis. The latest file-scoped issue
+counts available in that log were: `VersionComparer.cpp` 0, `BackupsView.cpp` 7,
+`ComingSoonView.cpp` 0, `ConsolesView.cpp` 1, `DashboardView.cpp` 0, `DownloadsView.cpp` 9,
+`EnterpriseView.cpp` 7, `GamesView.cpp` 5, `JbGamesView.cpp` 19, `LogsView.cpp` 2,
+`MainFrame.cpp` 10, and `NetworkView.cpp` 0. The IDE Problems pane also shows unrelated diagnostics
+from pre-existing unsaved buffers and global cached findings; those rows were not attributed to the
+active file without a matching SonarQube file/rule location.
+
+No safe source edit was justified for these files. The compiler/analyzer evidence for the remaining
+actionable first-party defects is already recorded in the remediation table above; unresolved rows
+are third-party dependencies, the excluded accelerator proxy, or FTP/network code that the owner asked
+not to modify. No FTP source or UI file was edited.
