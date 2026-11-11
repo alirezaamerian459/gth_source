@@ -284,3 +284,9 @@ not to modify. No FTP source or UI file was edited.
 Latest verification after the reconciliation: `build/tests/unit/Debug/gth_unit_tests.exe
 --gtest_filter=-CentralServer*` ran 508 tests; 502 passed and 6 environment-dependent tests were
 skipped. No test failed and no source behavior changed.
+
+## Release packaging verification — 2026-11-11
+
+The Release target `GameTransferHubApp` rebuilt successfully from the committed source. The output is
+`build/src/app/Release/GameTransferHub.exe`; the Desktop executable copy is updated separately after
+confirming that no running process is locking it.
