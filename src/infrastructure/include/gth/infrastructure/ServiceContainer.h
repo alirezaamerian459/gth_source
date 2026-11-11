@@ -12,6 +12,7 @@
 #include "gth/application/indexing/IGameIndexer.h"
 #include "gth/application/indexing/IGameLibraryService.h"
 #include "gth/application/indexing/IGamePosterService.h"
+#include "gth/application/jb/JbLibraryService.h"
 #include "gth/application/storage/GameSearchService.h"
 #include "gth/application/storage/IGameSearchService.h"
 #include "gth/application/storage/LocalFileIndexService.h"
@@ -114,6 +115,7 @@ public:
     explicit ServiceContainer(const std::filesystem::path& databasePath);
 
     application::IStorageService& storageService() { return storageService_; }
+    application::IJbLibraryService& jbLibraryService() { return jbLibraryService_; }
     application::IGameIndexer& gameIndexer() { return gameIndexer_; }
     application::IGameLibraryService& gameLibraryService() { return gameLibraryService_; }
     application::IGamePosterService& gamePosterService() { return gamePosterService_; }
@@ -183,6 +185,7 @@ private:
     storage::LocalStorageDetector storageDetector_;
     storage::WindowsStorageHealthProvider storageHealthProvider_;
     application::StorageService storageService_;
+    application::JbLibraryService jbLibraryService_;
 
     database::GameRepository gameRepository_;
     database::GameVariantRepository gameVariantRepository_;

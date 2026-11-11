@@ -27,6 +27,15 @@ public:
     std::vector<NetworkInterfaceInfo> detect() override { return interfaces; }
 };
 
+class FakeJbLibraryService : public IJbLibraryService {
+public:
+    JbLibraryScanResult result;
+
+    JbLibraryScanResult scan(const std::string& = {}) override { return result; }
+    JbLibraryScanResult snapshot() const override { return result; }
+    std::optional<std::filesystem::path> findFileByName(const std::string&) override { return std::nullopt; }
+};
+
 NetworkInterfaceInfo makeInterface(const std::string& ipv4, NetworkInterfaceStatus status) {
     NetworkInterfaceInfo info;
     info.name = "Test Adapter";
@@ -63,6 +72,28 @@ TEST(FtpServerServiceTest, StopDelegatesToServer) {
 
     EXPECT_FALSE(fixture.server.started);
     EXPECT_FALSE(fixture.service.isRunning());
+}
+
+TEST(FtpServerServiceTest, StartWithJbLibraryAddsReadOnlyVirtualMappings) {
+    FakeIFtpServer server;
+    FakeNetworkInterfaceDetector detector;
+    FakeJbLibraryService jbLibrary;
+    const auto gamePath = std::filesystem::temp_directory_path() / "gth_ftp_service_jb_game";
+    std::error_code ec;
+    std::filesystem::create_directories(gamePath, ec);
+    ASSERT_FALSE(ec);
+    jbLibrary.result.entries.push_back(
+        {"Test Game", "CUSA00001", "PS4", gamePath, "disk-1", "Games", "C:/"});
+    FtpServerService service(server, detector, &jbLibrary);
+
+    service.start("C:/shared", 2121, true);
+
+    ASSERT_EQ(server.lastConfig.virtualMappings.size(), 1u);
+    EXPECT_EQ(server.lastConfig.virtualMappings[0].virtualPath, "JB Library/Test Game");
+    EXPECT_EQ(server.lastConfig.virtualMappings[0].physicalPath, gamePath.string());
+    EXPECT_TRUE(server.lastConfig.virtualMappings[0].readOnly);
+
+    std::filesystem::remove_all(gamePath, ec);
 }
 
 TEST(FtpServerServiceTest, IsRunningIsFalseBeforeStart) {

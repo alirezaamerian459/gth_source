@@ -6,6 +6,7 @@
 #include "WtlCommon.h"
 #include "ControlIds.h"
 #include "ModernButton.h"
+#include "ModernCheckBox.h"
 #include "NetworkInfoHelper.h"
 #include "ScrollSupport.h"
 #include "StatusDot.h"
@@ -21,7 +22,8 @@
 
 // "FTP" tab: connection list/manager panel (add/connect/disconnect/remove),
 // once connected a remote directory browse pane with Upload/Download, an
-// optional local "Host a Server" panel, and - folded into the same page
+// optional local "Host a Server" panel (including an optional read-only JB
+// Library virtual share), and - folded into the same page
 // rather than a separate sidebar entry, since two half-empty tabs for
 // closely related "get files onto/off this console over the network" jobs
 // was more sidebar than the feature warranted - the Accelerator's CDN
@@ -54,6 +56,7 @@ public:
         COMMAND_ID_HANDLER(IDC_FTP_HOST_BROWSE_BUTTON, OnHostBrowseClick)
         COMMAND_ID_HANDLER(IDC_FTP_HOST_START_BUTTON, OnHostStartClick)
         COMMAND_ID_HANDLER(IDC_FTP_HOST_STOP_BUTTON, OnHostStopClick)
+        COMMAND_HANDLER(IDC_FTP_SHARE_JB_CHECKBOX, BN_CLICKED, OnShareJbToggle)
         COMMAND_ID_HANDLER(IDC_ACCEL_ADD_MIRROR_BUTTON, OnAddMirrorClick)
         COMMAND_ID_HANDLER(IDC_ACCEL_REMOVE_MIRROR_BUTTON, OnRemoveMirrorClick)
         COMMAND_ID_HANDLER(IDC_ACCEL_MEASURE_BUTTON, OnMeasureClick)
@@ -136,6 +139,7 @@ private:
     LRESULT OnHostBrowseClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnHostStartClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnHostStopClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
+    LRESULT OnShareJbToggle(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnHostCopyAddressClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnAddMirrorClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
     LRESULT OnRemoveMirrorClick(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled);
@@ -250,6 +254,7 @@ private:
     CStatic hostSectionCaption_, hostFolderCaption_, hostPortCaption_;
     CEdit hostFolderEdit_, hostPortEdit_;
     ModernButton hostBrowseButton_, hostStartButton_, hostStopButton_;
+    ModernCheckBox shareJbLibraryBox_;
     StatusDot hostStatusDot_;
     CStatic hostStatusLabel_;
     ModernButton hostCopyAddressButton_;

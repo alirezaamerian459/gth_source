@@ -191,3 +191,60 @@ TEST(WinsockFtpServerTest, PathEscapeAttemptIsRejectedNotServed) {
     fs::remove(downloadTarget, ec);
     fs::remove(secretFile, ec);
 }
+
+TEST(WinsockFtpServerTest, VirtualJbLibraryIsBrowsableReadableAndReadOnly) {
+    WinsockFtpServerFixture fixture;
+    const fs::path jbGame = fixture.tempDir.parent_path() / "gth_ftpserver_jb_game";
+    fs::create_directories(jbGame);
+    {
+        std::ofstream out(jbGame / "CUSA00001.pkg", std::ios::binary);
+        out << "jb package content";
+    }
+
+    FtpServerConfig config;
+    config.rootPath = fixture.tempDir.string();
+    config.port = 52025;
+    config.virtualMappings.push_back({"JB Library/Test Game", jbGame.string(), true});
+    fixture.server.start(config);
+    ASSERT_TRUE(waitFor([&] { return fixture.server.isRunning() && fixture.server.port() != 0; }));
+
+    CurlFtpClient client(false);
+    ASSERT_TRUE(client.connect(WinsockFtpServerFixture::connectParams(52025)).success);
+
+    const auto rootEntries = client.listDirectory("/");
+    ASSERT_EQ(rootEntries.size(), 1u);
+    EXPECT_EQ(rootEntries[0].name, "JB Library");
+    EXPECT_TRUE(rootEntries[0].isDirectory);
+
+    const auto libraryEntries = client.listDirectory("/JB Library");
+    ASSERT_EQ(libraryEntries.size(), 1u);
+    EXPECT_EQ(libraryEntries[0].name, "Test Game");
+    EXPECT_TRUE(libraryEntries[0].isDirectory);
+
+    const auto gameEntries = client.listDirectory("/JB Library/Test Game");
+    ASSERT_EQ(gameEntries.size(), 1u);
+    EXPECT_EQ(gameEntries[0].name, "CUSA00001.pkg");
+    EXPECT_FALSE(gameEntries[0].isDirectory);
+
+    const fs::path localDownload = fixture.tempDir.parent_path() / "gth_ftpserver_jb_download.pkg";
+    const auto downloadResult = client.download("/JB Library/Test Game/CUSA00001.pkg", localDownload.string(), nullptr,
+                                                nullptr);
+    ASSERT_TRUE(downloadResult.success) << downloadResult.errorMessage;
+    std::ifstream downloaded(localDownload, std::ios::binary);
+    const std::string content((std::istreambuf_iterator<char>(downloaded)), std::istreambuf_iterator<char>());
+    EXPECT_EQ(content, "jb package content");
+
+    const fs::path uploadSource = fixture.tempDir.parent_path() / "gth_ftpserver_jb_upload.txt";
+    {
+        std::ofstream out(uploadSource, std::ios::binary);
+        out << "must not be written into JB library";
+    }
+    const auto uploadResult = client.upload(uploadSource.string(), "/JB Library/Test Game/blocked.txt", nullptr, nullptr);
+    EXPECT_FALSE(uploadResult.success);
+    EXPECT_FALSE(fs::exists(jbGame / "blocked.txt"));
+
+    std::error_code ec;
+    fs::remove(localDownload, ec);
+    fs::remove(uploadSource, ec);
+    fs::remove_all(jbGame, ec);
+}

@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "gth/application/ftp/ICdnUrlService.h"
+#include "gth/application/jb/IJbLibraryService.h"
 #include "gth/application/storage/ILocalFileIndex.h"
 #include "gth/logging/Logging.h"
 
@@ -134,8 +135,9 @@ std::string lastModifiedOf(const fs::path& file) {
 namespace gth::network {
 
 LocalGameServer::LocalGameServer(gth::application::ICdnUrlService* cdnUrlService,
-                                 gth::application::ILocalFileIndex* localFileIndex)
-    : cdnUrlService_(cdnUrlService), localFileIndex_(localFileIndex) {}
+                                 gth::application::ILocalFileIndex* localFileIndex,
+                                 gth::application::IJbLibraryService* jbLibraryService)
+    : cdnUrlService_(cdnUrlService), localFileIndex_(localFileIndex), jbLibraryService_(jbLibraryService) {}
 
 std::optional<LocalGameServer::Resolved> LocalGameServer::resolve(const std::string& requestUrl) {
     Resolved resolved;
@@ -166,6 +168,18 @@ std::optional<LocalGameServer::Resolved> LocalGameServer::resolve(const std::str
     // 2. The exact file name, anywhere in the indexed library.
     if (localFileIndex_ && gth::application::isServablePackageName(resolved.fileName)) {
         if (auto found = localFileIndex_->findByFileName(resolved.fileName); found.has_value()) {
+            resolved.file = std::move(*found);
+            resolved.autoMatched = true;
+            return resolved;
+        }
+    }
+
+    // JB folders are intentionally separate from the normal indexed library.
+    // Consult the shared JB catalog only after the existing library lookup
+    // misses, so ordinary proxy traffic keeps its original precedence and
+    // behavior.
+    if (jbLibraryService_) {
+        if (auto found = jbLibraryService_->findFileByName(resolved.fileName); found.has_value()) {
             resolved.file = std::move(*found);
             resolved.autoMatched = true;
             return resolved;

@@ -2,8 +2,10 @@
 
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "gth/core/ftp/IFtpServer.h"
 
@@ -34,7 +36,8 @@ public:
 
 private:
     void acceptLoop(core::FtpServerConfig config);
-    void handleClient(std::uintptr_t clientSocket, std::string rootPath);
+    void handleClient(std::uintptr_t clientSocket, std::string rootPath,
+                      std::shared_ptr<const std::vector<core::FtpVirtualMapping>> virtualMappings);
 
     std::jthread acceptThread_;
     std::atomic<bool> running_{false};

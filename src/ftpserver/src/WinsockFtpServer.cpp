@@ -4,15 +4,18 @@
 
 #include <ws2tcpip.h>
 
+#include <algorithm>
 #include <cctype>
 #include <array>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <unordered_map>
 #include <vector>
 
 #pragma comment(lib, "ws2_32.lib")
@@ -73,6 +76,53 @@ std::string toVirtualPathString(const std::vector<std::string>& segments) {
     return path;
 }
 
+int hexValue(char value) {
+    if (value >= '0' && value <= '9') return value - '0';
+    if (value >= 'a' && value <= 'f') return value - 'a' + 10;
+    if (value >= 'A' && value <= 'F') return value - 'A' + 10;
+    return -1;
+}
+
+std::string decodePathArgument(const std::string& argument) {
+    std::string decoded;
+    decoded.reserve(argument.size());
+    for (size_t i = 0; i < argument.size(); ++i) {
+        if (argument[i] == '%' && i + 2 < argument.size()) {
+            const int high = hexValue(argument[i + 1]);
+            const int low = hexValue(argument[i + 2]);
+            if (high >= 0 && low >= 0) {
+                decoded.push_back(static_cast<char>((high << 4) | low));
+                i += 2;
+                continue;
+            }
+        }
+        decoded.push_back(argument[i]);
+    }
+    return decoded;
+}
+
+struct VirtualMapping {
+    std::vector<std::string> segments;
+    fs::path physicalPath;
+    bool readOnly = true;
+};
+
+bool hasPrefix(const std::vector<std::string>& value, const std::vector<std::string>& prefix) {
+    if (prefix.size() > value.size()) return false;
+    return std::equal(prefix.begin(), prefix.end(), value.begin());
+}
+
+bool isPrefixOf(const std::vector<std::string>& prefix, const std::vector<std::string>& value) {
+    return hasPrefix(value, prefix);
+}
+
+std::string listingLine(const std::string& name, bool isDirectory, long long size) {
+    std::array<char, 768> lineBuf{};
+    std::snprintf(lineBuf.data(), lineBuf.size(), "%crwxr-xr-x 1 owner group %lld Jan 01 00:00 %s\r\n",
+                  isDirectory ? 'd' : '-', size, name.c_str());
+    return lineBuf.data();
+}
+
 bool sendAll(SOCKET socket, const char* data, int length) {
     int sent = 0;
     while (sent < length) {
@@ -94,7 +144,20 @@ bool sendLine(SOCKET socket, const std::string& line) {
 // thing that constructs one.
 class ClientSession {
 public:
-    ClientSession(SOCKET controlSocket, fs::path root) : controlSocket_(controlSocket), root_(std::move(root)) {}
+    ClientSession(SOCKET controlSocket, fs::path root,
+                  const std::shared_ptr<const std::vector<core::FtpVirtualMapping>>& virtualMappings)
+        : controlSocket_(controlSocket), root_(std::move(root)) {
+        if (!virtualMappings) return;
+        for (const auto& mapping : *virtualMappings) {
+            const auto segments = normalizeVirtualPath({}, mapping.virtualPath);
+            if (!segments || segments->empty()) continue;
+
+            std::error_code ec;
+            const fs::path physical = fs::weakly_canonical(fs::path(mapping.physicalPath), ec);
+            if (ec || !fs::exists(physical, ec) || ec) continue;
+            virtualMappings_.push_back({*segments, physical, mapping.readOnly});
+        }
+    }
 
     ~ClientSession() {
         closeDataListenSocket();
@@ -115,6 +178,52 @@ public:
     }
 
 private:
+    struct ResolvedPath {
+        fs::path physicalPath;
+        bool virtualContainer = false;
+        bool readOnly = false;
+    };
+
+    std::optional<ResolvedPath> resolvePath(const std::vector<std::string>& segments) const {
+        const VirtualMapping* best = nullptr;
+        for (const auto& mapping : virtualMappings_) {
+            if (!hasPrefix(segments, mapping.segments)) continue;
+            if (!best || mapping.segments.size() > best->segments.size()) best = &mapping;
+        }
+
+        if (best) {
+            std::vector<std::string> remainder(segments.begin() + static_cast<std::ptrdiff_t>(best->segments.size()),
+                                                segments.end());
+            return ResolvedPath{toFilesystemPath(best->physicalPath, remainder), false, best->readOnly};
+        }
+
+        for (const auto& mapping : virtualMappings_) {
+            if (isPrefixOf(segments, mapping.segments)) return ResolvedPath{{}, true, true};
+        }
+
+        return ResolvedPath{toFilesystemPath(root_, segments), false, false};
+    }
+
+    void appendVirtualChildren(const std::vector<std::string>& parentSegments,
+                               std::unordered_map<std::string, std::pair<bool, long long>>& children) const {
+        for (const auto& mapping : virtualMappings_) {
+            if (!isPrefixOf(parentSegments, mapping.segments) || mapping.segments.size() <= parentSegments.size()) {
+                continue;
+            }
+
+            const std::string& childName = mapping.segments[parentSegments.size()];
+            const bool childIsDirectory = mapping.segments.size() > parentSegments.size() + 1 ||
+                                          fs::is_directory(mapping.physicalPath);
+            long long childSize = 0;
+            if (!childIsDirectory && mapping.segments.size() == parentSegments.size() + 1) {
+                std::error_code ec;
+                childSize = static_cast<long long>(fs::file_size(mapping.physicalPath, ec));
+                if (ec) childSize = 0;
+            }
+            children.emplace(childName, std::make_pair(childIsDirectory, childSize));
+        }
+    }
+
     bool readLine(std::string& outLine) {
         auto newlinePos = buffer_.find('\n');
         while (newlinePos == std::string::npos) {
@@ -183,15 +292,25 @@ private:
     }
 
     void doCwd(const std::string& argument) {
-        const auto resolved = normalizeVirtualPath(currentSegments_, argument);
+        const auto resolved = normalizeVirtualPath(currentSegments_, decodePathArgument(argument));
         if (!resolved) {
             sendLine(controlSocket_, "550 Failed to change directory.");
             return;
         }
 
+        const auto virtualPath = resolvePath(*resolved);
+        if (!virtualPath) {
+            sendLine(controlSocket_, "550 Failed to change directory.");
+            return;
+        }
+        if (virtualPath->virtualContainer) {
+            currentSegments_ = *resolved;
+            sendLine(controlSocket_, "250 Directory changed.");
+            return;
+        }
+
         std::error_code ec;
-        const fs::path target = toFilesystemPath(root_, *resolved);
-        if (!fs::is_directory(target, ec) || ec) {
+        if (!fs::is_directory(virtualPath->physicalPath, ec) || ec) {
             sendLine(controlSocket_, "550 Failed to change directory.");
             return;
         }
@@ -279,15 +398,20 @@ private:
     }
 
     void doList(const std::string& argument, bool namesOnly) {
-        const auto resolved = normalizeVirtualPath(currentSegments_, argument);
+        const auto resolved = normalizeVirtualPath(currentSegments_, decodePathArgument(argument));
         if (!resolved) {
             sendLine(controlSocket_, "550 Failed to list directory.");
             return;
         }
 
+        const auto virtualPath = resolvePath(*resolved);
+        if (!virtualPath) {
+            sendLine(controlSocket_, "550 Failed to list directory.");
+            return;
+        }
+
         std::error_code ec;
-        const fs::path target = toFilesystemPath(root_, *resolved);
-        if (!fs::is_directory(target, ec) || ec) {
+        if (!virtualPath->virtualContainer && !fs::is_directory(virtualPath->physicalPath, ec)) {
             sendLine(controlSocket_, "550 Failed to list directory.");
             return;
         }
@@ -299,21 +423,26 @@ private:
             return;
         }
 
+        std::unordered_map<std::string, std::pair<bool, long long>> children;
+        if (!virtualPath->virtualContainer) {
+            for (const auto& entry : fs::directory_iterator(virtualPath->physicalPath, ec)) {
+                if (ec) break;
+                std::error_code entryEc;
+                const bool isDir = entry.is_directory(entryEc);
+                long long size = 0;
+                if (!isDir && !entryEc) size = static_cast<long long>(entry.file_size(entryEc));
+                children.emplace(entry.path().filename().string(), std::make_pair(isDir, size));
+            }
+        }
+        appendVirtualChildren(*resolved, children);
+
         std::string listing;
-        for (const auto& entry : fs::directory_iterator(target, ec)) {
-            if (ec) break;
-            std::error_code entryEc;
-            const bool isDir = entry.is_directory(entryEc);
-            const std::string name = entry.path().filename().string();
+        for (const auto& [name, details] : children) {
             if (namesOnly) {
                 listing += name + "\r\n";
-                continue;
+            } else {
+                listing += listingLine(name, details.first, details.second);
             }
-            const long long size = isDir ? 0 : static_cast<long long>(entry.file_size(entryEc));
-            std::array<char, 768> lineBuf{};
-            std::snprintf(lineBuf.data(), lineBuf.size(), "%crwxr-xr-x 1 owner group %lld Jan 01 00:00 %s\r\n",
-                          isDir ? 'd' : '-', size, name.c_str());
-            listing += lineBuf.data();
         }
 
         sendAll(dataSocket, listing.data(), static_cast<int>(listing.size()));
@@ -322,20 +451,25 @@ private:
     }
 
     void doRetr(const std::string& argument) {
-        const auto resolved = normalizeVirtualPath(currentSegments_, argument);
+        const auto resolved = normalizeVirtualPath(currentSegments_, decodePathArgument(argument));
         if (!resolved || resolved->empty()) {
             sendLine(controlSocket_, "550 File not found.");
             return;
         }
 
-        std::error_code ec;
-        const fs::path target = toFilesystemPath(root_, *resolved);
-        if (!fs::is_regular_file(target, ec) || ec) {
+        const auto virtualPath = resolvePath(*resolved);
+        if (!virtualPath || virtualPath->virtualContainer) {
             sendLine(controlSocket_, "550 File not found.");
             return;
         }
 
-        std::ifstream file(target, std::ios::binary);
+        std::error_code ec;
+        if (!fs::is_regular_file(virtualPath->physicalPath, ec) || ec) {
+            sendLine(controlSocket_, "550 File not found.");
+            return;
+        }
+
+        std::ifstream file(virtualPath->physicalPath, std::ios::binary);
         if (!file) {
             sendLine(controlSocket_, "550 File not found.");
             return;
@@ -366,14 +500,20 @@ private:
     }
 
     void doStor(const std::string& argument) {
-        const auto resolved = normalizeVirtualPath(currentSegments_, argument);
+        const auto resolved = normalizeVirtualPath(currentSegments_, decodePathArgument(argument));
         if (!resolved || resolved->empty()) {
             sendLine(controlSocket_, "550 Permission denied.");
             return;
         }
 
+        const auto virtualPath = resolvePath(*resolved);
+        if (!virtualPath || virtualPath->virtualContainer || virtualPath->readOnly) {
+            sendLine(controlSocket_, "550 Permission denied.");
+            return;
+        }
+
         std::error_code ec;
-        const fs::path target = toFilesystemPath(root_, *resolved);
+        const fs::path target = virtualPath->physicalPath;
         // STOR doesn't implicitly create directories - the parent must
         // already exist under the shared root.
         if (!fs::is_directory(target.parent_path(), ec) || ec) {
@@ -407,6 +547,7 @@ private:
 
     SOCKET controlSocket_;
     fs::path root_;
+    std::vector<VirtualMapping> virtualMappings_;
     std::vector<std::string> currentSegments_;
     std::string buffer_;
     SOCKET dataListenSocket_ = INVALID_SOCKET;
@@ -479,6 +620,8 @@ void WinsockFtpServer::acceptLoop(core::FtpServerConfig config) {
 
     std::vector<std::jthread> connectionThreads;
     const std::string rootString = root.string();
+    const auto virtualMappings =
+        std::make_shared<const std::vector<core::FtpVirtualMapping>>(std::move(config.virtualMappings));
 
     while (running_.load()) {
         fd_set readSet;
@@ -502,7 +645,7 @@ void WinsockFtpServer::acceptLoop(core::FtpServerConfig config) {
                 u_long blockingMode = 0;
                 ::ioctlsocket(clientSocket, FIONBIO, &blockingMode);
                 connectionThreads.emplace_back(&WinsockFtpServer::handleClient, this,
-                                                static_cast<std::uintptr_t>(clientSocket), rootString);
+                                                static_cast<std::uintptr_t>(clientSocket), rootString, virtualMappings);
             }
         }
     }
@@ -515,9 +658,11 @@ void WinsockFtpServer::acceptLoop(core::FtpServerConfig config) {
     ::WSACleanup();
 }
 
-void WinsockFtpServer::handleClient(std::uintptr_t clientSocketHandle, std::string rootPath) {
+void WinsockFtpServer::handleClient(
+    std::uintptr_t clientSocketHandle, std::string rootPath,
+    std::shared_ptr<const std::vector<core::FtpVirtualMapping>> virtualMappings) {
     const SOCKET clientSocket = static_cast<SOCKET>(clientSocketHandle);
-    ClientSession session(clientSocket, fs::path(rootPath));
+    ClientSession session(clientSocket, fs::path(rootPath), virtualMappings);
     session.run();
 }
 

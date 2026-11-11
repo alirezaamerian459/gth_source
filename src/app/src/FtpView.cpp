@@ -211,6 +211,12 @@ LRESULT FtpView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     CRect hostStatusDotRect(kMargin, hostStatusTop + 2, kMargin + 130, hostStatusTop + 20);
     hostStatusDot_.Create(m_hWnd, hostStatusDotRect, L"Server", WS_CHILD | WS_VISIBLE);
 
+    CRect shareJbRect(kMargin + 156, hostStatusTop, kMargin + 390, hostStatusTop + 24);
+    shareJbLibraryBox_.Create(m_hWnd, shareJbRect, L"Include JB Library (read-only)",
+                              WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 0,
+                              IDC_FTP_SHARE_JB_CHECKBOX);
+    shareJbLibraryBox_.SetCheck(BST_CHECKED);
+
     CRect hostStatusRect(kMargin, hostStatusTop + 20, clientRect.right - kMargin, hostStatusTop + hostStatusHeight);
     hostStatusLabel_.Create(m_hWnd, hostStatusRect, L"Server not running.", WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX);
     hostStatusLabel_.SetFont(g_normalFont);
@@ -574,7 +580,7 @@ void FtpView::applyAccessControl(bool isAdmin) {
 
             &hostSectionCaption_, &hostFolderCaption_, &hostFolderEdit_, &hostBrowseButton_, &hostPortCaption_,
             &hostPortEdit_, &hostStartButton_, &hostStopButton_, &hostCopyAddressButton_, &hostStatusDot_,
-            &hostStatusLabel_,
+            &shareJbLibraryBox_, &hostStatusLabel_,
 
             &browseCaption_, &localPathCaption_, &localPathEdit_, &uploadButton_, &downloadButton_,
             &refreshBrowseButton_, &browseListView_,
@@ -853,6 +859,7 @@ void FtpView::refreshHostStatus() {
             if (i + 1 < addresses.size()) text += L"   ";
         }
     }
+    if (shareJbLibraryBox_.GetCheck() == BST_CHECKED) text += L"\r\nJB Library is shared read-only at /JB Library.";
     hostStatusLabel_.SetWindowText(text.c_str());
 }
 
@@ -1082,7 +1089,8 @@ LRESULT FtpView::OnHostStartClick(WORD, WORD, HWND, BOOL&) {
         return 0;
     }
 
-    ftpServerService_->start(WideToUtf8(folder), port);
+    const bool includeJbLibrary = shareJbLibraryBox_.GetCheck() == BST_CHECKED;
+    ftpServerService_->start(WideToUtf8(folder), port, includeJbLibrary);
     refreshHostStatus();
     return 0;
 }
@@ -1091,6 +1099,13 @@ LRESULT FtpView::OnHostStopClick(WORD, WORD, HWND, BOOL&) {
     if (!ftpServerService_) return 0;
     ftpServerService_->stop();
     refreshHostStatus();
+    return 0;
+}
+
+LRESULT FtpView::OnShareJbToggle(WORD, WORD, HWND, BOOL&) {
+    if (ftpServerService_ && ftpServerService_->isRunning()) {
+        hostStatusLabel_.SetWindowText(L"JB sharing changes apply the next time the FTP server is started.");
+    }
     return 0;
 }
 
@@ -1136,7 +1151,7 @@ void FtpView::refreshAcceleratorStatus() {
 
     if (!running) {
         httpProxyStatusLabel_.SetWindowText(
-            std::format(L"Proxy not running. Configure console proxy to: [Your IP]:8080{}", cacheLine).c_str());
+            std::format(L"Proxy not running. Configure console proxy to: [Your IP]:8080{}\r\nJB package serving is enabled automatically when the proxy runs.", cacheLine).c_str());
         return;
     }
 
@@ -1153,6 +1168,7 @@ void FtpView::refreshAcceleratorStatus() {
         }
     }
     text += cacheLine;
+    text += L"\r\nJB package serving: enabled.";
     httpProxyStatusLabel_.SetWindowText(text.c_str());
 }
 

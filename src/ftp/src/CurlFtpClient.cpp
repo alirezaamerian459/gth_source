@@ -1,7 +1,9 @@
 #include "gth/ftp/CurlFtpClient.h"
 
+#include <cctype>
 #include <cstdio>
 #include <format>
+#include <sstream>
 
 #include <curl/curl.h>
 
@@ -41,11 +43,28 @@ size_t appendToString(char* ptr, size_t size, size_t nmemb, void* userdata) {
     return size * nmemb;
 }
 
+std::string encodeFtpPath(const std::string& path) {
+    constexpr char kHex[] = "0123456789ABCDEF";
+    std::string encoded;
+    encoded.reserve(path.size());
+    for (const unsigned char c : path) {
+        const bool unreserved = std::isalnum(c) != 0 || c == '-' || c == '_' || c == '.' || c == '~' || c == '/';
+        if (unreserved) {
+            encoded.push_back(static_cast<char>(c));
+        } else {
+            encoded.push_back('%');
+            encoded.push_back(kHex[c >> 4]);
+            encoded.push_back(kHex[c & 0x0F]);
+        }
+    }
+    return encoded;
+}
+
 // libcurl's FTP LIST response is server-formatted plain text (typically Unix
-// `ls -l` style). Parsed leniently: last whitespace-separated token is the
-// name, a leading 'd' marks a directory, everything else about size is
-// best-effort - good enough for a browse pane, not meant to be a strict
-// parser for every FTP server's format.
+// `ls -l` style). Parsed leniently: standard listings use the fields through
+// the time column as metadata and preserve every token after that as the
+// filename, so virtual folders such as "JB Library" remain browsable. A
+// last-token fallback keeps compatibility with unusual server formats.
 std::vector<core::FtpDirectoryEntry> parseListing(const std::string& raw) {
     std::vector<core::FtpDirectoryEntry> entries;
     size_t pos = 0;
@@ -60,8 +79,17 @@ std::vector<core::FtpDirectoryEntry> parseListing(const std::string& raw) {
         core::FtpDirectoryEntry entry;
         entry.isDirectory = !line.empty() && line[0] == 'd';
 
-        const size_t nameStart = line.find_last_of(' ');
-        entry.name = nameStart == std::string::npos ? line : line.substr(nameStart + 1);
+        std::istringstream fields(line);
+        std::vector<std::string> tokens;
+        for (std::string token; fields >> token;) tokens.push_back(std::move(token));
+
+        if (tokens.size() >= 9 && (tokens[0].front() == 'd' || tokens[0].front() == '-')) {
+            entry.name = tokens[8];
+            for (size_t index = 9; index < tokens.size(); ++index) entry.name += " " + tokens[index];
+        } else {
+            const size_t nameStart = line.find_last_of(' ');
+            entry.name = nameStart == std::string::npos ? line : line.substr(nameStart + 1);
+        }
         if (entry.name == "." || entry.name == "..") continue;
 
         entries.push_back(std::move(entry));
@@ -83,7 +111,7 @@ std::string CurlFtpClient::buildUrl(const std::string& path) const {
     url += "/";
     std::string cleanPath = path;
     while (!cleanPath.empty() && cleanPath.front() == '/') cleanPath.erase(cleanPath.begin());
-    url += cleanPath;
+    url += encodeFtpPath(cleanPath);
     return url;
 }
 

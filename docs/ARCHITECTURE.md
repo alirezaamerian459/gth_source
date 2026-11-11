@@ -23,6 +23,8 @@ src/infrastructure  (composition root)
 
 This is the intended dependency direction, not a substitute for inspecting the affected target and call path. The root CMakeLists.txt is the source of truth for configured modules.
 
+The application-level `JbLibraryService` is the shared read-only catalog for the JB UI, the hosted FTP server's virtual `/JB Library` mapping, and the LAN Console Proxy's local-file fallback. The core FTP server receives sanitized virtual mappings rather than depending on application services directly.
+
 ## Boundaries
 
 - Keep core types independent of concrete database, network, UI, and operating-system adapters.

@@ -10,6 +10,7 @@
 namespace gth::application {
 class ICdnUrlService;
 class ILocalFileIndex;
+class IJbLibraryService;
 }  // namespace gth::application
 
 namespace gth::network {
@@ -27,7 +28,8 @@ class LocalGameServer : public ILocalGameServer {
 public:
     // Either dependency may be null, which just disables that way of finding a file.
     explicit LocalGameServer(gth::application::ICdnUrlService* cdnUrlService = nullptr,
-                             gth::application::ILocalFileIndex* localFileIndex = nullptr);
+                             gth::application::ILocalFileIndex* localFileIndex = nullptr,
+                             gth::application::IJbLibraryService* jbLibraryService = nullptr);
 
     std::optional<LocalGameServeResult> tryServeGameFile(const std::string& requestUrl,
                                                           const std::string& requestHeaders,
@@ -62,6 +64,7 @@ private:
 
     gth::application::ICdnUrlService* cdnUrlService_;
     gth::application::ILocalFileIndex* localFileIndex_;
+    gth::application::IJbLibraryService* jbLibraryService_;
 };
 
 }  // namespace gth::network

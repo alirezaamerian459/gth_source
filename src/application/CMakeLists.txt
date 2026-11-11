@@ -27,6 +27,7 @@ add_library(gth_application STATIC
     src/AdminAuthService.cpp
     src/GameSearchService.cpp
     src/LocalFileIndexService.cpp
+    src/JbLibraryService.cpp
     src/GamePosterService.cpp
     src/BackupService.cpp
 )

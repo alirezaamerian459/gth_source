@@ -356,6 +356,7 @@ Connection manager:
 Host-a-server section:
 
 - Shared Folder field and **Browse...**;
+- **Include JB Library (read-only)** — when enabled, the hosted server adds a virtual `/JB Library` tree containing the current JB catalog without changing the selected shared folder or enabling writes to JB entries;
 - Port (default 2121);
 - **Start**, **Stop**, **Copy Address**;
 - status dot and LAN address/port message.
@@ -371,6 +372,7 @@ Advanced network tools disclosure:
 
 - accelerator mirrors: Host Pattern, Mirror IP, Label, **Add Mirror**, **Measure All**, **Remove**; table includes last RTT;
 - LAN Console Proxy: editable local IP, Port (default 8080), **Start**, **Stop**, optional Cache Folder with **Browse...**, **Clear Cache**, status and proxy configuration text;
+- the LAN Console Proxy automatically checks the shared JB catalog after the normal indexed-library lookup and serves matching JB package/archive requests locally; unmatched requests continue to the origin unchanged;
 - **+ Add Console** creates additional independent proxy/MITM listeners;
 - CDN URL Log: manual URL field, **Add URL**, URL table with URL/Mark/Local Path/Source/Captured, editable Mark and Local Path, **Browse...**, **Remove**, **Copy URL**. Double-click also copies the selected URL.
 

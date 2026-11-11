@@ -14,6 +14,12 @@ public:
     virtual ~IFtpServerService() = default;
 
     virtual void start(const std::string& rootPath, int port) = 0;
+    // Starts the same server with an optional read-only JB Library virtual
+    // subtree. The default keeps existing implementations source-compatible.
+    virtual void start(const std::string& rootPath, int port, bool includeJbLibrary) {
+        (void)includeJbLibrary;
+        start(rootPath, port);
+    }
     virtual void stop() = 0;
     virtual bool isRunning() const = 0;
     // LAN IPv4 addresses of interfaces currently up - reuses

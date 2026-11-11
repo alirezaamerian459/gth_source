@@ -16,6 +16,7 @@
 #include "gth/acceleratorserver/WinsockCachingProxyServer.h"
 #include "gth/application/devices/IConsoleManager.h"
 #include "gth/application/ftp/ICdnUrlService.h"
+#include "gth/application/jb/IJbLibraryService.h"
 #include "gth/application/storage/ILocalFileIndex.h"
 #include "gth/logging/Logging.h"
 #include "gth/network/LocalGameServer.h"
@@ -63,6 +64,20 @@ public:
         const auto it = files.find(fileName);
         return it == files.end() ? std::nullopt : std::optional<fs::path>(it->second);
     }
+    std::map<std::string, fs::path> files;
+    std::vector<std::string> lookups;
+};
+
+class FakeJbLibraryService : public gth::application::IJbLibraryService {
+public:
+    gth::application::JbLibraryScanResult scan(const std::string&) override { return {}; }
+    gth::application::JbLibraryScanResult snapshot() const override { return {}; }
+    std::optional<fs::path> findFileByName(const std::string& fileName) override {
+        lookups.push_back(fileName);
+        const auto it = files.find(fileName);
+        return it == files.end() ? std::nullopt : std::optional<fs::path>(it->second);
+    }
+
     std::map<std::string, fs::path> files;
     std::vector<std::string> lookups;
 };
@@ -140,7 +155,7 @@ protected:
         dir = gth::test::testTempRoot() / ("gth_lgs_test_" + std::to_string(::GetCurrentProcessId()) + "_" +
                                            std::to_string(counter++));
         fs::create_directories(dir);
-        server = std::make_unique<LocalGameServer>(&cdn, &index);
+        server = std::make_unique<LocalGameServer>(&cdn, &index, &jb);
     }
     void TearDown() override {
         std::error_code ec;
@@ -158,6 +173,7 @@ protected:
     fs::path dir;
     FakeCdnUrlService cdn;
     FakeLocalFileIndex index;
+    FakeJbLibraryService jb;
     std::unique_ptr<LocalGameServer> server;
 };
 
@@ -314,6 +330,19 @@ TEST_F(LocalGameServerTest, FindsTheRequestedPackageByNameInTheLibraryWhenNothin
     EXPECT_EQ(bodyOf(s.raw), "LIBRARY-PKG");
     ASSERT_EQ(index.lookups.size(), 1u);
     EXPECT_EQ(index.lookups[0], "UP0001-CUSA00001_00-GAME-A0100-V0100.pkg");
+}
+
+TEST_F(LocalGameServerTest, FindsJbPackagesAfterTheNormalLibraryMisses) {
+    const auto jbPackage = write("jb/hacked/Game/CUSA00001.pkg", "JB-PACKAGE");
+    jb.files["CUSA00001.pkg"] = jbPackage;
+
+    const auto s = serve(*server, "http://cdn.example.com/p/CUSA00001.pkg", kGet);
+
+    ASSERT_TRUE(s.result.has_value());
+    EXPECT_TRUE(s.result->success);
+    EXPECT_EQ(bodyOf(s.raw), "JB-PACKAGE");
+    ASSERT_EQ(jb.lookups.size(), 1u);
+    EXPECT_EQ(jb.lookups[0], "CUSA00001.pkg");
 }
 
 TEST_F(LocalGameServerTest, IgnoresTheQueryStringWhenMatchingByName) {
@@ -509,7 +538,7 @@ protected:
     void startProxy() {
         proxy = std::make_unique<gth::acceleratorserver::WinsockCachingProxyServer>(
             [](const std::string&) { return std::optional<std::string>{}; }, consoles, cdn,
-            std::make_shared<LocalGameServer>(&cdn, &index));
+            std::make_shared<LocalGameServer>(&cdn, &index, &jb));
         gth::core::AcceleratorServerConfig cfg;
         cfg.port = freePort();
         cfg.cacheEnabled = false;
@@ -554,6 +583,19 @@ TEST_F(ProxyEndToEndTest, ADownloadIsRecognisedByItsFileNameAndServedFromTheLibr
     EXPECT_NE(part.find("206 Partial Content"), std::string::npos);
     EXPECT_EQ(bodyOf(part), "3456");
     EXPECT_EQ(origin.hits.load(), 0);  // the internet was never touched
+}
+
+TEST_F(ProxyEndToEndTest, ADownloadIsRecognisedByItsFileNameAndServedFromTheJbLibrary) {
+    FakeOrigin origin;
+    const auto jbPackage = write("jb/hacked/Game/CUSA00001.fpkg", "JB-PROXY");
+    jb.files["CUSA00001.fpkg"] = jbPackage;
+    const std::string url = "http://127.0.0.1:" + std::to_string(origin.port) + "/dl/CUSA00001.fpkg";
+    startProxy();
+
+    const auto raw = httpGetViaProxy(proxyPort, url);
+
+    EXPECT_EQ(bodyOf(raw), "JB-PROXY");
+    EXPECT_EQ(origin.hits.load(), 0);
 }
 
 TEST_F(ProxyEndToEndTest, ABrokenMappingFallsBackToTheOriginWithASingleCleanResponse) {

@@ -1,6 +1,6 @@
 # Project status
 
-**Last updated:** 2026-11-10
+**Last updated:** 2026-11-11
 
 **Repository baseline:** branch `main` at `32a32b9` tracks `origin/main`; work proceeds on local branch `codex/gth-local-work`.
 
@@ -62,6 +62,7 @@
 - The Updates page no longer shows a permanent More button; secondary Sony-link, import, tracker, and guide actions remain available from the updates grid's keyboard/right-click context menu. A 15-minute idle poll keeps update results current, and the shared header now shows a bell-style Updates notification button with the hamburger navigation control beside it. Debug and Release app targets passed; the Desktop executable was refreshed after verification.
 - Update All now automatically starts the existing human-in-the-loop Prosperopatches collector when PS5 links are missing, resets and writes `Desktop/GTH-Prosperopatches-links.txt` as links are learned, and continues the existing one-game-at-a-time package sync. PackageSync still places verified updates in the game-specific directory/Updates folder. Debug and Release app targets passed; the seven SonyLinkImporter tests passed; and the Desktop executable was refreshed.
 - Secondary controls are now collapsed by default on Storage, Updates, Backups, Settings, FTP, Transfers, Consoles, Enterprise, and Dashboard. Pages already focused around one task (Games, JB Games, Downloads, Network, Reports, Logs, and Coming Soon) did not need extra foldouts.
+- The JB catalog is now shareable through both FTP and the LAN Console Proxy. The FTP host keeps its chosen shared folder and optionally adds a read-only `/JB Library` virtual tree; the proxy serves exact JB package/archive matches after the normal library lookup. Existing FTP task paths and origin fallback remain unchanged. Debug builds and focused FTP/proxy tests passed; see [JB sharing verification](JB_FTP_PROXY_SHARING_2026-11-11.md) and [ADR-0004](../docs/decisions/0004-jb-library-sharing.md).
 - Existing app processes remain open. The normal Release output could not be relinked while locked, so a staged Release build was produced at `build/storage-release-staged/GameTransferHub.exe`; the Debug app target also built successfully.
 - Automated tests were not run for this layout-only pass. Visual review of the Debug app is pending.
 
