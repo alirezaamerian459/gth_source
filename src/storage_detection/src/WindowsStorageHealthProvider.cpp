@@ -163,6 +163,46 @@ std::optional<NvmeHealth> readNvmeHealth(int driveNumber) {
     return parseNvmeHealthLog(buffer.data() + logStart, kLogBytes);
 }
 
+// Some USB/SATA bridges do not pass ATA SMART commands through, but still
+// expose the disk sensor through the standard Windows storage temperature
+// property. This is read-only and works without elevation. Keep Unknown when
+// the bridge reports no sensor rather than presenting a guessed value.
+std::optional<int> readStorageDeviceTemperature(int driveNumber) {
+    const std::wstring path = std::format(L"\\\\.\\PhysicalDrive{}", driveNumber);
+    HANDLE handle = ::CreateFileW(path.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0,
+                                   nullptr);
+    if (handle == INVALID_HANDLE_VALUE) return std::nullopt;
+
+    STORAGE_PROPERTY_QUERY query{};
+    query.PropertyId = StorageDeviceTemperatureProperty;
+    query.QueryType = PropertyStandardQuery;
+    alignas(8) std::array<unsigned char, 4096> buffer{};
+    DWORD returned = 0;
+    const bool ok = ::DeviceIoControl(handle, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query), buffer.data(),
+                                       static_cast<DWORD>(buffer.size()), &returned, nullptr) != 0;
+    ::CloseHandle(handle);
+    if (!ok || returned < offsetof(STORAGE_TEMPERATURE_DATA_DESCRIPTOR, TemperatureInfo)) return std::nullopt;
+
+    const auto* descriptor = reinterpret_cast<const STORAGE_TEMPERATURE_DATA_DESCRIPTOR*>(buffer.data());
+    const std::size_t infoOffset = offsetof(STORAGE_TEMPERATURE_DATA_DESCRIPTOR, TemperatureInfo);
+    const std::size_t descriptorBytes = descriptor->Size >= infoOffset
+                                             ? std::min<std::size_t>(descriptor->Size, returned)
+                                             : returned;
+    if (descriptor->InfoCount == 0 || descriptorBytes < infoOffset ||
+        descriptor->InfoCount > (descriptorBytes - infoOffset) / sizeof(STORAGE_TEMPERATURE_INFO)) {
+        return std::nullopt;
+    }
+
+    std::optional<int> temperature;
+    for (WORD index = 0; index < descriptor->InfoCount; ++index) {
+        const SHORT value = descriptor->TemperatureInfo[index].Temperature;
+        if (static_cast<unsigned short>(value) == STORAGE_TEMPERATURE_VALUE_NOT_REPORTED) continue;
+        if (value < -50 || value > 150) continue;
+        if (!temperature.has_value() || value > *temperature) temperature = static_cast<int>(value);
+    }
+    return temperature;
+}
+
 // The drive's own overall SMART verdict ("is failure predicted?"), available even for disks the Storage
 // WMI provider doesn't describe (dynamic disks, some USB bridges). Needs no elevation. Same coarse
 // translation as the WMI health enum below: a real yes/no signal, not an invented precision.
@@ -486,6 +526,7 @@ PhysicalDiskHealth queryDiskBlocking(int driveNumber) {
         smart = assessNvmeHealth(*nvme);
         if (!info.temperatureCelsius.has_value()) info.temperatureCelsius = nvme->temperatureCelsius;
     }
+    if (!info.temperatureCelsius.has_value()) info.temperatureCelsius = readStorageDeviceTemperature(driveNumber);
     if (smart.has_value()) {
         const std::optional<int> windowsHealth = info.healthPercent;
         info.healthPercent = (windowsHealth.has_value() && *windowsHealth < smart->percent) ? *windowsHealth : smart->percent;

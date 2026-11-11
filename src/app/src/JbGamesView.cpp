@@ -35,8 +35,11 @@ bool containsIgnoreCase(const std::wstring& value, const wchar_t* needle) {
     return lowerCopy(value).find(lowerCopy(needle)) != std::wstring::npos;
 }
 
-bool isJbLibraryFolder(const std::wstring& name) {
-    return equalsIgnoreCase(name, L"hacked") || equalsIgnoreCase(name, L"p30day");
+bool isJbLibraryFolder(const std::wstring& name, bool exfatVolume) {
+    // Standard JB layouts use hacked/p30day. The exFAT layout used by the
+    // external library drive exposes the same game folders below GAME.
+    return equalsIgnoreCase(name, L"hacked") || equalsIgnoreCase(name, L"p30day") ||
+           (exfatVolume && equalsIgnoreCase(name, L"GAME"));
 }
 
 std::string titleIdFromName(const std::wstring& name) {
@@ -71,13 +74,14 @@ bool isGameArchive(const std::filesystem::path& path) {
     for (wchar_t& c : extension) c = std::towlower(c);
     return extension == L".pkg" || extension == L".fpkg" || extension == L".zip" || extension == L".7z" ||
            extension == L".rar" || extension == L".iso" || extension == L".bin" || extension == L".dec" ||
-           extension == L".dump";
+           extension == L".dump" || extension == L".exfat";
 }
 
 struct ArtifactSummary {
     int packages = 0;
     int fpkg = 0;
     int dumps = 0;
+    int exfat = 0;
     int patches = 0;
     int dlc = 0;
 };
@@ -108,6 +112,8 @@ void addArtifact(const std::filesystem::path& path, bool directory, ArtifactSumm
     } else if (extension == L".dump" || extension == L".iso" || extension == L".bin" ||
                extension == L".dec") {
         ++summary.dumps;
+    } else if (extension == L".exfat") {
+        ++summary.exfat;
     }
 }
 
@@ -116,6 +122,7 @@ std::wstring artifactDetails(const ArtifactSummary& summary, bool exfat) {
     if (exfat) details.push_back(L"exFAT");
     if (summary.packages) details.push_back(std::format(L"PKG {}", summary.packages));
     if (summary.fpkg) details.push_back(std::format(L"FPKG {}", summary.fpkg));
+    if (summary.exfat) details.push_back(std::format(L"exFAT file {}", summary.exfat));
     if (summary.dumps) details.push_back(std::format(L"Dump {}", summary.dumps));
     if (summary.patches) details.push_back(std::format(L"Patch {}", summary.patches));
     if (summary.dlc) details.push_back(std::format(L"DLC {}", summary.dlc));
@@ -296,7 +303,7 @@ void JbGamesView::renderEntries() {
     storageCombo_.EnableWindow(scanInProgress ? FALSE : TRUE);
     if (scanInProgress) {
         statusLabel_.SetWindowText(
-            std::format(L"Scanning {} for JB folders named 'hacked' or 'p30day'...", scanScopeLabel_).c_str());
+            std::format(L"Scanning {} for JB folders (hacked/p30day, or GAME on exFAT)...", scanScopeLabel_).c_str());
     } else if (!hasScanned_) {
         statusLabel_.SetWindowText(L"No scan has run yet.");
     } else {
@@ -367,7 +374,7 @@ void JbGamesView::startScan() {
                         continue;
                     }
                     if (!it->is_directory(ec)) continue;
-                    if (!isJbLibraryFolder(it->path().filename().wstring())) continue;
+                    if (!isJbLibraryFolder(it->path().filename().wstring(), exfat)) continue;
 
                     ++libraryFolders;
                     for (std::filesystem::directory_iterator child(it->path(), options, ec), childEnd; child != childEnd;

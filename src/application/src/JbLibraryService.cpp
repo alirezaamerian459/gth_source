@@ -43,8 +43,11 @@ bool equalsIgnoreCase(const std::wstring& left, std::wstring_view right) {
     return true;
 }
 
-bool isJbLibraryFolder(const std::wstring& name) {
-    return equalsIgnoreCase(name, L"hacked") || equalsIgnoreCase(name, L"p30day");
+bool isJbLibraryFolder(const std::wstring& name, bool exfatVolume) {
+    // Standard JB layouts use hacked/p30day.  QNAP/exFAT exports commonly
+    // expose the same game folders below a directory named GAME instead.
+    return equalsIgnoreCase(name, L"hacked") || equalsIgnoreCase(name, L"p30day") ||
+           (exfatVolume && equalsIgnoreCase(name, L"GAME"));
 }
 
 bool isLocalDrive(core::StorageType type) {
@@ -56,12 +59,13 @@ bool isGameArchive(const fs::path& path) {
     const std::wstring extension = lowerCopy(path.extension().wstring());
     return extension == L".pkg" || extension == L".fpkg" || extension == L".zip" || extension == L".7z" ||
            extension == L".rar" || extension == L".iso" || extension == L".bin" || extension == L".dec" ||
-           extension == L".dump";
+           extension == L".dump" || extension == L".exfat";
 }
 
 bool isServableJbFileName(const std::string& fileName) {
     const std::string lower = lowerCopy(fileName);
-    for (const char* suffix : {".pkg", ".fpkg", ".pup", ".zip", ".7z", ".rar", ".iso", ".bin", ".dec", ".dump"}) {
+    for (const char* suffix : {".pkg", ".fpkg", ".pup", ".zip", ".7z", ".rar", ".iso", ".bin", ".dec", ".dump",
+                               ".exfat"}) {
         const std::string_view ending(suffix);
         if (lower.size() >= ending.size() && lower.ends_with(ending)) return true;
     }
@@ -167,7 +171,8 @@ JbLibraryScanResult JbLibraryService::scan(const std::string& targetStorageId) {
 
             ++result.storageCount;
             const fs::path rawRoot = pathFromUtf8(storage.rootPath);
-            if (isExfatVolume(rawRoot)) ++result.exfatStorageCount;
+            const bool exfatVolume = isExfatVolume(rawRoot);
+            if (exfatVolume) ++result.exfatStorageCount;
 
             std::error_code rootEc;
             const fs::path root = extendedPath(rawRoot);
@@ -180,7 +185,8 @@ JbLibraryScanResult JbLibraryService::scan(const std::string& targetStorageId) {
                     continue;
                 }
                 std::error_code dirEc;
-                if (!it->is_directory(dirEc) || dirEc || !isJbLibraryFolder(it->path().filename().wstring())) continue;
+                if (!it->is_directory(dirEc) || dirEc || !isJbLibraryFolder(it->path().filename().wstring(), exfatVolume))
+                    continue;
 
                 ++result.libraryFolderCount;
                 for (fs::directory_iterator child(it->path(), options, dirEc), childEnd; child != childEnd;

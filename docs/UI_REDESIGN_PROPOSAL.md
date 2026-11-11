@@ -135,7 +135,7 @@ The JB page finds jailbreak-style game folders and archives on local drives, sep
 #### Current controls and data
 
 - **Scan target** — a visible selector with `All local drives` plus one entry for each available local HDD, SSD, external HDD, or USB storage (including its friendly name and root path).
-- **Scan all local drives / Scan selected drive** — scans the selected scope for folders named `hacked` or `p30day`; when one drive is selected, traversal is restricted to that storage only. The scan inspects child directories/files for package, dump, patch, DLC, and related markers; identifies probable title IDs/platforms; and records exFAT and scan counts.
+- **Scan all local drives / Scan selected drive** — scans the selected scope for folders named `hacked` or `p30day`; on an exFAT volume it also recognizes the common `GAME` root used by external JB drives. When one drive is selected, traversal is restricted to that storage only. The scan inspects child directories/files for package, dump, patch, DLC, `.exfat`, and related markers; identifies probable title IDs/platforms; and records exFAT and scan counts.
 - The selected target is captured when the scan starts, so changing storage selection cannot redirect an active scan.
 - Poster grid — title, platform, path-derived details, artifact summary, and poster.
 - Status line — drives scanned, JB folders found, exFAT count, and scan errors.
@@ -271,7 +271,7 @@ Storage is the source of truth for discovered storage roots, capacity, allocatio
 
 - `IStorageService`, SQLite storage/category repositories, and migrations;
 - local volume enumeration and availability checks;
-- physical-disk/SMART/NVMe health providers where supported; the storage-health layer also accepts the QNAP `qcli_hdd` text layout for supplied per-bay reports;
+- physical-disk/SMART/NVMe health providers where supported; the storage-health layer also accepts the QNAP `qcli_hdd` text layout for supplied per-bay reports and falls back to Windows' read-only storage-temperature property for USB/SATA bridges that expose a sensor there;
 - permission to query Windows storage and WMI/health APIs;
 - network-share capacity/free-space queries for reachable NAS shares;
 - no Internet connection for core storage data.

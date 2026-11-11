@@ -45,6 +45,7 @@ struct JbLibraryServiceFixture {
         fs::create_directories(root / "hacked" / "CUSA00001_Game");
         fs::create_directories(root / "p30day" / "PPSA00002_Game");
         std::ofstream(root / "hacked" / "CUSA00001_Game" / "CUSA00001.pkg") << "pkg";
+        std::ofstream(root / "hacked" / "CUSA00001_Game" / "CUSA00001.exfat") << "exfat";
         std::ofstream(root / "p30day" / "PPSA00002_Game" / "PPSA00002.fpkg") << "fpkg";
 
         Storage drive;
@@ -73,6 +74,7 @@ TEST(JbLibraryServiceTest, ScansHackedAndP30dayFoldersAndIndexesPackageFiles) {
     EXPECT_EQ(result.libraryFolderCount, 2);
     EXPECT_EQ(result.storageCount, 1);
     EXPECT_TRUE(fixture.service.findFileByName("cusa00001.pkg").has_value());
+    EXPECT_TRUE(fixture.service.findFileByName("CUSA00001.EXFAT").has_value());
     EXPECT_TRUE(fixture.service.findFileByName("PPSA00002.FPKG").has_value());
 }
 
