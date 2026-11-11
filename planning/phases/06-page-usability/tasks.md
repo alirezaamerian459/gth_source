@@ -15,5 +15,6 @@ Notes:
 - Storage cards show capacity, used/free space, status, health, temperature, and individual physical disk details in separate inset boxes where a storage spans multiple disks. Visual owner review is still pending.
 - Storage health details now include the supported QNAP/ATA SMART counters in a disclosure-only view; raw LBA values are labeled as vendor units and unknown values remain unknown.
 - The JB page recognizes the exFAT `GAME` layout and `.exfat` artifacts, and storage health has a read-only Windows temperature fallback for USB/SATA bridges. Unknown remains the honest result when no sensor is exposed.
+- Poster tiles now use the cleaned game name as a PSPrices lookup fallback when a title ID is unavailable, with stable disk caching and the existing asynchronous loading behavior.
 - The Release executable was locked by an already-running GameTransferHub process, so the Debug output is used for owner review.
 - The UI changes are local; no remote push or release was performed.

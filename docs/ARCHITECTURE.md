@@ -23,7 +23,7 @@ src/infrastructure  (composition root)
 
 This is the intended dependency direction, not a substitute for inspecting the affected target and call path. The root CMakeLists.txt is the source of truth for configured modules.
 
-The application-level `JbLibraryService` is the shared read-only catalog for the JB UI, the hosted FTP server's virtual `/JB Library` mapping, and the LAN Console Proxy's local-file fallback. The core FTP server receives sanitized virtual mappings rather than depending on application services directly.
+The application-level `JbLibraryService` is the shared read-only catalog for the JB UI, the hosted FTP server's virtual `/JB Library` mapping, and the LAN Console Proxy's local-file fallback. The core FTP server receives sanitized virtual mappings rather than depending on application services directly. PosterCache can use either a parsed title ID or a stable title/platform key, so title-only JB folders still receive the same asynchronous PSPrices lookup and disk caching as indexed games.
 
 Storage health keeps the vendor-neutral SMART counters in `core::PhysicalDiskHealth::SmartMetrics`. The storage-detection module fills them from ATA/NVMe data, uses Windows' read-only storage-temperature property as a fallback for USB/SATA bridges, and parses the QNAP `qcli_hdd` text shape for supplied per-bay reports. Raw counters remain raw because QNAP/drive vendors can use different units; only documented temperature and health rules are interpreted. Reachable NAS/SMB roots refresh capacity/free space through Windows' filesystem API, while missing physical SMART or temperature data stays unknown.
 

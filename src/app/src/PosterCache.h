@@ -45,33 +45,32 @@ public:
     // cache started completes. Called once per view, before enableWebFallback (see its own note).
     void subscribe(HWND hwnd);
 
-    // The tile for `titleId` (a game with no titleId always gets `platform`'s placeholder tile).
-    // PSPrices is queued first and runs off the UI thread; package art may be shown immediately
-    // while that lookup is in flight. When PSPrices returns, its poster replaces the fallback and
-    // becomes the only disk-cached source for future launches. Every later call once a titleId is
-    // fully resolved is a plain map lookup.
+    // The tile for `titleId` or, when a title ID is unavailable, the plain game title. PSPrices is
+    // queued first and runs off the UI thread; package art may be shown immediately while that
+    // lookup is in flight. When PSPrices returns, its poster replaces the fallback and becomes the
+    // only disk-cached source for future launches. Every later call is a plain map lookup.
     // `posterService` may be null (nothing to resolve from yet); `gameVariantId` is unused then.
     HBITMAP posterFor(const std::string& titleId, const std::string& title, const std::string& platform,
                        gth::application::IGamePosterService* posterService, const std::string& gameVariantId);
 
 private:
     struct WebRequest {
-        std::string titleId;
+        std::string cacheKey;
         std::string title;
     };
 
     HBITMAP buildFromPng(const std::string& pngBytes);
     HBITMAP placeholderFor(const std::string& platform);
 
-    std::string readDiskCache(const std::string& titleId) const;
-    void writeDiskCache(const std::string& titleId, const std::string& pngBytes) const;
+    std::string readDiskCache(const std::string& cacheKey) const;
+    void writeDiskCache(const std::string& cacheKey, const std::string& pngBytes) const;
 
     // Moves anything the background worker has finished into byTitleId_ - called at the top of
     // every posterFor() so a completed fetch is visible before that call's own cache lookup.
     void drainPendingWebResults();
     // Queues titleId/title for a background web lookup, unless it's already been queued this
     // session - never blocks. No-op if enableWebFallback was never called.
-    void queueWebFetch(const std::string& titleId, const std::string& title);
+    void queueWebFetch(const std::string& cacheKey, const std::string& title);
     void workerLoop();
 
     ULONG_PTR gdiplusToken_ = 0;
@@ -81,7 +80,7 @@ private:
 
     // UI-thread-only state (posterFor/subscribe/enableWebFallback all run there).
     gth::core::ICoverArtClient* webClient_ = nullptr;
-    std::unordered_set<std::string> requestedTitleIds_;
+    std::unordered_set<std::string> requestedCacheKeys_;
     std::vector<HWND> subscribers_;
 
     // Shared with the background worker.
@@ -91,5 +90,5 @@ private:
     std::condition_variable queueCv_;
     std::deque<WebRequest> requestQueue_;
     std::mutex resultsMutex_;
-    std::vector<std::pair<std::string, std::string>> pendingResults_;  // titleId -> raw image bytes
+    std::vector<std::pair<std::string, std::string>> pendingResults_;  // cache key -> raw image bytes
 };

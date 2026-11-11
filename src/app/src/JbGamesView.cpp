@@ -35,6 +35,15 @@ bool containsIgnoreCase(const std::wstring& value, const wchar_t* needle) {
     return lowerCopy(value).find(lowerCopy(needle)) != std::wstring::npos;
 }
 
+std::wstring stripKnownGameSuffix(std::wstring value) {
+    const std::wstring lower = lowerCopy(value);
+    for (const std::wstring_view suffix : {L".pkg", L".fpkg", L".pup", L".zip", L".7z", L".rar", L".iso",
+                                           L".bin", L".dec", L".dump", L".exfat"}) {
+        if (lower.ends_with(suffix)) return value.substr(0, value.size() - suffix.size());
+    }
+    return value;
+}
+
 bool isJbLibraryFolder(const std::wstring& name, bool exfatVolume) {
     // Standard JB layouts use hacked/p30day. The exFAT layout used by the
     // external library drive exposes the same game folders below GAME.
@@ -392,7 +401,7 @@ void JbGamesView::startScan() {
 
                         Entry entry;
                         entry.title = childPath.stem().wstring();
-                        if (gameDirectory) entry.title = childPath.filename().wstring();
+                        if (gameDirectory) entry.title = stripKnownGameSuffix(childPath.filename().wstring());
                         entry.titleId = titleIdFromName(entry.title);
                         entry.platform = platformFromTitleId(entry.titleId);
                         entry.path = childPath;

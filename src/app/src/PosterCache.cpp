@@ -4,6 +4,8 @@
 #include <gdiplus.h>
 
 #include <filesystem>
+#include <cctype>
+#include <cstdint>
 #include <fstream>
 #include <functional>
 #include <iterator>
@@ -16,6 +18,28 @@
 
 namespace {
 constexpr int kCornerRadius = 14;
+
+// JB folder names do not always carry a PlayStation title ID. Use a stable,
+// filesystem-safe key for title-only lookups so PSPrices artwork can still be
+// cached across launches without changing the existing title-ID cache format.
+std::string titleCacheKey(const std::string& title, const std::string& platform) {
+    if (title.empty()) return {};
+
+    std::uint64_t hash = 1469598103934665603ULL;
+    const auto mix = [&hash](unsigned char value) {
+        hash ^= value;
+        hash *= 1099511628211ULL;
+    };
+    for (const unsigned char value : title) mix(static_cast<unsigned char>(std::tolower(value)));
+    mix('|');
+    for (const unsigned char value : platform) mix(static_cast<unsigned char>(std::tolower(value)));
+
+    constexpr char digits[] = "0123456789abcdef";
+    std::string key = "title-";
+    key.reserve(22);
+    for (int shift = 60; shift >= 0; shift -= 4) key.push_back(digits[(hash >> shift) & 0x0F]);
+    return key;
+}
 
 Gdiplus::Color ToGdiplusColor(COLORREF c) {
     return Gdiplus::Color(GetRValue(c), GetGValue(c), GetBValue(c));
@@ -96,15 +120,15 @@ PosterCache::~PosterCache() {
     if (gdiplusToken_) Gdiplus::GdiplusShutdown(gdiplusToken_);
 }
 
-std::string PosterCache::readDiskCache(const std::string& titleId) const {
-    const std::wstring path = cacheDir_ + L"\\" + std::wstring(titleId.begin(), titleId.end()) + L".png";
+std::string PosterCache::readDiskCache(const std::string& cacheKey) const {
+    const std::wstring path = cacheDir_ + L"\\" + std::wstring(cacheKey.begin(), cacheKey.end()) + L".png";
     std::ifstream in(path, std::ios::binary);
     if (!in.is_open()) return {};
     return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
 }
 
-void PosterCache::writeDiskCache(const std::string& titleId, const std::string& pngBytes) const {
-    const std::wstring path = cacheDir_ + L"\\" + std::wstring(titleId.begin(), titleId.end()) + L".png";
+void PosterCache::writeDiskCache(const std::string& cacheKey, const std::string& pngBytes) const {
+    const std::wstring path = cacheDir_ + L"\\" + std::wstring(cacheKey.begin(), cacheKey.end()) + L".png";
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     if (out.is_open()) out.write(pngBytes.data(), static_cast<std::streamsize>(pngBytes.size()));
 }
@@ -174,12 +198,12 @@ void PosterCache::drainPendingWebResults() {
     }
 }
 
-void PosterCache::queueWebFetch(const std::string& titleId, const std::string& title) {
-    if (!webClient_ || title.empty() || requestedTitleIds_.contains(titleId)) return;
-    requestedTitleIds_.insert(titleId);
+void PosterCache::queueWebFetch(const std::string& cacheKey, const std::string& title) {
+    if (!webClient_ || title.empty() || requestedCacheKeys_.contains(cacheKey)) return;
+    requestedCacheKeys_.insert(cacheKey);
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
-        requestQueue_.push_back({titleId, title});
+        requestQueue_.push_back({cacheKey, title});
     }
     queueCv_.notify_one();
 }
@@ -198,10 +222,10 @@ void PosterCache::workerLoop() {
         auto pngBytes = webClient_->fetchPosterByTitle(request.title);
         if (!pngBytes || pngBytes->empty()) continue;
 
-        writeDiskCache(request.titleId, *pngBytes);
+        writeDiskCache(request.cacheKey, *pngBytes);
         {
             std::lock_guard<std::mutex> lock(resultsMutex_);
-            pendingResults_.emplace_back(request.titleId, std::move(*pngBytes));
+            pendingResults_.emplace_back(request.cacheKey, std::move(*pngBytes));
         }
         for (HWND hwnd : subscribers_) ::PostMessageW(hwnd, kPosterReadyMessage, 0, 0);
     }
@@ -212,17 +236,18 @@ HBITMAP PosterCache::posterFor(const std::string& titleId, const std::string& ti
                                 const std::string& gameVariantId) {
     drainPendingWebResults();
 
-    if (titleId.empty()) return placeholderFor(platform);
+    const std::string cacheKey = titleId.empty() ? titleCacheKey(title, platform) : titleId;
+    if (cacheKey.empty()) return placeholderFor(platform);
 
-    if (const auto it = byTitleId_.find(titleId); it != byTitleId_.end()) return it->second;
+    if (const auto it = byTitleId_.find(cacheKey); it != byTitleId_.end()) return it->second;
 
-    std::string pngBytes = readDiskCache(titleId);
+    std::string pngBytes = readDiskCache(cacheKey);
     const bool fromDisk = !pngBytes.empty();
 
     // Queue PSPrices before considering the package's embedded icon. The embedded icon keeps the
     // tile useful while the network request runs, but a successful PSPrices result replaces it in
     // drainPendingWebResults() and is the only image persisted for the next launch.
-    if (!fromDisk) queueWebFetch(titleId, title);
+    if (!fromDisk) queueWebFetch(cacheKey, title);
 
     if (pngBytes.empty() && posterService) {
         if (auto extracted = posterService->extractPosterPng(gameVariantId); extracted.has_value())
@@ -232,10 +257,10 @@ HBITMAP PosterCache::posterFor(const std::string& titleId, const std::string& ti
     HBITMAP bitmap = nullptr;
     if (!pngBytes.empty()) {
         bitmap = buildFromPng(pngBytes);
-        if (bitmap && !fromDisk && !webClient_) writeDiskCache(titleId, pngBytes);
+        if (bitmap && !fromDisk && !webClient_) writeDiskCache(cacheKey, pngBytes);
     }
     if (bitmap) {
-        byTitleId_[titleId] = bitmap;
+        byTitleId_[cacheKey] = bitmap;
         return bitmap;
     }
 
