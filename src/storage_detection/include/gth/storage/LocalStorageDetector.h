@@ -5,7 +5,8 @@
 namespace gth::storage {
 
 // Detects storages reachable as local Windows drive letters: fixed disks,
-// removable/USB media, and drives already mapped as network shares.
+// removable/USB media, drives already mapped as network shares, and reachable
+// UNC directory shortcuts on the user's Desktop.
 // HDD vs. SSD is not distinguished yet (that needs a physical-disk media-type
 // lookup via IOCTL_STORAGE_QUERY_PROPERTY, deferred until it's actually
 // needed) - fixed disks are reported as StorageType::LocalHdd and can be

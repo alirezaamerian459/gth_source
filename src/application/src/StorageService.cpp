@@ -68,7 +68,7 @@ std::string deriveStorageName(const std::string& path) {
 }
 
 bool isRemoteStorageType(StorageType type) {
-    return type == StorageType::Nas || type == StorageType::SmbShare;
+    return type == StorageType::Nas || type == StorageType::SmbShare || type == StorageType::NetworkShare;
 }
 
 bool refreshRemoteCapacity(Storage& storage) {

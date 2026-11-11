@@ -2,9 +2,9 @@
 
 ## Change
 
-The JB Games page now exposes a **Scan target** selector. It always includes **All local drives** and adds each currently available local HDD, SSD, external HDD, or USB storage with its friendly name and root path. Choosing a drive changes the action to **Scan selected drive** and limits the scan to that storage. The scan never writes, moves, or deletes files.
+The JB Games page now exposes a **Scan target** selector. It always includes **All storages** and adds each currently available local HDD, SSD, external HDD, USB storage, or reachable NAS/SMB/UNC share with its friendly name and root path. Desktop shortcuts to UNC directories (for example `Public (NAS...)`) are detected automatically. Choosing a storage changes the action to **Scan selected storage** and limits the scan to that root. The scan never writes, moves, or deletes files.
 
-The target storage ID is captured when a scan starts, so changing the selector while a scan is running cannot redirect that scan. Network and unavailable storages remain excluded from the selector and scan scope.
+The target storage ID is captured when a scan starts, so changing the selector while a scan is running cannot redirect that scan. Unavailable storages remain excluded from the selector and scan scope.
 
 ## Verification
 

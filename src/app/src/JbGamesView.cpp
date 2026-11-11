@@ -184,7 +184,7 @@ LRESULT JbGamesView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
     ::SetWindowTheme(storageCombo_.m_hWnd, L"DarkMode_CFD", nullptr);
 
     CRect scanRect(kMargin + 650, 18, kMargin + 830, 50);
-    scanButton_.Create(m_hWnd, scanRect, L"Scan all local drives", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
+    scanButton_.Create(m_hWnd, scanRect, L"Scan all storages", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
                        IDC_JB_SCAN_BUTTON);
     scanButton_.SetFont(theme::BodyFont());
     scanButton_.setKind(ModernButton::Kind::Primary);
@@ -242,7 +242,7 @@ std::string JbGamesView::selectedTargetId() const {
 
 std::wstring JbGamesView::selectedTargetLabel() const {
     const int index = storageCombo_.GetCurSel();
-    if (index < 0 || static_cast<size_t>(index) >= scanTargets_.size()) return L"All local drives";
+    if (index < 0 || static_cast<size_t>(index) >= scanTargets_.size()) return L"All storages";
     return scanTargets_[static_cast<size_t>(index)].label;
 }
 
@@ -251,7 +251,7 @@ void JbGamesView::refreshStorageTargets() {
 
     const std::string previousId = selectedTargetId();
     scanTargets_.clear();
-    scanTargets_.push_back({{}, L"All local drives"});
+    scanTargets_.push_back({{}, L"All storages"});
 
     auto storages = storageService_->getAllStorages();
     std::sort(storages.begin(), storages.end(), [](const auto& left, const auto& right) {
@@ -274,7 +274,7 @@ void JbGamesView::refreshStorageTargets() {
     }
     storageCombo_.SetCurSel(selectedIndex);
     if (scanButton_.IsWindow()) {
-        scanButton_.SetWindowText(selectedIndex == 0 ? L"Scan all local drives" : L"Scan selected drive");
+        scanButton_.SetWindowText(selectedIndex == 0 ? L"Scan all storages" : L"Scan selected storage");
     }
 }
 
@@ -317,7 +317,7 @@ void JbGamesView::renderEntries() {
         statusLabel_.SetWindowText(L"No scan has run yet.");
     } else {
         std::wstring status = std::format(
-            L"Found {} game(s) in {} JB folder(s) across {} local drive(s), including {} exFAT drive(s). [{}]",
+            L"Found {} game(s) in {} JB folder(s) across {} storage(s), including {} exFAT drive(s). [{}]",
             entries_.size(), libraryFolderCount_, storageCount_, exfatStorageCount_, scanScopeLabel_);
         if (!scanError_.empty()) status += std::format(L"\r\n{}", scanError_);
         statusLabel_.SetWindowText(status.c_str());
@@ -332,7 +332,7 @@ LRESULT JbGamesView::OnScanClick(WORD, WORD, HWND, BOOL&) {
 LRESULT JbGamesView::OnTargetChange(WORD, WORD, HWND, BOOL&) {
     if (scanInProgress_.load()) return 0;
     const int index = storageCombo_.GetCurSel();
-    scanButton_.SetWindowText(index <= 0 ? L"Scan all local drives" : L"Scan selected drive");
+    scanButton_.SetWindowText(index <= 0 ? L"Scan all storages" : L"Scan selected storage");
     statusLabel_.SetWindowText(std::format(L"Ready to scan {}.", selectedTargetLabel()).c_str());
     return 0;
 }

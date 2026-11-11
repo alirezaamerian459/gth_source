@@ -31,8 +31,9 @@ class IJbLibraryService {
 public:
     virtual ~IJbLibraryService() = default;
 
-    // Scan the available local storage locations. An empty target scans all
-    // eligible local drives; a non-empty target is a Storage::storageId.
+    // Scan available local and reachable share storage locations. An empty
+    // target scans every eligible storage; a non-empty target is a
+    // Storage::storageId.
     virtual JbLibraryScanResult scan(const std::string& targetStorageId = {}) = 0;
 
     // Return the last completed scan without touching the filesystem.

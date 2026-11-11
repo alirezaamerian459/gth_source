@@ -50,9 +50,11 @@ bool isJbLibraryFolder(const std::wstring& name, bool exfatVolume) {
            (exfatVolume && equalsIgnoreCase(name, L"GAME"));
 }
 
-bool isLocalDrive(core::StorageType type) {
+bool isJbScannableStorage(core::StorageType type) {
     return type == core::StorageType::LocalHdd || type == core::StorageType::LocalSsd ||
-           type == core::StorageType::ExternalHdd || type == core::StorageType::Usb;
+           type == core::StorageType::ExternalHdd || type == core::StorageType::Usb ||
+           type == core::StorageType::Nas || type == core::StorageType::SmbShare ||
+           type == core::StorageType::NetworkShare;
 }
 
 bool isGameArchive(const fs::path& path) {
@@ -166,7 +168,7 @@ JbLibraryScanResult JbLibraryService::scan(const std::string& targetStorageId) {
         });
 
         for (const auto& storage : storages) {
-            if (!storage.isAvailable || !isLocalDrive(storage.type)) continue;
+            if (!storage.isAvailable || !isJbScannableStorage(storage.type)) continue;
             if (!targetStorageId.empty() && storage.storageId != targetStorageId) continue;
 
             ++result.storageCount;

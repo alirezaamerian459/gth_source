@@ -1,12 +1,23 @@
 #include "gth/storage/LocalStorageDetector.h"
 
 #include <windows.h>
+#include <shlobj.h>
+#include <shobjidl.h>
 
 #include <chrono>
 #include <array>
+#include <cwctype>
+#include <filesystem>
 #include <future>
 #include <memory>
+#include <set>
+#include <string>
 #include <thread>
+#include <utility>
+#include <vector>
+
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "ole32.lib")
 
 namespace gth::storage {
 
@@ -87,6 +98,88 @@ DriveProbeResult probeDriveWithTimeout(const std::wstring& rootPath) {
     return future.get();
 }
 
+std::wstring lowerCopy(std::wstring value) {
+    for (wchar_t& c : value) c = std::towlower(c);
+    return value;
+}
+
+struct DesktopShareShortcut {
+    std::wstring name;
+    std::wstring target;
+};
+
+// Windows does not enumerate an un-mapped UNC shortcut through GetLogicalDrives.
+// Resolve Desktop .lnk files that point at reachable UNC directories so a share
+// such as "Public (NAS...)" participates in the same storage scan as a mapped
+// drive. Only directory targets are accepted; ordinary file/application links
+// are never treated as storage.
+std::vector<DesktopShareShortcut> desktopShareShortcuts() {
+    std::vector<DesktopShareShortcut> result;
+
+    const HRESULT comResult = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const bool ownsCom = SUCCEEDED(comResult);
+    if (FAILED(comResult) && comResult != RPC_E_CHANGED_MODE) return result;
+    struct ComGuard {
+        bool owns = false;
+        ~ComGuard() {
+            if (owns) ::CoUninitialize();
+        }
+    } comGuard{ownsCom};
+
+    PWSTR desktopPath = nullptr;
+    if (FAILED(::SHGetKnownFolderPath(FOLDERID_Desktop, KF_FLAG_DEFAULT, nullptr, &desktopPath)) || !desktopPath) {
+        return result;
+    }
+    const std::filesystem::path desktop(desktopPath);
+    ::CoTaskMemFree(desktopPath);
+
+    std::error_code ec;
+    std::set<std::wstring> seenTargets;
+    for (std::filesystem::directory_iterator it(desktop, std::filesystem::directory_options::skip_permission_denied, ec),
+         end;
+         it != end; it.increment(ec)) {
+        if (ec) {
+            ec.clear();
+            continue;
+        }
+        if (!it->is_regular_file(ec) || ec || lowerCopy(it->path().extension().wstring()) != L".lnk") continue;
+
+        IShellLinkW* shellLink = nullptr;
+        if (FAILED(::CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLinkW,
+                                       reinterpret_cast<void**>(&shellLink))) || shellLink == nullptr) {
+            continue;
+        }
+
+        IPersistFile* persistFile = nullptr;
+        const bool loaded = SUCCEEDED(shellLink->QueryInterface(IID_IPersistFile,
+                                                                  reinterpret_cast<void**>(&persistFile))) &&
+                            persistFile != nullptr && SUCCEEDED(persistFile->Load(it->path().c_str(), STGM_READ));
+        if (!loaded) {
+            if (persistFile) persistFile->Release();
+            shellLink->Release();
+            continue;
+        }
+
+        std::array<wchar_t, MAX_PATH> targetBuffer{};
+        WIN32_FIND_DATAW findData{};
+        const HRESULT pathResult = shellLink->GetPath(targetBuffer.data(), static_cast<int>(targetBuffer.size()),
+                                                       &findData, SLGP_RAWPATH);
+        persistFile->Release();
+        shellLink->Release();
+        if (FAILED(pathResult)) continue;
+
+        const std::wstring target = targetBuffer.data();
+        if (target.rfind(L"\\\\", 0) != 0) continue;
+        const DWORD attributes = ::GetFileAttributesW(target.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0) continue;
+
+        const std::wstring key = lowerCopy(target);
+        if (!seenTargets.insert(key).second) continue;
+        result.push_back({it->path().stem().wstring(), target});
+    }
+    return result;
+}
+
 }  // namespace
 
 std::vector<DetectedStorageInfo> LocalStorageDetector::detect() {
@@ -137,6 +230,22 @@ std::vector<DetectedStorageInfo> LocalStorageDetector::detect() {
         info.name = (probe.volumeOk && !probe.volumeName.empty()) ? (wideToUtf8(probe.volumeName) + " (" + letterUtf8 + ")")
                                                                     : letterUtf8;
 
+        results.push_back(std::move(info));
+    }
+
+    for (const auto& shortcut : desktopShareShortcuts()) {
+        DetectedStorageInfo info;
+        info.type = StorageType::NetworkShare;
+        info.rootPath = wideToUtf8(shortcut.target);
+
+        const DriveProbeResult probe = probeDriveWithTimeout(shortcut.target);
+        info.isAvailable = probe.spaceOk;
+        if (probe.spaceOk) {
+            info.totalCapacityBytes = static_cast<long long>(probe.totalBytes.QuadPart);
+            info.freeSpaceBytes = static_cast<long long>(probe.freeBytesAvailable.QuadPart);
+        }
+        if (probe.volumeOk && !probe.fileSystemName.empty()) info.fileSystem = wideToUtf8(probe.fileSystemName);
+        info.name = wideToUtf8(shortcut.name) + " (" + info.rootPath + ")";
         results.push_back(std::move(info));
     }
 

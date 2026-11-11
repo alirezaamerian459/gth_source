@@ -30,7 +30,7 @@ TEST(JbScanTargetTest, SelectedTargetOnlyAcceptsTheMatchingDrive) {
     EXPECT_FALSE(matchesTarget(second, "drive-1"));
 }
 
-TEST(JbScanTargetTest, UnavailableAndNetworkStoragesAreNeverSelectable) {
+TEST(JbScanTargetTest, UnavailableStoragesAreExcludedButReachableSharesAreSelectable) {
     Storage offline;
     offline.storageId = "offline";
     offline.type = StorageType::LocalHdd;
@@ -42,7 +42,7 @@ TEST(JbScanTargetTest, UnavailableAndNetworkStoragesAreNeverSelectable) {
     network.isAvailable = true;
 
     EXPECT_FALSE(isSelectableStorage(offline));
-    EXPECT_FALSE(isSelectableStorage(network));
+    EXPECT_TRUE(isSelectableStorage(network));
     EXPECT_FALSE(matchesTarget(offline, {}));
-    EXPECT_FALSE(matchesTarget(network, "network"));
+    EXPECT_TRUE(matchesTarget(network, "network"));
 }
