@@ -198,7 +198,7 @@ Secondary tools (currently available through the Updates grid context menu):
 Other UI:
 
 - Filter field for title, title ID, platform, region, or version.
-- PSPrices/cover-art poster cards with title, platform, status, ID, version, and current progress state.
+- PSPrices/cover-art poster cards with title, platform, status, ID, version, and current progress state. The native card board uses responsive columns, an aspect-ratio poster area, consistent 18px gaps, and enough vertical room for two-line titles so metadata and actions do not collide at common window sizes.
 - Background update polling every 15 minutes while the shared job slot is idle.
 - Shared header notification when the latest check reports newly available updates.
 

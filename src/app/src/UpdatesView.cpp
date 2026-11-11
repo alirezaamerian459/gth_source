@@ -31,10 +31,10 @@ constexpr int kRowHeight = 28;
 constexpr int kMainRowTop = 24;
 constexpr int kStatusHeight = 32;
 constexpr int kBoardTop = 236;
-constexpr int kBoardSummaryHeight = 76;
-constexpr int kBoardCardWidth = 274;
-constexpr int kBoardCardHeight = 324;
-constexpr int kBoardSpacing = 16;
+constexpr int kBoardSummaryHeight = 72;
+constexpr int kBoardCardWidth = 300;
+constexpr int kBoardCardHeight = 360;
+constexpr int kBoardSpacing = 18;
 
 // Once a minute: asks whether the Sony automation is due (see IsSonyAutomationDue).
 constexpr UINT_PTR kAutomationTimerId = 2;
@@ -617,9 +617,18 @@ bool UpdatesView::filterMatches(const gth::application::GameLibraryEntry& entry)
     return haystack.find(needle) != std::wstring::npos;
 }
 
-int UpdatesView::boardCardWidth() const { return kBoardCardWidth; }
+int UpdatesView::boardCardWidth() const {
+    if (!board_.IsWindow()) return kBoardCardWidth;
+    CRect client;
+    board_.GetClientRect(&client);
+    const int available = std::max(320, client.Width());
+    const int preferredColumns = available >= 1320 ? 4 : (available >= 940 ? 3 : (available >= 620 ? 2 : 1));
+    return std::max(260, (available - (preferredColumns + 1) * kBoardSpacing) / preferredColumns);
+}
 
-int UpdatesView::boardCardHeight() const { return kBoardCardHeight; }
+int UpdatesView::boardCardHeight() const {
+    return boardCardWidth() >= 300 ? kBoardCardHeight : 338;
+}
 
 void UpdatesView::updateBoardExtent() {
     if (!board_.IsWindow()) return;
@@ -696,7 +705,8 @@ void UpdatesView::paintGameBoard(HDC hdc, const RECT& clientRect, int verticalOf
         const bool selected = listView_.GetSelectedIndex() == static_cast<int>(index);
         theme::FillRoundRect(hdc, card, 10, theme::SurfaceBg(), selected ? theme::Accent() : theme::Border());
 
-        CRect art(card.left, card.top, card.right, card.top + 132);
+        const int artHeight = std::clamp((width * 9) / 16, 132, 176);
+        CRect art(card.left, card.top, card.right, card.top + artHeight);
         if (index < posterTiles_.size()) {
             drawBitmapCover(hdc, posterTiles_[index], art);
         } else {
@@ -720,12 +730,12 @@ void UpdatesView::paintGameBoard(HDC hdc, const RECT& clientRect, int verticalOf
 
         const int left = card.left + 14;
         const int inner = card.Width() - 28;
-        drawText(shortText(Utf8ToWide(entry.title), 34), left, card.top + 144, inner, 38, theme::BodyFontBold(),
-                 theme::TextPrimary(), DT_LEFT | DT_WORDBREAK);
-        drawText(L"ID       " + shortText(Utf8ToWide(entry.titleId), 18), left, card.top + 188, inner, 16,
+        drawText(shortText(Utf8ToWide(entry.title), 42), left, card.top + artHeight + 12, inner, 38,
+                 theme::BodyFontBold(), theme::TextPrimary(), DT_LEFT | DT_WORDBREAK);
+        drawText(L"ID       " + shortText(Utf8ToWide(entry.titleId), 22), left, card.top + artHeight + 58, inner, 16,
                  theme::SmallFont(), theme::TextSecondary(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
         const std::wstring version = entry.currentVersion.empty() ? L"Not detected" : Utf8ToWide(entry.currentVersion);
-        drawText(L"Version  " + shortText(version, 18), left, card.top + 210, inner, 16, theme::SmallFont(),
+        drawText(L"Version  " + shortText(version, 22), left, card.top + artHeight + 80, inner, 16, theme::SmallFont(),
                  theme::TextSecondary(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
         const COLORREF actionColor = state == gth::application::UpdateState::UpdateAvailable

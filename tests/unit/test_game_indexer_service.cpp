@@ -509,6 +509,31 @@ TEST(GameIndexerServiceTest, LibraryStillListsAMissingVariantWhoseFilesAreReally
     EXPECT_EQ(entries[0].variantStatus, GameVariantStatus::Missing);
 }
 
+TEST(GameLibraryServiceTest, HidesEntriesWhenTheirStorageIsOfflineButKeepsTheIndex) {
+    IndexerFixture fixture;
+    GameLibraryService library(fixture.gameRepository, fixture.variantRepository, fixture.versionRepository,
+                               &fixture.storageRepository);
+
+    auto onlineStorage = fixture.storageRepository.getById(fixture.storageId);
+    ASSERT_TRUE(onlineStorage.has_value());
+    onlineStorage->status = StorageStatus::Online;
+    onlineStorage->isAvailable = true;
+    fixture.storageRepository.update(*onlineStorage);
+
+    fixture.scanner.results = {makeVariant("PS5", "Grand Theft Auto V", "Europe", {makeVersion("1.00")})};
+    ASSERT_TRUE(fixture.indexer.scanStorage(fixture.storageId).success);
+    ASSERT_EQ(library.getAllEntries().size(), 1u);
+
+    auto storage = fixture.storageRepository.getById(fixture.storageId);
+    ASSERT_TRUE(storage.has_value());
+    storage->status = StorageStatus::Offline;
+    storage->isAvailable = false;
+    fixture.storageRepository.update(*storage);
+
+    EXPECT_TRUE(library.getAllEntries().empty());
+    EXPECT_EQ(fixture.variantRepository.getByStorageId(fixture.storageId).size(), 1u);
+}
+
 TEST(GameIndexerServiceTest, MarksVersionMissingWhenItsFolderDisappearsButVariantRemains) {
     IndexerFixture fixture;
     fixture.scanner.results = {

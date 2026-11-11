@@ -119,7 +119,7 @@ ServiceContainer::ServiceContainer(const std::filesystem::path& databasePath)
       storageScanner_(indexing::FilesystemStorageScanner(), &titleLookupService_),
       gameIndexer_(storageRepository_, storageScanner_, gameRepository_, gameVariantRepository_,
                    gameVersionRepository_, gameFileRepository_, scanJobRepository_),
-      gameLibraryService_(gameRepository_, gameVariantRepository_, gameVersionRepository_),
+      gameLibraryService_(gameRepository_, gameVariantRepository_, gameVersionRepository_, &storageRepository_),
       localGameBackupSource_(gameVariantRepository_, storageRepository_),
       gamePosterService_(gameVariantRepository_, gameVersionRepository_, gameFileRepository_, storageRepository_),
       sonyUpdateService_(sonyLinkFiles()),

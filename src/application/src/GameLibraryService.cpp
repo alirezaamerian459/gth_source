@@ -1,5 +1,6 @@
 #include "gth/application/indexing/GameLibraryService.h"
 
+#include <unordered_map>
 #include <unordered_set>
 
 #include "gth/application/indexing/ContentIds.h"
@@ -10,8 +11,12 @@ using core::GameVariantStatus;
 
 GameLibraryService::GameLibraryService(core::IGameRepository& gameRepository,
                                         core::IGameVariantRepository& variantRepository,
-                                        core::IGameVersionRepository& versionRepository)
-    : gameRepository_(gameRepository), variantRepository_(variantRepository), versionRepository_(versionRepository) {}
+                                        core::IGameVersionRepository& versionRepository,
+                                        core::IStorageRepository* storageRepository)
+    : gameRepository_(gameRepository),
+      variantRepository_(variantRepository),
+      versionRepository_(versionRepository),
+      storageRepository_(storageRepository) {}
 
 std::vector<GameLibraryEntry> GameLibraryService::getAllEntries() {
     struct Row {
@@ -21,8 +26,25 @@ std::vector<GameLibraryEntry> GameLibraryService::getAllEntries() {
     std::vector<Row> rows;
     std::unordered_set<std::string> activeVersionPaths;
 
+    // Keep indexed history when a removable drive is unplugged, but do not
+    // present those rows as playable library entries until the storage is
+    // reachable again. StorageService updates this persisted availability at
+    // each local rescan, so the Games and Updates pages agree immediately
+    // without deleting the user's index.
+    std::unordered_map<std::string, bool> storageAvailability;
+    if (storageRepository_ != nullptr) {
+        for (const auto& storage : storageRepository_->getAll()) {
+            storageAvailability.emplace(storage.storageId,
+                                        storage.isAvailable && storage.status == core::StorageStatus::Online);
+        }
+    }
+
     for (const auto& game : gameRepository_.getAll()) {
         for (const auto& variant : variantRepository_.getByGameId(game.gameId)) {
+            if (storageRepository_ != nullptr) {
+                const auto storage = storageAvailability.find(variant.storageId);
+                if (storage == storageAvailability.end() || !storage->second) continue;
+            }
             Row row;
             GameLibraryEntry& entry = row.entry;
             entry.gameId = game.gameId;
