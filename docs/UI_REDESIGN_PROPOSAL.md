@@ -134,7 +134,9 @@ The JB page finds jailbreak-style game folders and archives on local drives, sep
 
 #### Current controls and data
 
-- **Scan Local HDDs** — scans local, available drives for folders named `hacked` or `p30day`; inspects child directories/files for package, dump, patch, DLC, and related markers; identifies probable title IDs/platforms; records exFAT and scan counts.
+- **Scan target** — a visible selector with `All local drives` plus one entry for each available local HDD, SSD, external HDD, or USB storage (including its friendly name and root path).
+- **Scan all local drives / Scan selected drive** — scans the selected scope for folders named `hacked` or `p30day`; when one drive is selected, traversal is restricted to that storage only. The scan inspects child directories/files for package, dump, patch, DLC, and related markers; identifies probable title IDs/platforms; and records exFAT and scan counts.
+- The selected target is captured when the scan starts, so changing storage selection cannot redirect an active scan.
 - Poster grid — title, platform, path-derived details, artifact summary, and poster.
 - Status line — drives scanned, JB folders found, exFAT count, and scan errors.
 - The page automatically starts its first scan when opened.

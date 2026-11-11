@@ -32,6 +32,7 @@ public:
         MESSAGE_HANDLER(WM_CTLCOLORSTATIC, OnCtlColorStatic)
         MESSAGE_HANDLER(PosterCache::kPosterReadyMessage, OnPosterReady)
         COMMAND_ID_HANDLER(IDC_JB_SCAN_BUTTON, OnScanClick)
+        COMMAND_HANDLER(IDC_JB_STORAGE_COMBO, CBN_SELCHANGE, OnTargetChange)
     END_MSG_MAP()
 
     void init(gth::application::IStorageService& storageService, PosterCache& posterCache,
@@ -61,6 +62,7 @@ private:
     }
     LRESULT OnCtlColorStatic(UINT, WPARAM wParam, LPARAM, BOOL&);
     LRESULT OnScanClick(WORD, WORD, HWND, BOOL&);
+    LRESULT OnTargetChange(WORD, WORD, HWND, BOOL&);
     LRESULT OnPosterReady(UINT, WPARAM, LPARAM, BOOL&) {
         refresh();
         return 0;
@@ -68,12 +70,23 @@ private:
 
     void startScan();
     void renderEntries();
+    void refreshStorageTargets();
+
+    struct ScanTarget {
+        std::string storageId;
+        std::wstring label;
+    };
+
+    std::string selectedTargetId() const;
+    std::wstring selectedTargetLabel() const;
 
     gth::application::IStorageService* storageService_ = nullptr;
     PosterCache* posterCache_ = nullptr;
     gth::application::IGamePosterService* posterService_ = nullptr;
     CImageList posterImageList_;
     CStatic titleLabel_;
+    CStatic targetLabel_;
+    CComboBox storageCombo_;
     ModernButton scanButton_;
     CStatic statusLabel_;
     CListViewCtrl listView_;
@@ -82,9 +95,11 @@ private:
     std::atomic<bool> scanInProgress_{false};
     bool hasScanned_ = false;
     std::vector<Entry> entries_;
+    std::vector<ScanTarget> scanTargets_;
     int libraryFolderCount_ = 0;
     int storageCount_ = 0;
     int exfatStorageCount_ = 0;
     std::wstring scanError_;
+    std::wstring scanScopeLabel_ = L"All local drives";
 };
 

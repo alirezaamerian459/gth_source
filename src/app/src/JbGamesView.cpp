@@ -9,11 +9,11 @@
 #include <set>
 #include <string_view>
 
+#include "JbScanTarget.h"
 #include "gth/core/entities/Storage.h"
-#include "gth/core/enums/StorageType.h"
 
 namespace {
-constexpr int kTopAreaHeight = 88;
+constexpr int kTopAreaHeight = 112;
 constexpr int kMargin = 24;
 constexpr UINT_PTR kScanPollTimerId = 1;
 constexpr UINT kScanPollIntervalMs = 200;
@@ -37,11 +37,6 @@ bool containsIgnoreCase(const std::wstring& value, const wchar_t* needle) {
 
 bool isJbLibraryFolder(const std::wstring& name) {
     return equalsIgnoreCase(name, L"hacked") || equalsIgnoreCase(name, L"p30day");
-}
-
-bool isLocalDrive(gth::core::StorageType type) {
-    return type == gth::core::StorageType::LocalHdd || type == gth::core::StorageType::LocalSsd ||
-           type == gth::core::StorageType::ExternalHdd || type == gth::core::StorageType::Usb;
 }
 
 std::string titleIdFromName(const std::wstring& name) {
@@ -157,17 +152,28 @@ std::filesystem::path extendedPath(const std::wstring& raw) {
 }  // namespace
 
 LRESULT JbGamesView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
-    CRect titleRect(kMargin, 24, kMargin + 360, 58);
+    CRect titleRect(kMargin, 18, kMargin + 260, 52);
     titleLabel_.Create(m_hWnd, titleRect, L"JB Library", WS_CHILD | WS_VISIBLE);
     titleLabel_.SetFont(theme::TitleFont());
 
-    CRect scanRect(kMargin + 380, 28, kMargin + 560, 60);
-    scanButton_.Create(m_hWnd, scanRect, L"Scan Local HDDs", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
+    CRect targetLabelRect(kMargin + 280, 22, kMargin + 370, 50);
+    targetLabel_.Create(m_hWnd, targetLabelRect, L"Scan target:", WS_CHILD | WS_VISIBLE);
+    targetLabel_.SetFont(theme::BodyFont());
+
+    CRect storageComboRect(kMargin + 380, 18, kMargin + 630, 48);
+    storageCombo_.Create(m_hWnd, storageComboRect, L"",
+                         WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, 0,
+                         IDC_JB_STORAGE_COMBO);
+    storageCombo_.SetFont(theme::BodyFont());
+    ::SetWindowTheme(storageCombo_.m_hWnd, L"DarkMode_CFD", nullptr);
+
+    CRect scanRect(kMargin + 650, 18, kMargin + 830, 50);
+    scanButton_.Create(m_hWnd, scanRect, L"Scan all local drives", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
                        IDC_JB_SCAN_BUTTON);
     scanButton_.SetFont(theme::BodyFont());
     scanButton_.setKind(ModernButton::Kind::Primary);
 
-    CRect statusRect(kMargin + 580, 18, 1100, 70);
+    CRect statusRect(kMargin + 280, 56, 1100, 96);
     statusLabel_.Create(m_hWnd, statusRect, L"", WS_CHILD | WS_VISIBLE);
     statusLabel_.SetFont(theme::BodyFont());
 
@@ -195,8 +201,11 @@ LRESULT JbGamesView::OnDestroy(UINT, WPARAM, LPARAM, BOOL& bHandled) {
 LRESULT JbGamesView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {
     const int width = LOWORD(lParam);
     const int height = HIWORD(lParam);
+    if (targetLabel_.IsWindow()) targetLabel_.MoveWindow(kMargin + 280, 22, 90, 28);
+    if (storageCombo_.IsWindow()) storageCombo_.MoveWindow(kMargin + 380, 18, 250, 30);
+    if (scanButton_.IsWindow()) scanButton_.MoveWindow(kMargin + 650, 18, 180, 32);
     if (statusLabel_.IsWindow()) {
-        statusLabel_.MoveWindow(kMargin + 580, 12, std::max(200, width - kMargin - 580), 70);
+        statusLabel_.MoveWindow(kMargin + 280, 56, std::max(260, width - kMargin - 280), 44);
     }
     if (listView_.IsWindow()) {
         listView_.MoveWindow(kMargin, kTopAreaHeight, std::max(100, width - 2 * kMargin),
@@ -209,6 +218,50 @@ LRESULT JbGamesView::OnCtlColorStatic(UINT, WPARAM wParam, LPARAM, BOOL&) {
     return HandleCtlColorStatic(wParam);
 }
 
+std::string JbGamesView::selectedTargetId() const {
+    const int index = storageCombo_.GetCurSel();
+    if (index < 0 || static_cast<size_t>(index) >= scanTargets_.size()) return {};
+    return scanTargets_[static_cast<size_t>(index)].storageId;
+}
+
+std::wstring JbGamesView::selectedTargetLabel() const {
+    const int index = storageCombo_.GetCurSel();
+    if (index < 0 || static_cast<size_t>(index) >= scanTargets_.size()) return L"All local drives";
+    return scanTargets_[static_cast<size_t>(index)].label;
+}
+
+void JbGamesView::refreshStorageTargets() {
+    if (!storageService_ || !storageCombo_.IsWindow()) return;
+
+    const std::string previousId = selectedTargetId();
+    scanTargets_.clear();
+    scanTargets_.push_back({{}, L"All local drives"});
+
+    auto storages = storageService_->getAllStorages();
+    std::sort(storages.begin(), storages.end(), [](const auto& left, const auto& right) {
+        return left.rootPath < right.rootPath;
+    });
+    for (const auto& storage : storages) {
+        if (!gth::app::jb::isSelectableStorage(storage)) continue;
+        const std::wstring name = Utf8ToWide(storage.name.empty() ? storage.rootPath : storage.name);
+        const std::wstring root = Utf8ToWide(storage.rootPath);
+        scanTargets_.push_back({storage.storageId, std::format(L"{} ({})", name, root)});
+    }
+
+    storageCombo_.ResetContent();
+    int selectedIndex = 0;
+    for (size_t index = 0; index < scanTargets_.size(); ++index) {
+        storageCombo_.AddString(scanTargets_[index].label.c_str());
+        if (!previousId.empty() && scanTargets_[index].storageId == previousId) {
+            selectedIndex = static_cast<int>(index);
+        }
+    }
+    storageCombo_.SetCurSel(selectedIndex);
+    if (scanButton_.IsWindow()) {
+        scanButton_.SetWindowText(selectedIndex == 0 ? L"Scan all local drives" : L"Scan selected drive");
+    }
+}
+
 void JbGamesView::refresh() {
     if (!listView_.IsWindow()) return;
     renderEntries();
@@ -216,6 +269,7 @@ void JbGamesView::refresh() {
 }
 
 void JbGamesView::renderEntries() {
+    refreshStorageTargets();
     theme::ApplyListViewTheme(listView_);
     listView_.DeleteAllItems();
 
@@ -237,15 +291,18 @@ void JbGamesView::renderEntries() {
         listView_.InsertItem(row++, label.c_str(), imageIndex);
     }
 
-    scanButton_.EnableWindow(scanInProgress_.load() ? FALSE : TRUE);
-    if (scanInProgress_.load()) {
-        statusLabel_.SetWindowText(L"Scanning local drives for JB folders named 'hacked' or 'p30day'...");
+    const bool scanInProgress = scanInProgress_.load();
+    scanButton_.EnableWindow(scanInProgress ? FALSE : TRUE);
+    storageCombo_.EnableWindow(scanInProgress ? FALSE : TRUE);
+    if (scanInProgress) {
+        statusLabel_.SetWindowText(
+            std::format(L"Scanning {} for JB folders named 'hacked' or 'p30day'...", scanScopeLabel_).c_str());
     } else if (!hasScanned_) {
         statusLabel_.SetWindowText(L"No scan has run yet.");
     } else {
         std::wstring status = std::format(
-            L"Found {} game(s) in {} JB folder(s) across {} local drive(s), including {} exFAT drive(s).",
-            entries_.size(), libraryFolderCount_, storageCount_, exfatStorageCount_);
+            L"Found {} game(s) in {} JB folder(s) across {} local drive(s), including {} exFAT drive(s). [{}]",
+            entries_.size(), libraryFolderCount_, storageCount_, exfatStorageCount_, scanScopeLabel_);
         if (!scanError_.empty()) status += std::format(L"\r\n{}", scanError_);
         statusLabel_.SetWindowText(status.c_str());
     }
@@ -256,9 +313,20 @@ LRESULT JbGamesView::OnScanClick(WORD, WORD, HWND, BOOL&) {
     return 0;
 }
 
+LRESULT JbGamesView::OnTargetChange(WORD, WORD, HWND, BOOL&) {
+    if (scanInProgress_.load()) return 0;
+    const int index = storageCombo_.GetCurSel();
+    scanButton_.SetWindowText(index <= 0 ? L"Scan all local drives" : L"Scan selected drive");
+    statusLabel_.SetWindowText(std::format(L"Ready to scan {}.", selectedTargetLabel()).c_str());
+    return 0;
+}
+
 void JbGamesView::startScan() {
     if (!storageService_ || scanInProgress_.exchange(true)) return;
     if (scanThread_.joinable()) scanThread_.join();
+
+    const std::string targetStorageId = selectedTargetId();
+    scanScopeLabel_ = selectedTargetLabel();
 
     entries_.clear();
     libraryFolderCount_ = 0;
@@ -267,7 +335,7 @@ void JbGamesView::startScan() {
     scanError_.clear();
     renderEntries();
 
-    scanThread_ = std::jthread([this] {
+    scanThread_ = std::jthread([this, targetStorageId] {
         std::vector<Entry> found;
         std::set<std::wstring> seenPaths;
         int libraryFolders = 0;
@@ -280,7 +348,7 @@ void JbGamesView::startScan() {
             storageService_->detectAndSyncLocalStorages();
             const auto storages = storageService_->getAllStorages();
             for (const auto& storage : storages) {
-                if (!storage.isAvailable || !isLocalDrive(storage.type)) continue;
+                if (!gth::app::jb::matchesTarget(storage, targetStorageId)) continue;
                 ++drives;
 
                 const std::wstring rawRoot = Utf8ToWide(storage.rootPath);
