@@ -1,5 +1,6 @@
 #include "gth/application/indexing/GameLibraryService.h"
 
+#include <filesystem>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -8,6 +9,20 @@
 namespace gth::application {
 
 using core::GameVariantStatus;
+
+namespace {
+
+bool localStorageRootIsReachable(const core::Storage& storage) {
+    if (storage.type != core::StorageType::LocalHdd && storage.type != core::StorageType::LocalSsd &&
+        storage.type != core::StorageType::ExternalHdd && storage.type != core::StorageType::Usb) {
+        return true;
+    }
+
+    std::error_code ec;
+    return std::filesystem::exists(storage.rootPath, ec) && !ec;
+}
+
+}  // namespace
 
 GameLibraryService::GameLibraryService(core::IGameRepository& gameRepository,
                                         core::IGameVariantRepository& variantRepository,
@@ -35,7 +50,8 @@ std::vector<GameLibraryEntry> GameLibraryService::getAllEntries() {
     if (storageRepository_ != nullptr) {
         for (const auto& storage : storageRepository_->getAll()) {
             storageAvailability.emplace(storage.storageId,
-                                        storage.isAvailable && storage.status == core::StorageStatus::Online);
+                                        storage.isAvailable && storage.status == core::StorageStatus::Online &&
+                                            localStorageRootIsReachable(storage));
         }
     }
 

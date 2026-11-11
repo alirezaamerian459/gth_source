@@ -516,6 +516,7 @@ TEST(GameLibraryServiceTest, HidesEntriesWhenTheirStorageIsOfflineButKeepsTheInd
 
     auto onlineStorage = fixture.storageRepository.getById(fixture.storageId);
     ASSERT_TRUE(onlineStorage.has_value());
+    onlineStorage->rootPath = std::filesystem::temp_directory_path().string();
     onlineStorage->status = StorageStatus::Online;
     onlineStorage->isAvailable = true;
     fixture.storageRepository.update(*onlineStorage);
