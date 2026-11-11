@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "gth/application/storage/StorageService.h"
@@ -84,6 +85,53 @@ TEST(SmartParseTest, ShortOrMissingBuffersGiveNothing) {
     EXPECT_TRUE(parseAtaSmartAttributes(small, sizeof(small)).empty());
     EXPECT_TRUE(parseAtaSmartAttributes(nullptr, 512).empty());
     EXPECT_TRUE(parseAtaSmartAttributes(dataSector({}).data(), 512).empty());  // all entries unused
+}
+
+TEST(SmartParseTest, ParsesQnapTextReportAndExtractsDiskMetrics) {
+    constexpr std::string_view report = R"TEXT(
+===== Disk 8 =====
+Status : Good
+Attr Count
+1 Raw_Read_Error_Rate 083 064 044 222774247 Good
+4 Start_Stop_Count 099 099 020 1438 Good
+9 Power-On_Hours 093 093 000 6936 Good
+12 Power_Cycle_Count 100 100 020 722 Good
+187 Reported_Uncorrect_Error 100 100 000 0 Good
+188 Command_Timeout 100 001 000 412323152565 Good
+193 Load_Cycle_Count 100 100 000 1567 Good
+194 Temperature_Celsius 042 057 000 42 Good
+197 Current_Pending_Sector 100 100 000 0 Good
+198 Uncorrectable_Sector_Count 100 100 000 0 Good
+241 Total_LBA_Written 100 253 000 76407384898 Good
+242 Total_LBA_Read 100 253 000 908698776560 Good
+)TEXT";
+
+    const auto parsed = parseQnapSmartReport(report);
+    ASSERT_TRUE(parsed.has_value());
+    EXPECT_EQ(parsed->bay, 8);
+    ASSERT_EQ(parsed->attributes.size(), 12u);
+    EXPECT_EQ(parsed->attributes.front().name, "Raw_Read_Error_Rate");
+    EXPECT_EQ(parsed->attributes.front().status, "Good");
+
+    const auto metrics = smartMetrics(parsed->attributes);
+    EXPECT_EQ(metrics.rawReadErrorRate, 222774247u);
+    EXPECT_EQ(metrics.startStopCount, 1438u);
+    EXPECT_EQ(metrics.powerOnHours, 6936u);
+    EXPECT_EQ(metrics.powerCycleCount, 722u);
+    EXPECT_EQ(metrics.commandTimeoutCount, 412323152565ull);
+    EXPECT_EQ(metrics.loadCycleCount, 1567u);
+    EXPECT_EQ(metrics.totalLbaWritten, 76407384898ull);
+    EXPECT_EQ(metrics.totalLbaRead, 908698776560ull);
+
+    const auto disk = physicalDiskHealthFromQnapReport(*parsed);
+    EXPECT_EQ(disk.diskNumber, 8);
+    EXPECT_EQ(disk.temperatureCelsius, 42);
+    EXPECT_EQ(disk.healthPercent, 100);
+    EXPECT_EQ(disk.smartStatus, "Good");
+}
+
+TEST(SmartParseTest, RejectsQnapTextWithoutAttributeRows) {
+    EXPECT_FALSE(parseQnapSmartReport("===== Disk 8 =====\nStatus : Good\n").has_value());
 }
 
 TEST(SmartTemperatureTest, ReadsTheFirstRawByteOfAttribute194OrFallsBackTo190) {

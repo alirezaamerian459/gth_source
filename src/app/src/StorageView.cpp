@@ -56,6 +56,18 @@ std::wstring formatSizeBytes(unsigned long long bytes) {
     return buffer.data();
 }
 
+std::wstring smartMetricValue(const std::optional<std::uint64_t>& value) {
+    return value.has_value() ? std::format(L"{}", *value) : L"-";
+}
+
+int smartMetricRows(const gth::core::PhysicalDiskHealth& disk, bool detailsVisible) {
+    return detailsVisible && disk.smartMetrics.hasTelemetry() ? 4 : 0;
+}
+
+bool smartStatusNeedsAttention(const std::string& status) {
+    return !status.empty() && status != "Good" && status != "Healthy" && status != "OK";
+}
+
 std::wstring getEditText(CEdit& edit) {
     const int len = edit.GetWindowTextLength();
     std::wstring text(static_cast<size_t>(len) + 1, L'\0');
@@ -306,6 +318,7 @@ int StorageView::storageCardHeight(const StorageCard& card) const {
         if (card.storage.healthAlertReason.has_value()) height += 18;
         for (const auto& disk : card.disks) {
             if (!disk.healthDetail.empty()) height += 18;
+            height += smartMetricRows(disk, healthDetailsVisible_) * 18;
         }
     }
     return height;
@@ -327,6 +340,7 @@ void StorageView::refresh() {
         for (const auto& disk : card.disks) {
             card.flagged = card.flagged ||
                            (disk.healthPercent.has_value() && *disk.healthPercent < 100) ||
+                           smartStatusNeedsAttention(disk.smartStatus) ||
                            (disk.temperatureCelsius.has_value() &&
                             *disk.temperatureCelsius > gth::core::kOverheatThresholdCelsius);
         }
@@ -491,7 +505,7 @@ void StorageView::paintCategoryBoard(HDC hdc, const RECT& clientRect, int horizo
         int detailY = top + 121;
         for (const auto& disk : card.disks) {
             const bool hasDetail = healthDetailsVisible_ && !disk.healthDetail.empty();
-            const int diskHeight = 48 + (hasDetail ? 18 : 0);
+            const int diskHeight = 48 + (hasDetail ? 18 : 0) + smartMetricRows(disk, healthDetailsVisible_) * 18;
             CRect diskRect(storageLeft, detailY - 3, storageRight, detailY + diskHeight - 3);
             theme::FillRoundRect(hdc, diskRect, 6, theme::SurfaceBg(), theme::Border());
 
@@ -501,9 +515,11 @@ void StorageView::paintCategoryBoard(HDC hdc, const RECT& clientRect, int horizo
             drawText(title, storageLeft + 10, detailY + 3, std::max(0, innerWidth - 20), 18,
                      theme::BodyFontBold(), theme::TextPrimary(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
-            const std::wstring diskStatus = L"Health  " + healthText(disk.healthPercent) + L"     Temperature  " +
-                                             temperatureText(disk.temperatureCelsius);
+            std::wstring diskStatus = L"Health  " + healthText(disk.healthPercent) + L"     Temperature  " +
+                                       temperatureText(disk.temperatureCelsius);
+            if (!disk.smartStatus.empty()) diskStatus += L"     SMART  " + Utf8ToWide(disk.smartStatus);
             const bool diskFlagged = (disk.healthPercent.has_value() && *disk.healthPercent < 70) ||
+                                     smartStatusNeedsAttention(disk.smartStatus) ||
                                      (disk.temperatureCelsius.has_value() &&
                                       *disk.temperatureCelsius > gth::core::kOverheatThresholdCelsius);
             drawText(diskStatus, storageLeft + 10, detailY + 22, std::max(0, innerWidth - 20), 18,
@@ -513,6 +529,34 @@ void StorageView::paintCategoryBoard(HDC hdc, const RECT& clientRect, int horizo
                 drawText(Utf8ToWide(disk.healthDetail), storageLeft + 10, detailY + 40,
                          std::max(0, innerWidth - 20), 18, theme::SmallFont(), theme::TextSecondary(),
                          DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            }
+            int metricsY = detailY + 40 + (hasDetail ? 18 : 0);
+            if (smartMetricRows(disk, healthDetailsVisible_) > 0) {
+                const auto& metrics = disk.smartMetrics;
+                const std::wstring usage = std::format(
+                    L"Power-on {} h  ·  Start/stop {}  ·  Power cycles {}  ·  Load cycles {}",
+                    smartMetricValue(metrics.powerOnHours), smartMetricValue(metrics.startStopCount),
+                    smartMetricValue(metrics.powerCycleCount), smartMetricValue(metrics.loadCycleCount));
+                const std::wstring errors = std::format(
+                    L"Reallocated {}  ·  Pending {}  ·  Uncorrectable {}  ·  Timeouts {}",
+                    smartMetricValue(metrics.reallocatedSectorCount), smartMetricValue(metrics.pendingSectorCount),
+                    smartMetricValue(metrics.uncorrectableSectorCount), smartMetricValue(metrics.commandTimeoutCount));
+                const std::wstring transport = std::format(
+                    L"Read errors {}  ·  Seek errors {}  ·  Spin retries {}  ·  End-to-end {}",
+                    smartMetricValue(metrics.rawReadErrorRate), smartMetricValue(metrics.seekErrorRate),
+                    smartMetricValue(metrics.spinRetryCount), smartMetricValue(metrics.endToEndErrorCount));
+                const std::wstring io = std::format(
+                    L"LBA written {}  ·  LBA read {}  ·  Head-flying {} h",
+                    smartMetricValue(metrics.totalLbaWritten), smartMetricValue(metrics.totalLbaRead),
+                    smartMetricValue(metrics.headFlyingHours));
+                drawText(usage, storageLeft + 10, metricsY, std::max(0, innerWidth - 20), 18,
+                         theme::SmallFont(), theme::TextSecondary(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                drawText(errors, storageLeft + 10, metricsY + 18, std::max(0, innerWidth - 20), 18,
+                         theme::SmallFont(), theme::TextSecondary(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                drawText(transport, storageLeft + 10, metricsY + 36, std::max(0, innerWidth - 20), 18,
+                         theme::SmallFont(), theme::TextSecondary(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                drawText(io, storageLeft + 10, metricsY + 54, std::max(0, innerWidth - 20), 18,
+                         theme::SmallFont(), theme::TextSecondary(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
             }
             detailY += diskHeight + 6;
         }

@@ -25,6 +25,8 @@ This is the intended dependency direction, not a substitute for inspecting the a
 
 The application-level `JbLibraryService` is the shared read-only catalog for the JB UI, the hosted FTP server's virtual `/JB Library` mapping, and the LAN Console Proxy's local-file fallback. The core FTP server receives sanitized virtual mappings rather than depending on application services directly.
 
+Storage health keeps the vendor-neutral SMART counters in `core::PhysicalDiskHealth::SmartMetrics`. The storage-detection module fills them from ATA data and parses the QNAP `qcli_hdd` text shape for supplied per-bay reports. Raw counters remain raw because QNAP/drive vendors can use different units; only documented temperature and health rules are interpreted. Reachable NAS/SMB roots refresh capacity/free space through Windows' filesystem API, while missing physical SMART data stays unknown.
+
 ## Boundaries
 
 - Keep core types independent of concrete database, network, UI, and operating-system adapters.

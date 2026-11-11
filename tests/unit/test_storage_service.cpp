@@ -156,6 +156,38 @@ TEST(StorageServiceTest, DetectAndSyncNeverTouchesNonLocallyDetectableStorage) {
     EXPECT_EQ(all[0].status, StorageStatus::Online);
 }
 
+TEST(StorageServiceTest, DetectAndSyncRefreshesReachableNasCapacity) {
+    Database db(":memory:");
+    Migrator::applyMigrations(db);
+    StorageRepository repo(db);
+
+    const auto dir = gth::test::testTempRoot() / "gth_reachable_nas_capacity_test";
+    std::filesystem::create_directories(dir);
+    Storage existing;
+    existing.name = "QNAP";
+    existing.rootPath = dir.string();
+    existing.type = StorageType::Nas;
+    existing.totalCapacityBytes = 0;
+    existing.freeSpaceBytes = 0;
+    existing.status = StorageStatus::Unknown;
+    existing.isAvailable = false;
+    repo.add(existing);
+
+    FakeStorageDetector detector;
+    StorageService service(repo, detector);
+    const auto result = service.detectAndSyncLocalStorages();
+
+    EXPECT_EQ(result.updated, 1);
+    const auto found = repo.getByRootPath(dir.string());
+    ASSERT_TRUE(found.has_value());
+    EXPECT_GT(found->totalCapacityBytes, 0);
+    EXPECT_GE(found->freeSpaceBytes, 0);
+    EXPECT_EQ(found->status, StorageStatus::Online);
+    EXPECT_TRUE(found->isAvailable);
+
+    std::filesystem::remove_all(dir);
+}
+
 TEST(StorageServiceTest, DetectAndSyncPopulatesHealthWhenProviderConfigured) {
     Database db(":memory:");
     Migrator::applyMigrations(db);

@@ -28,6 +28,8 @@ The source tree and current documentation contain code for:
 4. Network discovery/reachability, local services, and remote health reporting.
 5. Database-backed settings, logs/reports, storage health, and backup transport.
 
+Storage health accepts per-disk SMART telemetry, including QNAP qcli-style reports, and keeps vendor raw counters separate from calculated health/temperature values. NAS share capacity is refreshed independently from physical-disk SMART data.
+
 These are areas present in the repository, not guarantees that every flow is complete, supported, or verified. Consult source and tests before making user-facing claims.
 
 ## Security and product boundaries

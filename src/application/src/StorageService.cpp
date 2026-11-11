@@ -67,6 +67,25 @@ std::string deriveStorageName(const std::string& path) {
     return filename.empty() ? path : filename;
 }
 
+bool isRemoteStorageType(StorageType type) {
+    return type == StorageType::Nas || type == StorageType::SmbShare;
+}
+
+bool refreshRemoteCapacity(Storage& storage) {
+    ULARGE_INTEGER freeBytes{};
+    ULARGE_INTEGER totalBytes{};
+    if (!::GetDiskFreeSpaceExW(utf8ToWide(storage.rootPath).c_str(), &freeBytes, &totalBytes, nullptr)) return false;
+
+    storage.totalCapacityBytes = static_cast<long long>(std::bit_cast<std::uint64_t>(totalBytes));
+    storage.freeSpaceBytes = static_cast<long long>(std::bit_cast<std::uint64_t>(freeBytes));
+    storage.usedSpaceBytes = std::max<long long>(0, storage.totalCapacityBytes - storage.freeSpaceBytes);
+    storage.status = StorageStatus::Online;
+    storage.isAvailable = true;
+    storage.lastScan = core::Clock::utcNowIso8601();
+    storage.updatedAt = core::Clock::utcNowIso8601();
+    return true;
+}
+
 // `disksOut` receives the per-disk readings when the provider can tell disks apart (else it is left empty).
 void applyDetection(Storage& storage, const DetectedStorageInfo& info, core::IStorageHealthProvider* healthProvider,
                     std::vector<core::PhysicalDiskHealth>& disksOut) {
@@ -175,6 +194,18 @@ StorageSyncResult StorageService::detectAndSyncLocalStorages() {
             repository_.add(storage);
             result.added++;
         }
+    }
+
+    // Local-drive detection deliberately excludes network paths. Refresh
+    // reachable NAS/SMB capacity separately so used/free values on the
+    // Storage page remain current without changing the existing offline
+    // reconciliation rules for local disks.
+    for (const auto& storage : existing) {
+        if (!isRemoteStorageType(storage.type)) continue;
+        Storage refreshed = storage;
+        if (!refreshRemoteCapacity(refreshed)) continue;
+        repository_.update(refreshed);
+        result.updated++;
     }
 
     for (const auto& storage : existing) {

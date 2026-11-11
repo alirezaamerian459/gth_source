@@ -480,6 +480,7 @@ PhysicalDiskHealth queryDiskBlocking(int driveNumber) {
     std::optional<HealthAssessment> smart;
     if (const auto attributes = readAtaSmartAttributes(driveNumber); attributes.has_value()) {
         smart = assessAtaHealth(*attributes, solidState);
+        info.smartMetrics = smartMetrics(*attributes);
         if (!info.temperatureCelsius.has_value()) info.temperatureCelsius = ataTemperatureCelsius(*attributes);
     } else if (const auto nvme = readNvmeHealth(driveNumber); nvme.has_value()) {
         smart = assessNvmeHealth(*nvme);
@@ -492,6 +493,9 @@ PhysicalDiskHealth queryDiskBlocking(int driveNumber) {
         if (windowsHealth.has_value() && *windowsHealth < smart->percent) {
             info.healthDetail = *windowsHealth <= 10 ? "Windows reports this disk as Unhealthy" : "Windows reports a warning for this disk";
         }
+        info.smartStatus = info.healthPercent.has_value()
+                               ? (*info.healthPercent >= 70 ? "Good" : (*info.healthPercent >= 40 ? "Warning" : "Bad"))
+                               : std::string();
     }
     if (!info.healthPercent.has_value()) info.healthPercent = readHealthViaPredictFailure(driveNumber);
     if (info.model.empty()) info.model = readModelViaIoctl(driveNumber);

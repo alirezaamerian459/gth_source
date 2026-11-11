@@ -264,15 +264,16 @@ Storage is the source of truth for discovered storage roots, capacity, allocatio
 - Category cards — each saved category is shown beside other categories; each contains its assigned storages.
 - **Right-click category card** — add an unassigned storage, remove a member storage, or delete the category. Deleting a category does not delete the storage or game data.
 - **Other storages** — automatically contains detected storages that are not assigned to a category.
-- Each storage card shows root/name, type/status, capacity bar, aggregate health/temperature, and physical disk cards with disk number, model, size, health, temperature, and optional detail.
+- Each storage card shows root/name, type/status, capacity bar, aggregate health/temperature, and physical disk cards with disk number, model, size, health, temperature, and optional detail. Expanded disk details also show the supported SMART counters (power-on hours, start/stop and power cycles, load cycles, sector/error counters, and vendor-unit LBA read/write counters) without pretending that raw vendor units are bytes.
 - Storage scanning auto-refreshes while the page is visible and includes the explicit Rescan retry.
 
 #### What it needs to work
 
 - `IStorageService`, SQLite storage/category repositories, and migrations;
 - local volume enumeration and availability checks;
-- physical-disk/SMART/NVMe health providers where supported;
+- physical-disk/SMART/NVMe health providers where supported; the storage-health layer also accepts the QNAP `qcli_hdd` text layout for supplied per-bay reports;
 - permission to query Windows storage and WMI/health APIs;
+- network-share capacity/free-space queries for reachable NAS shares;
 - no Internet connection for core storage data.
 
 #### Proposed UI

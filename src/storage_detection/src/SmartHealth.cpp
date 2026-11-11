@@ -1,7 +1,10 @@
 #include "gth/storage/SmartHealth.h"
 
 #include <algorithm>
+#include <charconv>
+#include <cctype>
 #include <format>
+#include <sstream>
 
 namespace gth::storage {
 
@@ -102,6 +105,116 @@ std::vector<SmartAttribute> parseAtaSmartAttributes(const unsigned char* data, s
     return attributes;
 }
 
+namespace {
+
+std::string trimAscii(std::string value) {
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) value.erase(value.begin());
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back()))) value.pop_back();
+    return value;
+}
+
+std::optional<unsigned long long> parseUnsigned(std::string_view text) {
+    if (text.empty()) return std::nullopt;
+    unsigned long long value = 0;
+    const auto result = std::from_chars(text.data(), text.data() + text.size(), value, 10);
+    if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) return std::nullopt;
+    return value;
+}
+
+std::optional<int> parseInt(std::string_view text) {
+    if (text.empty()) return std::nullopt;
+    int value = 0;
+    const auto result = std::from_chars(text.data(), text.data() + text.size(), value, 10);
+    if (result.ec != std::errc{} || result.ptr != text.data() + text.size()) return std::nullopt;
+    return value;
+}
+
+std::vector<std::string> tokens(std::string_view line) {
+    std::istringstream stream{std::string(line)};
+    std::vector<std::string> result;
+    std::string token;
+    while (stream >> token) result.push_back(std::move(token));
+    return result;
+}
+
+const SmartAttribute* findAttribute(const std::vector<SmartAttribute>& attributes, unsigned char id) {
+    for (const auto& attribute : attributes) {
+        if (attribute.id == id) return &attribute;
+    }
+    return nullptr;
+}
+
+std::optional<std::uint64_t> rawValue(const std::vector<SmartAttribute>& attributes, unsigned char id) {
+    const auto* attribute = findAttribute(attributes, id);
+    return attribute == nullptr ? std::nullopt : std::optional<std::uint64_t>(attribute->raw);
+}
+
+}  // namespace
+
+std::optional<QnapSmartReport> parseQnapSmartReport(std::string_view text) {
+    if (text.empty()) return std::nullopt;
+
+    QnapSmartReport report;
+    bool sawAttribute = false;
+    std::istringstream lines{std::string(text)};
+    std::string line;
+    while (std::getline(lines, line)) {
+        line = trimAscii(std::move(line));
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) continue;
+
+        // QNAP versions use both "===== Disk 8 =====" and "Disk 8".
+        const auto diskPos = line.find("Disk");
+        if (diskPos != std::string::npos) {
+            const auto numberStart = line.find_first_of("0123456789", diskPos + 4);
+            if (numberStart != std::string::npos) {
+                const auto numberEnd = line.find_first_not_of("0123456789", numberStart);
+                if (const auto number = parseInt(std::string_view(line).substr(numberStart, numberEnd - numberStart));
+                    number.has_value()) {
+                    report.bay = *number;
+                }
+            }
+        }
+
+        if (line.rfind("Status", 0) == 0) {
+            const auto separator = line.find(':');
+            if (separator != std::string::npos) report.status = trimAscii(line.substr(separator + 1));
+            continue;
+        }
+
+        const auto fields = tokens(line);
+        if (fields.size() < 6) continue;
+        const auto id = parseInt(fields.front());
+        if (!id.has_value() || *id < 1 || *id > 255) continue;
+        const std::size_t currentIndex = fields.size() - 5;
+        const auto current = parseInt(fields[currentIndex]);
+        const auto worst = parseInt(fields[currentIndex + 1]);
+        const auto threshold = parseInt(fields[currentIndex + 2]);
+        const auto raw = parseUnsigned(fields[currentIndex + 3]);
+        if (!current.has_value() || !worst.has_value() || !threshold.has_value() || !raw.has_value() ||
+            *current < 0 || *current > 255 || *worst < 0 || *worst > 255 || *threshold < 0 || *threshold > 255) {
+            continue;
+        }
+
+        SmartAttribute attribute;
+        attribute.id = static_cast<unsigned char>(*id);
+        attribute.current = static_cast<unsigned char>(*current);
+        attribute.worst = static_cast<unsigned char>(*worst);
+        attribute.threshold = static_cast<unsigned char>(*threshold);
+        attribute.raw = *raw;
+        attribute.status = fields.back();
+        for (std::size_t index = 1; index < currentIndex; ++index) {
+            if (!attribute.name.empty()) attribute.name += ' ';
+            attribute.name += fields[index];
+        }
+        report.attributes.push_back(std::move(attribute));
+        sawAttribute = true;
+    }
+
+    if (!sawAttribute) return std::nullopt;
+    return report;
+}
+
 void applyAtaSmartThresholds(std::vector<SmartAttribute>& attributes, const unsigned char* data, std::size_t bytes) {
     if (data == nullptr || bytes < kSmartSectorBytes) return;
 
@@ -124,6 +237,59 @@ std::optional<int> ataTemperatureCelsius(const std::vector<SmartAttribute>& attr
         }
     }
     return std::nullopt;
+}
+
+gth::core::PhysicalDiskHealth::SmartMetrics smartMetrics(const std::vector<SmartAttribute>& attributes) {
+    gth::core::PhysicalDiskHealth::SmartMetrics metrics;
+    metrics.rawReadErrorRate = rawValue(attributes, 1);
+    metrics.spinUpTime = rawValue(attributes, 3);
+    metrics.startStopCount = rawValue(attributes, 4);
+    metrics.reallocatedSectorCount = rawValue(attributes, 5);
+    metrics.seekErrorRate = rawValue(attributes, 7);
+    metrics.powerOnHours = rawValue(attributes, 9);
+    metrics.spinRetryCount = rawValue(attributes, 10);
+    metrics.powerCycleCount = rawValue(attributes, 12);
+    metrics.endToEndErrorCount = rawValue(attributes, 184);
+    metrics.reportedUncorrectableCount = rawValue(attributes, 187);
+    metrics.commandTimeoutCount = rawValue(attributes, 188);
+    metrics.powerOffRetractCount = rawValue(attributes, 192);
+    metrics.loadCycleCount = rawValue(attributes, 193);
+    metrics.pendingSectorCount = rawValue(attributes, 197);
+    metrics.uncorrectableSectorCount = rawValue(attributes, 198);
+    metrics.sataRerrorCount = rawValue(attributes, 199);
+    metrics.multiZoneErrorRate = rawValue(attributes, 200);
+    metrics.airflowTemperatureRaw = rawValue(attributes, 190);
+    metrics.headFlyingHours = rawValue(attributes, 240);
+    metrics.totalLbaWritten = rawValue(attributes, 241);
+    metrics.totalLbaRead = rawValue(attributes, 242);
+    return metrics;
+}
+
+gth::core::PhysicalDiskHealth physicalDiskHealthFromQnapReport(const QnapSmartReport& report) {
+    gth::core::PhysicalDiskHealth disk;
+    disk.diskNumber = report.bay.value_or(-1);
+    disk.temperatureCelsius = ataTemperatureCelsius(report.attributes);
+    disk.smartMetrics = smartMetrics(report.attributes);
+    disk.smartStatus = report.status;
+    if (disk.smartStatus.empty()) {
+        bool sawWarning = false;
+        bool sawStatus = false;
+        for (const auto& attribute : report.attributes) {
+            if (attribute.status.empty()) continue;
+            sawStatus = true;
+            if (attribute.status == "Bad" || attribute.status == "Error") {
+                disk.smartStatus = "Bad";
+                break;
+            }
+            if (attribute.status == "Warning") sawWarning = true;
+        }
+        if (disk.smartStatus.empty() && sawStatus) disk.smartStatus = sawWarning ? "Warning" : "Good";
+    }
+
+    const auto assessment = assessAtaHealth(report.attributes);
+    disk.healthPercent = assessment.percent;
+    disk.healthDetail = assessment.detail;
+    return disk;
 }
 
 HealthAssessment assessAtaHealth(const std::vector<SmartAttribute>& attributes, std::optional<bool> solidState) {

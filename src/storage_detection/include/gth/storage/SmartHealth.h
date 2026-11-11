@@ -3,7 +3,10 @@
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
+
+#include "gth/core/storage/PhysicalDiskHealth.h"
 
 // Turns a disk's own SMART data into a health percentage.
 //
@@ -21,8 +24,19 @@ struct SmartAttribute {
     unsigned char worst = 0;
     unsigned long long raw = 0;  // the 6 raw bytes, little-endian
     unsigned char threshold = 0; // 0 = none known
+    std::string name;             // populated by text-report parsers when available
+    std::string status;           // vendor-reported status, e.g. Good/Warning/Bad
 
     bool preFail() const { return (flags & 0x0001) != 0; }
+};
+
+// The text format emitted by QNAP's qcli_hdd command.  It is intentionally
+// parsed as an input format only: no credentials or SSH behavior belong in
+// this low-level library.  Missing or malformed fields stay absent.
+struct QnapSmartReport {
+    std::optional<int> bay;
+    std::string status;
+    std::vector<SmartAttribute> attributes;
 };
 
 struct HealthAssessment {
@@ -33,11 +47,27 @@ struct HealthAssessment {
 // The 512-byte SMART READ DATA sector: 30 twelve-byte entries after a 2-byte revision. Unused (id 0) entries are skipped.
 std::vector<SmartAttribute> parseAtaSmartAttributes(const unsigned char* data, std::size_t bytes);
 
+// Parse one QNAP qcli_hdd report, including lines such as:
+// `194 Temperature_Celsius 042 057 000 42 Good`.
+std::optional<QnapSmartReport> parseQnapSmartReport(std::string_view text);
+
 // The 512-byte SMART READ THRESHOLDS sector; fills in each attribute's threshold.
 void applyAtaSmartThresholds(std::vector<SmartAttribute>& attributes, const unsigned char* data, std::size_t bytes);
 
 // Drive temperature in Celsius from attribute 194 (or 190), when it holds a plausible reading.
 std::optional<int> ataTemperatureCelsius(const std::vector<SmartAttribute>& attributes);
+
+// Pull the counters that are meaningful across the ATA and QNAP text forms.
+// Raw values remain in vendor-reported units; only the temperature and health
+// assessment apply interpretation rules.
+gth::core::PhysicalDiskHealth::SmartMetrics smartMetrics(
+    const std::vector<SmartAttribute>& attributes);
+
+// Convert a manually supplied QNAP bay report into the same disk-level model
+// used by the Windows provider. The SMART score remains an estimate from the
+// attributes; the QNAP status is preserved separately as the authoritative
+// vendor label.
+gth::core::PhysicalDiskHealth physicalDiskHealthFromQnapReport(const QnapSmartReport& report);
 
 // `solidState`: true for an SSD, false for a spinning disk, nullopt when unknown. The SSD life counters (attributes
 // 231/233/177/202/169) are only read on a disk that is or may be an SSD - on a hard disk some of those numbers mean
